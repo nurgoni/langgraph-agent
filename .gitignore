@@ -1,0 +1,10 @@
+# Reference project (has its own git repository)
+agent-service-toolkit/
+
+# Secrets
+.env
+
+# Local databases
+*.db
+*.db-shm
+*.db-wal
