@@ -14,7 +14,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 
 | ID | Fitur | Milestone | Status |
 |---|---|---|---|
-| F00 | Project bootstrap | M0 | todo |
+| F00 | Project bootstrap | M0 | done |
 | F01 | Core settings | M1 | todo |
 | F02 | LLM model factory | M1 | todo |
 | F03 | SQLite checkpointer | M1 | todo |

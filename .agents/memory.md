@@ -13,11 +13,31 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** dokumentasi fondasi + roadmap selesai. Belum ada kode, dan repo belum di-`git init`.
-- **Berikutnya:** F00 (project bootstrap) di [docs/ROADMAP.md](../docs/ROADMAP.md#f00-project-bootstrap).
+- **Fase:** M0 selesai (F00). Repo git, tooling, dan CI siap. Belum ada kode fitur.
+- **Berikutnya:** F01 (core settings) di [docs/ROADMAP.md](../docs/ROADMAP.md#f01-core-settings).
+- **Repo:** belum ada remote. PR dan CI GitHub baru berjalan setelah remote ditambahkan. Sampai
+  saat itu, merge ke `develop` dilakukan sebagai squash merge lokal setelah cek lokal hijau.
 - **Terakhir diperbarui:** 2026-11-01
 
 ## Decision Log
+
+### 2026-11-01: Konvensi tooling dari F00
+
+- **Keputusan:**
+  - Dependency runtime ditambahkan oleh fitur yang pertama kali membutuhkannya (`dependencies = []`
+    di F00).
+  - Tool dev di-pin sampai minor (`ruff ~=0.17.1`, `pyrefly ~=1.4.0`), karena rilis minor bisa
+    mengubah hasil lint/format.
+  - Hook pre-commit untuk ruff/pyrefly memakai `uv run` (hook lokal), sehingga versinya sama dengan
+    `uv.lock`.
+  - pytest berjalan di stage `pre-push`.
+  - uv di CI di-pin ke versi yang menulis `uv.lock` (0.12.18).
+  - `exclude-newer` memakai tanggal absolut dan dimajukan setiap kali dependency di-refresh.
+  - `.gitattributes` memaksa line ending LF, karena git di mesin Windows ini memakai `autocrlf`.
+  - Git author di repo ini: `user.name = nurgoni` (config lokal).
+- **Alasan:** toolkit lama mengalami drift versi antara hook dan dev dependency (ruff v0.11.9 vs
+  0.15). Pytest mengembalikan exit code 5 kalau tidak ada test, jadi setiap commit minimal punya
+  smoke test.
 
 ### 2026-11-01: Thread rename/delete + validasi `agent_config` per agent masuk v1
 
@@ -128,5 +148,6 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pe
 
 ## TODO Berikutnya
 
-- [ ] F00: `git init`, root commit dokumen, branch `develop`, tooling, CI
-      (lihat [ROADMAP](../docs/ROADMAP.md#f00-project-bootstrap)).
+- [ ] Tambahkan remote GitHub, push `main` + `develop`, set `develop` sebagai default branch, dan
+      aktifkan branch protection (CONTRIBUTING.md § Setup Awal Repo).
+- [ ] F01: core settings.
