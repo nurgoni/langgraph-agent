@@ -88,7 +88,8 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
 
 ### API
 
-- **FR-5** `GET /info` mengembalikan daftar agent, agent default, daftar model, dan model default.
+- **FR-5** `GET /info` mengembalikan daftar agent yang tersedia (agent yang gagal load tidak
+  ditampilkan), agent default (`chatbot`), daftar model, dan model default.
 - **FR-6** `POST /{agent_id}/invoke` menjalankan agent sampai selesai dan mengembalikan
   `ChatMessage` terakhir.
 - **FR-7** `POST /{agent_id}/stream` mengalirkan event SSE (lihat §7.2).
@@ -148,7 +149,7 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
 | NFR-3 | Coverage | ≥ 80% baris |
 | NFR-4 | Kompleksitas | Nesting ≤ 2, function/method ±≤ 40 baris (lihat AGENTS.md) |
 | NFR-5 | Startup | Service siap < `STARTUP_TIMEOUT_SECONDS` (default 10 detik) tanpa jaringan |
-| NFR-6 | Error contract | Semua error API berbentuk `{"detail": str}` dengan status code yang tepat |
+| NFR-6 | Error contract | Error domain dan error tak terduga berbentuk `{"detail": str}` dengan status code yang tepat. Error validasi request (422) memakai format bawaan FastAPI: `detail` berupa list per field |
 | NFR-7 | Observability | Logging terstruktur via `logging`. Setiap request punya `run_id` di log |
 | NFR-8 | Reproducible | `uv.lock` di-commit. Docker image di-build dari lock file |
 

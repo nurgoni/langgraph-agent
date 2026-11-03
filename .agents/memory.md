@@ -13,15 +13,43 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** M1 berjalan. F00, F01, F04, F02, dan F03 sudah di `develop`. F05 selesai di
-  `feature/F05-agent-registry`, menunggu push dan PR.
-- **Berikutnya:** F06 (service app), lalu F07 (lihat urutan di ROADMAP).
+- **Fase:** M1 berjalan. F00–F05 sudah di `develop`. F06 selesai di `feature/F06-service-app`,
+  menunggu push dan PR.
+- **Berikutnya:** F07 (invoke & history), lalu F09 (lihat urutan di ROADMAP).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Terakhir diperbarui:** 2026-11-03
 
 ## Decision Log
+
+### 2026-11-03: Service app dari F06
+
+- **Keputusan user:**
+  - Agent default `chatbot`, sebagai konstanta `DEFAULT_AGENT_ID` di `agents/catalog.py`.
+  - Error validasi 422 memakai format bawaan FastAPI (list per field). Error domain dan error tak
+    terduga tetap `{"detail": str}`. NFR-6 sudah direvisi.
+- **Keputusan desain:**
+  - `create_app()` tanpa argumen membaca `Settings()` saat dipanggil, bukan saat import. Semua
+    resource dibuat di lifespan. `app.state` berisi `settings`, `default_agent_id`,
+    `model_factory`, dan `registry`. Route mengaksesnya lewat alias `SettingsDep`, `RegistryDep`,
+    dan lainnya di `service/dependencies.py`.
+  - Auth dipasang per router di `create_app` (`include_router(..., dependencies=[Depends(
+    verify_bearer)])`). `/health` tidak dipasangi auth.
+  - Status error dicari lewat MRO exception (`status_code_for`), jadi subclass ikut terpetakan.
+    Handler `Exception` → 500 generik adalah batas sistem dan wajib `logger.exception`.
+  - `/info` hanya menampilkan agent yang tersedia.
+- **Pelajaran:**
+  - `ASGITransport` httpx tidak menjalankan lifespan. Test service membungkus client dengan
+    `async with app.router.lifespan_context(app)` (lihat `tests/service/conftest.py`).
+  - Handler `Exception` di Starlette tetap me-raise ulang setelah mengirim 500. Pakai
+    `ASGITransport(raise_app_exceptions=False)` untuk test 500.
+  - Pydantic memakai docstring model sebagai `description` di JSON Schema. Model yang menjadi
+    `config_schema` agent butuh deskripsi publik eksplisit (bahasa Inggris) lewat
+    `json_schema_extra`, kalau tidak docstring internal ikut tampil di `/info`.
+  - `@asynccontextmanager` harus memakai `-> AsyncGenerator[...]`, karena pyrefly menandai
+    `AsyncIterator` sebagai deprecated.
+  - pytest memakai `--import-mode=importlib`, karena `tests/` mirror `src/` tanpa `__init__.py`.
 
 ### 2026-11-03: Agent registry dari F05
 
@@ -232,7 +260,7 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pe
 
 ## TODO Berikutnya
 
-- [ ] User: push `feature/F05-agent-registry`, lalu buka PR F05 ke `develop`.
+- [ ] User: push `feature/F06-service-app`, lalu buka PR F06 ke `develop`.
 - [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
       (CONTRIBUTING.md § Setup Awal Repo).
-- [ ] F06: service app (`create_app`, lifespan, auth, `/health`, `/info`). Tentukan agent default.
+- [ ] F07: invoke & history (`RunInputBuilder`, validasi `agent_config` lewat `parse_config` → 422).

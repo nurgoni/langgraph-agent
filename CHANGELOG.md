@@ -22,3 +22,5 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
   saat dibuka dan menutup koneksi saat keluar (F03).
 - `BaseAgent` dengan `config_schema` per agent, `AgentRegistry` yang meng-compile graph per agent dan
   model, error `AgentNotFoundError`/`AgentUnavailableError`, dan agent `chatbot` (F05).
+- Service FastAPI: `create_app` dengan lifespan, bearer auth opsional, pemetaan error domain ke
+  404/422/503, endpoint `/health` dan `/info`, serta entrypoint `run_service` (F06).
