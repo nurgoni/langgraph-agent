@@ -13,15 +13,36 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** M1 berjalan. F00 selesai, F01 selesai di branch `feature/F01-core-settings` dan
-  menunggu PR ke `develop`.
-- **Berikutnya:** F04 (API schema), lalu F02 dan F03 (lihat urutan di ROADMAP).
+- **Fase:** M1 berjalan. F00 sudah di `develop`. F01 dan F04 selesai tapi belum di-merge:
+  - `feature/F01-core-settings` menunggu PR ke `develop`.
+  - `feature/F04-api-schema` adalah **stacked branch** di atas F01.
+- **Setelah F01 di-squash merge:** jalankan
+  `git rebase --onto origin/develop feature/F01-core-settings feature/F04-api-schema`, lalu buka
+  PR F04.
+- **Berikutnya:** F02 (LLM model factory), lalu F03 (lihat urutan di ROADMAP).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Terakhir diperbarui:** 2026-11-03
 
 ## Decision Log
+
+### 2026-11-03: Kontrak schema dari F04
+
+- **Keputusan:**
+  - `ChatHistoryInput` wajib berisi `user_id`. History memakai cek kepemilikan yang sama dengan
+    rename/delete (404 untuk thread milik user lain).
+  - Field bebas (`agent_config`, `args`, `response_metadata`, `custom_data`, `config_schema`)
+    memakai `pydantic.JsonValue`, bukan `Any`.
+  - Event SSE dimodelkan sebagai discriminated union pada field `type`. Service (F08) dan client
+    (F11) memakai `STREAM_EVENT_ADAPTER` dan `STREAM_DONE_MARKER` yang sama.
+  - Konstanta batas (`THREADS_LIMIT_*`, `TITLE_MAX_LENGTH`) tinggal di `schema/requests.py`, karena
+    schema tidak boleh import `core/`. Service memakai konstanta ini langsung dari schema.
+- **Alasan:** keputusan user (`user_id`) dan aturan layer di AGENTS.md. Aturan layer ditegakkan oleh
+  `tests/schema/test_layering.py`.
+- **Workflow:** jika fitur berikutnya bergantung pada branch yang belum di-merge (terutama karena
+  `pyproject.toml`/`uv.lock`), buat stacked branch, lalu `rebase --onto` setelah induknya
+  di-squash merge.
 
 ### 2026-11-03: Konvensi dari F01
 
@@ -167,4 +188,5 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pe
 
 - [ ] User: push `main`, `develop`, dan `feature/F01-core-settings`. Set `develop` sebagai default
       branch, aktifkan branch protection (CONTRIBUTING.md § Setup Awal Repo), lalu buka PR F01.
-- [ ] F04: API schema.
+- [ ] User: setelah F01 di-merge, rebase F04 ke `develop` lalu buka PR F04.
+- [ ] F02: LLM model factory.

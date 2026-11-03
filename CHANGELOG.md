@@ -13,3 +13,5 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 - Tooling project: uv, ruff, pyrefly, pytest, pre-commit, CI GitHub Actions (F00).
 - `Settings` berbasis pydantic-settings dengan validasi konfigurasi LLM dan allowlist model,
   konstanta bernama, dan `configure_logging` (F01).
+- Schema API: model request, response, dan event SSE. `ChatHistoryInput` mewajibkan `user_id`
+  (F04).
