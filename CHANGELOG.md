@@ -18,3 +18,5 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 - `ModelFactory` untuk model OpenAI-compatible dengan allowlist dan cache per instance, serta
   `FakeModel` dengan respons dan tool call yang bisa di-script. Unit test kini gagal jika membuka
   koneksi network (F02).
+- `CheckpointerProvider`: async context manager untuk `AsyncSqliteSaver` yang menyiapkan tabel
+  saat dibuka dan menutup koneksi saat keluar (F03).
