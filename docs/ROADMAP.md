@@ -19,7 +19,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F02 | LLM model factory | M1 | done |
 | F03 | SQLite checkpointer | M1 | done |
 | F04 | API schema | M1 | done |
-| F05 | Agent registry | M1 | todo |
+| F05 | Agent registry | M1 | done |
 | F06 | Service app | M1 | todo |
 | F07 | Invoke & history | M1 | todo |
 | F08 | SSE streaming | M1 | todo |
@@ -287,15 +287,25 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
 - **Referensi lama:** `agents/agents.py`, `agents/lazy_agent.py`, `agents/chatbot.py`.
 - **Rencana commit:**
   1. `feat(agents): add BaseAgent contract with build and load hooks`
-  2. `feat(agents): add per-agent config schema with strict default`
-  3. `feat(agents): add AgentRegistry with not-found and unavailable errors`
-  4. `feat(agents): add ChatbotAgent as minimal reference agent`
-  5. `test(agents): cover registry lookup, lazy loading and load failure`
-  6. `docs(memory-md): record agent registry design decisions`
+  2. `feat(llm): expose model name resolution on ModelFactory`
+  3. `feat(agents): add ChatbotAgent as minimal reference agent`
+  4. `feat(agents): add AgentRegistry with not-found and unavailable errors`
+  5. `docs: record F05 agent registry decisions`
+- **Penyesuaian saat implementasi:**
+  - Commit config schema digabung ke commit `BaseAgent`. Test ikut di commit kodenya.
+    `ChatbotAgent` dibuat sebelum registry, karena doctest registry memakainya.
+  - `list_info()` diganti `list_agents() -> list[BaseAgent]` ditambah `is_available()`. Aturan layer
+    melarang `agents/` meng-import `schema/`, jadi konversi ke `AgentInfo` dilakukan di service (F06).
+  - Ditambah `ModelFactory.resolve_name()` supaya key cache graph memakai nama model final
+    (`None` dan nama default berbagi satu graph).
+  - Ditambah `get_agent()` (untuk `parse_config`) dan `DuplicateAgentError`.
+  - `agent_id` dan `description` adalah atribut instance (argumen konstruktor), supaya satu class
+    seperti `ToolCallingAgent` (F15) bisa didaftarkan beberapa kali dengan ID berbeda.
+  - Agent default untuk `/info` belum ditentukan di sini. Keputusannya ada di F06.
 - **Acceptance criteria:**
-  - [ ] Agent yang `load()`-nya gagal tidak menghentikan registry.
-  - [ ] Model berbeda menghasilkan graph berbeda (FR-4).
-  - [ ] `parse_config` menolak key yang tidak dikenal untuk agent tanpa config custom.
+  - [x] Agent yang `load()`-nya gagal tidak menghentikan registry.
+  - [x] Model berbeda menghasilkan graph berbeda (FR-4).
+  - [x] `parse_config` menolak key yang tidak dikenal untuk agent tanpa config custom.
 - **Squash title:** `feat(agents): add agent registry and chatbot agent (F05)`
 
 ### F06: Service app

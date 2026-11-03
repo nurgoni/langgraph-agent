@@ -13,15 +13,33 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** M1 berjalan. F00, F01, F04, dan F02 sudah di `develop`. F03 selesai di
-  `feature/F03-sqlite-checkpointer`, menunggu push dan PR.
-- **Berikutnya:** F05 (agent registry), lalu F06 (lihat urutan di ROADMAP).
+- **Fase:** M1 berjalan. F00, F01, F04, F02, dan F03 sudah di `develop`. F05 selesai di
+  `feature/F05-agent-registry`, menunggu push dan PR.
+- **Berikutnya:** F06 (service app), lalu F07 (lihat urutan di ROADMAP).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Terakhir diperbarui:** 2026-11-03
 
 ## Decision Log
+
+### 2026-11-03: Agent registry dari F05
+
+- **Keputusan:**
+  - `AgentRegistry(model_factory, checkpointer)` menyimpan cache graph per `(agent_id, nama model
+    final)`. `load_all()` menjalankan `load()` dan meng-compile graph untuk model default. Kegagalan
+    di tahap ini menandai agent unavailable. Ini satu-satunya `except Exception` di `agents/`.
+  - Node yang butuh model ditulis sebagai **closure** di dalam `build()`, bukan method. Satu
+    instance agent membangun graph untuk beberapa model, jadi model tidak bisa disimpan di `self`.
+    Ini pengecualian dari aturan "node ber-dependency = method" di AGENTS.md.
+  - Node agent bersifat async. Graph dijalankan lewat `ainvoke`/`astream`, karena `invoke` sync
+    gagal ("No synchronous function provided").
+  - `agents/` tidak meng-import `schema/`. Service (F06) yang mengubah `BaseAgent` menjadi
+    `AgentInfo` dengan `config_schema.model_json_schema()`.
+- **Pelajaran:** pyrefly menolak `StateGraph(MessagesState)` (`bad-specialization`), karena tidak
+  mengenali TypedDict sebagai `TypedDictLike` milik LangGraph. Ini false positive. Pakai
+  `# pyrefly: ignore[bad-specialization]` per baris beserta komentar alasannya, jangan ganti
+  state menjadi pydantic.
 
 ### 2026-11-03: CheckpointerProvider dari F03
 
@@ -214,7 +232,7 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pe
 
 ## TODO Berikutnya
 
-- [ ] User: push `feature/F03-sqlite-checkpointer`, lalu buka PR F03 ke `develop`.
+- [ ] User: push `feature/F05-agent-registry`, lalu buka PR F05 ke `develop`.
 - [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
       (CONTRIBUTING.md § Setup Awal Repo).
-- [ ] F05: agent registry dan `ChatbotAgent`.
+- [ ] F06: service app (`create_app`, lifespan, auth, `/health`, `/info`). Tentukan agent default.
