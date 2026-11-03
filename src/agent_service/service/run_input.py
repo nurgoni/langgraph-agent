@@ -12,6 +12,7 @@ from langgraph.types import Command, StateSnapshot
 from pydantic import BaseModel, JsonValue, ValidationError
 
 from agent_service.agents.base import AgentGraph, BaseAgent
+from agent_service.schema.headers import THREAD_ID_HEADER, USER_ID_HEADER
 from agent_service.schema.requests import UserInput
 from agent_service.service.thread_access import ensure_thread_owner, is_new_thread, run_metadata
 
@@ -30,6 +31,10 @@ class RunInput:
     run_id: UUID
     thread_id: str
     user_id: str
+
+    def response_headers(self) -> dict[str, str]:
+        """Header yang mengembalikan ID thread dan user ke client (FR-13)."""
+        return {THREAD_ID_HEADER: self.thread_id, USER_ID_HEADER: self.user_id}
 
 
 async def build_run_input(user_input: UserInput, agent: BaseAgent, graph: AgentGraph) -> RunInput:
