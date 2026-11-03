@@ -55,7 +55,7 @@ async def test_info_matches_service_metadata_contract(client: AsyncClient) -> No
 
     assert response.status_code == 200
     metadata = ServiceMetadata.model_validate(response.json())
-    assert [agent.key for agent in metadata.agents] == ["chatbot"]
+    assert [agent.key for agent in metadata.agents] == ["chatbot", "interrupt", "tone"]
     assert metadata.default_agent == "chatbot"
     assert metadata.models == ["fake"]
     assert metadata.default_model == "fake"
