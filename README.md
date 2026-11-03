@@ -6,7 +6,7 @@ lewat satu API FastAPI, lengkap dengan streaming SSE, Python client, dan UI chat
 Project ini adalah rewrite dari [`agent-service-toolkit/`](agent-service-toolkit/) dengan fokus pada
 kode yang sederhana, eksplisit, dan mudah dites (Zen of Python).
 
-> **Status:** M1 berjalan. Service sudah bisa dijalankan dengan `/health` dan `/info`. Endpoint agent (`invoke`, `stream`, `history`, `threads`) belum tersedia. Lihat [PRD.md](PRD.md) untuk requirement dan
+> **Status:** M1 berjalan. Endpoint `/health`, `/info`, `/invoke`, dan `/history` sudah tersedia. `stream` dan `threads` belum. Lihat [PRD.md](PRD.md) untuk requirement dan
 > [.agents/memory.md](.agents/memory.md) untuk status terkini.
 
 ## Fitur
@@ -85,6 +85,9 @@ docker compose up --build
 | POST | `/{agent_id}/history` | Riwayat satu thread |
 | GET | `/{agent_id}/threads` | Daftar thread milik user |
 | GET | `/health` | Health check, selalu tanpa auth |
+
+Response `/invoke` dan `/stream` membawa header `X-Thread-Id` dan `X-User-Id`. Kirim keduanya lagi
+untuk melanjutkan thread yang sama. Thread milik user lain menjawab 404.
 
 ```bash
 curl -N -X POST http://localhost:8080/chatbot/stream \
