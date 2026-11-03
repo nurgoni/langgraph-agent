@@ -49,7 +49,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "src"]
-addopts = "--doctest-modules -m 'not integration'"
+addopts = "--doctest-modules --import-mode=importlib -m 'not integration'"
 markers = ["integration: needs external services (docker, real LLM); run with -m integration"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
