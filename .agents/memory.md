@@ -13,19 +13,35 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** M1 berjalan. F00 sudah di `develop`. F01 dan F04 selesai tapi belum di-merge:
-  - `feature/F01-core-settings` menunggu PR ke `develop`.
-  - `feature/F04-api-schema` adalah **stacked branch** di atas F01.
-- **Setelah F01 di-squash merge:** jalankan
-  `git rebase --onto origin/develop feature/F01-core-settings feature/F04-api-schema`, lalu buka
-  PR F04.
-- **Berikutnya:** F02 (LLM model factory), lalu F03 (lihat urutan di ROADMAP).
+- **Fase:** M1 berjalan. F00, F01, dan F04 sudah di `develop`. F02 selesai di
+  `feature/F02-llm-model-factory`, menunggu push dan PR.
+- **Berikutnya:** F03 (SQLite checkpointer), lalu F05 (lihat urutan di ROADMAP).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Terakhir diperbarui:** 2026-11-03
 
 ## Decision Log
+
+### 2026-11-03: Model factory dan FakeModel dari F02
+
+- **Keputusan:**
+  - `ModelFactory(settings).create(name | None)` menyimpan cache per instance factory. Nama di luar
+    allowlist → `UnknownModelError` (service memetakannya ke 422). Model non-fake tanpa
+    `LLM_BASE_URL`/`LLM_API_KEY` → `ModelNotConfiguredError`, bukan diam-diam jatuh ke
+    `OPENAI_API_KEY`.
+  - `FakeModel` mewarisi `BaseChatModel`. Respons di-script lewat `responses` (string atau
+    `AIMessage`, berputar). Saat streaming, teks dipecah per kata dan `tool_calls` dikirim sebagai
+    chunk terakhir.
+  - `ChatOpenAI` tidak diberi `streaming=True`. LangGraph tetap men-stream token lewat callback
+    `stream_mode="messages"`. Cek ulang di F08.
+  - Fixture autouse `block_network` (`tests/conftest.py`) menggagalkan koneksi non-loopback di unit
+    test.
+- **Alasan:** `GenericFakeChatModel` membuang `tool_calls` saat streaming, sehingga tool call di
+  agent loop LangGraph tidak pernah muncul. Aturan "tanpa network call" sekarang ditegakkan oleh
+  test, bukan hanya oleh review.
+- **Pelajaran:** `BaseChatModel.stream()` selalu menambahkan chunk kosong penanda akhir. Test token
+  harus menyaring chunk dengan konten kosong.
 
 ### 2026-11-03: Kontrak schema dari F04
 
@@ -186,7 +202,7 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pe
 
 ## TODO Berikutnya
 
-- [ ] User: push `main`, `develop`, dan `feature/F01-core-settings`. Set `develop` sebagai default
-      branch, aktifkan branch protection (CONTRIBUTING.md § Setup Awal Repo), lalu buka PR F01.
-- [ ] User: setelah F01 di-merge, rebase F04 ke `develop` lalu buka PR F04.
-- [ ] F02: LLM model factory.
+- [ ] User: push `feature/F02-llm-model-factory`, lalu buka PR F02 ke `develop`.
+- [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
+      (CONTRIBUTING.md § Setup Awal Repo).
+- [ ] F03: SQLite checkpointer.

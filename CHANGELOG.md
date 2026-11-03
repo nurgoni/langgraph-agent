@@ -15,3 +15,6 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
   konstanta bernama, dan `configure_logging` (F01).
 - Schema API: model request, response, dan event SSE. `ChatHistoryInput` mewajibkan `user_id`
   (F04).
+- `ModelFactory` untuk model OpenAI-compatible dengan allowlist dan cache per instance, serta
+  `FakeModel` dengan respons dan tool call yang bisa di-script. Unit test kini gagal jika membuka
+  koneksi network (F02).
