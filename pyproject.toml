@@ -7,16 +7,19 @@ authors = [{ name = "nurgoni" }]
 requires-python = ">=3.12,<3.15"
 # Runtime dependencies are added by the feature that first needs them (see docs/ROADMAP.md).
 dependencies = [
+    "fastapi~=0.143",
     "langchain-core~=1.6",
     "langchain-openai~=1.7",
     "langgraph~=1.2",
     "langgraph-checkpoint-sqlite~=3.1",
     "pydantic~=2.14",
     "pydantic-settings~=2.16",
+    "uvicorn~=0.54",
 ]
 
 [dependency-groups]
 dev = [
+    "httpx ~=0.28.1",
     "pre-commit ~=4.7.0",
     "pyrefly ~=1.4.0",
     "pytest ~=8.4.2",
