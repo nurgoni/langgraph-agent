@@ -109,3 +109,15 @@ async def test_fake_model_answers_without_network(fake_settings: Settings) -> No
     message = await ModelFactory(fake_settings).create().ainvoke("Halo")
 
     assert message.content
+
+
+def test_resolve_name_maps_none_to_default_model(llm_settings: Settings) -> None:
+    factory = ModelFactory(llm_settings)
+
+    assert factory.resolve_name() == DEFAULT_MODEL
+    assert factory.resolve_name(OTHER_MODEL) == OTHER_MODEL
+
+
+def test_resolve_name_rejects_model_outside_allowlist(llm_settings: Settings) -> None:
+    with pytest.raises(UnknownModelError):
+        ModelFactory(llm_settings).resolve_name("gpt-unknown")

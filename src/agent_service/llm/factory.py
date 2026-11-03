@@ -66,6 +66,26 @@ class ModelFactory:
         self._default_model = settings.default_model
         self._models: dict[str, BaseChatModel] = {}
 
+    def resolve_name(self, model_name: str | None = None) -> str:
+        """Tentukan nama model final untuk request, tanpa membuat model.
+
+        Args:
+            model_name: Nama model dari request. `None` berarti `DEFAULT_MODEL`.
+
+        Returns:
+            Nama model yang ada di `AVAILABLE_MODELS`.
+
+        Raises:
+            UnknownModelError: Jika nama model tidak ada di `AVAILABLE_MODELS`.
+
+        >>> ModelFactory(Settings(_env_file=None, use_fake_model=True)).resolve_name()
+        'fake'
+        """
+        name = self._default_model if model_name is None else model_name
+        if name not in self._settings.available_models:
+            raise UnknownModelError(name, self._settings.available_models)
+        return name
+
     def create(self, model_name: str | None = None) -> BaseChatModel:
         """Kembalikan chat model untuk `model_name`, dibuat sekali lalu di-reuse.
 
@@ -80,9 +100,7 @@ class ModelFactory:
             ModelNotConfiguredError: Jika `LLM_BASE_URL` atau `LLM_API_KEY` belum diisi untuk
                 model non-fake.
         """
-        name = self._default_model if model_name is None else model_name
-        if name not in self._settings.available_models:
-            raise UnknownModelError(name, self._settings.available_models)
+        name = self.resolve_name(model_name)
         model = self._models.get(name)
         if model is None:
             model = self._build(name)
