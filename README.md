@@ -6,7 +6,7 @@ lewat satu API FastAPI, lengkap dengan streaming SSE, Python client, dan UI chat
 Project ini adalah rewrite dari [`agent-service-toolkit/`](agent-service-toolkit/) dengan fokus pada
 kode yang sederhana, eksplisit, dan mudah dites (Zen of Python).
 
-> **Status:** M1 berjalan (settings, schema API, dan model factory selesai). Service belum bisa dijalankan. Lihat [PRD.md](PRD.md) untuk requirement dan
+> **Status:** M1 berjalan (settings, schema API, model factory, dan checkpointer SQLite selesai). Service belum bisa dijalankan. Lihat [PRD.md](PRD.md) untuk requirement dan
 > [.agents/memory.md](.agents/memory.md) untuk status terkini.
 
 ## Fitur

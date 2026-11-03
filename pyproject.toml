@@ -9,6 +9,7 @@ requires-python = ">=3.12,<3.15"
 dependencies = [
     "langchain-core~=1.6",
     "langchain-openai~=1.7",
+    "langgraph-checkpoint-sqlite~=3.1",
     "pydantic~=2.14",
     "pydantic-settings~=2.16",
 ]

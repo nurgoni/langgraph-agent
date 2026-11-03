@@ -17,7 +17,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F00 | Project bootstrap | M0 | done |
 | F01 | Core settings | M1 | done |
 | F02 | LLM model factory | M1 | done |
-| F03 | SQLite checkpointer | M1 | todo |
+| F03 | SQLite checkpointer | M1 | done |
 | F04 | API schema | M1 | done |
 | F05 | Agent registry | M1 | todo |
 | F06 | Service app | M1 | todo |
@@ -227,9 +227,16 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
 - **Referensi lama:** `memory/sqlite.py`, `memory/__init__.py`.
 - **Rencana commit:**
   1. `feat(memory): add async sqlite CheckpointerProvider`
-  2. `test(memory): verify checkpoint persistence across provider instances`
+  2. `docs: record F03 checkpointer decisions`
+- **Penyesuaian saat implementasi:**
+  - Konstruktor menerima `db_path: Path`, bukan `Settings`. Provider hanya butuh path, dan lifespan
+    memanggil `CheckpointerProvider(settings.sqlite_db_path)`.
+  - Test ikut di commit kodenya, jadi tidak ada commit `test(memory)` terpisah.
+  - Folder induk database dibuat otomatis. Membuka provider yang masih terbuka menghasilkan
+    `CheckpointerAlreadyOpenError`, sedangkan provider yang sudah ditutup boleh dibuka lagi.
+  - Store (long-term memory) tidak di-port, karena masuk lingkup Future (PRD §9).
 - **Acceptance criteria:**
-  - [ ] Checkpoint yang ditulis bisa dibaca ulang setelah provider dibuka kembali (`tmp_path`).
+  - [x] Checkpoint yang ditulis bisa dibaca ulang setelah provider dibuka kembali (`tmp_path`).
 - **Squash title:** `feat(memory): add sqlite checkpointer provider (F03)`
 
 ### F04: API schema

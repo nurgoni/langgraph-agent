@@ -13,15 +13,27 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** M1 berjalan. F00, F01, dan F04 sudah di `develop`. F02 selesai di
-  `feature/F02-llm-model-factory`, menunggu push dan PR.
-- **Berikutnya:** F03 (SQLite checkpointer), lalu F05 (lihat urutan di ROADMAP).
+- **Fase:** M1 berjalan. F00, F01, F04, dan F02 sudah di `develop`. F03 selesai di
+  `feature/F03-sqlite-checkpointer`, menunggu push dan PR.
+- **Berikutnya:** F05 (agent registry), lalu F06 (lihat urutan di ROADMAP).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Terakhir diperbarui:** 2026-11-03
 
 ## Decision Log
+
+### 2026-11-03: CheckpointerProvider dari F03
+
+- **Keputusan:**
+  - `CheckpointerProvider(db_path)` menerima path, bukan `Settings`. Dependency dibuat sesempit
+    yang dibutuhkan, selama tidak ada beberapa nilai settings yang terus dioper bersama.
+  - Provider membuat folder induk, menjalankan `setup()` saat `__aenter__`, dan menutup koneksi
+    di `__aexit__` lewat `AsyncExitStack`. `pop_all()` membuat koneksi langsung ditutup jika
+    `setup()` gagal.
+  - Store (long-term memory) tidak ada di v1.
+- **Alasan:** startup gagal cepat jika path database tidak bisa ditulis, dan request pertama tidak
+  menanggung biaya membuat tabel.
 
 ### 2026-11-03: Model factory dan FakeModel dari F02
 
@@ -202,7 +214,7 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pe
 
 ## TODO Berikutnya
 
-- [ ] User: push `feature/F02-llm-model-factory`, lalu buka PR F02 ke `develop`.
+- [ ] User: push `feature/F03-sqlite-checkpointer`, lalu buka PR F03 ke `develop`.
 - [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
       (CONTRIBUTING.md § Setup Awal Repo).
-- [ ] F03: SQLite checkpointer.
+- [ ] F05: agent registry dan `ChatbotAgent`.
