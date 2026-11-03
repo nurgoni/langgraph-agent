@@ -92,7 +92,9 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
 - **FR-6** `POST /{agent_id}/invoke` menjalankan agent sampai selesai dan mengembalikan
   `ChatMessage` terakhir.
 - **FR-7** `POST /{agent_id}/stream` mengalirkan event SSE (lihat §7.2).
-- **FR-8** `POST /{agent_id}/history` mengembalikan riwayat message satu thread.
+- **FR-8** `POST /{agent_id}/history` mengembalikan riwayat message satu thread. Request wajib
+  menyertakan `user_id`. Thread milik user lain diperlakukan sebagai tidak ada (404), sama dengan
+  FR-25/26.
 - **FR-9** `GET /{agent_id}/threads?user_id=...` mengembalikan daftar thread milik user (judul,
   waktu update), dengan paginasi.
 - **FR-25** `PATCH /{agent_id}/threads/{thread_id}` mengganti judul thread (`{"user_id", "title"}`).
@@ -174,8 +176,9 @@ UserInput       { message: str, model?: str, thread_id?: str, user_id?: str, age
 StreamInput     UserInput + { stream_tokens: bool = true }
 ChatMessage     { type: "human"|"ai"|"tool"|"custom", content: str, tool_calls: list,
                   tool_call_id?: str, run_id?: str, custom_data?: dict }
+ChatHistoryInput { thread_id: str, user_id: str }
 ChatHistory     { messages: list[ChatMessage] }
-ThreadSummary   { thread_id: str, title: str, updated_at: datetime }
+ThreadSummary   { thread_id: str, agent_id: str, title: str, updated_at?: datetime }
 ThreadRenameInput { user_id: str, title: str (1–TITLE_MAX_LENGTH karakter) }
 AgentInfo       { key: str, description: str, config_schema: dict (JSON Schema) }
 ```

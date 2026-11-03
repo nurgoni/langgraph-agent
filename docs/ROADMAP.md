@@ -18,7 +18,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F01 | Core settings | M1 | done |
 | F02 | LLM model factory | M1 | todo |
 | F03 | SQLite checkpointer | M1 | todo |
-| F04 | API schema | M1 | todo |
+| F04 | API schema | M1 | done |
 | F05 | Agent registry | M1 | todo |
 | F06 | Service app | M1 | todo |
 | F07 | Invoke & history | M1 | todo |
@@ -237,9 +237,17 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
   1. `feat(schema): add request models with reserved agent_config keys`
   2. `feat(schema): add response and chat message models`
   3. `feat(schema): add sse stream event model`
+  4. `docs: record F04 contract decisions`
+- **Penyesuaian saat implementasi:**
+  - `ChatHistoryInput` wajib berisi `user_id` (keputusan user, FR-8).
+  - `StreamEvent` adalah discriminated union dari `TokenEvent | MessageEvent | ErrorEvent`, ditambah
+    `STREAM_EVENT_ADAPTER` dan `STREAM_DONE_MARKER`.
+  - `ToolCall` berupa `BaseModel`, bukan TypedDict.
+  - Field bebas memakai `JsonValue`, bukan `Any`.
+  - Model `Feedback` tidak di-port (LangSmith di luar scope).
 - **Acceptance criteria:**
-  - [ ] `agent_config` yang berisi `thread_id`/`user_id`/`model` ditolak.
-  - [ ] Test import memastikan tidak ada dependency di luar pydantic.
+  - [x] `agent_config` yang berisi `thread_id`/`user_id`/`model` ditolak.
+  - [x] Test import memastikan tidak ada dependency di luar pydantic (`tests/schema/test_layering.py`).
 - **Squash title:** `feat(schema): add api request, response and stream models (F04)`
 
 ### F05: Agent registry
