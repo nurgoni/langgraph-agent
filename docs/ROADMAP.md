@@ -20,7 +20,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F03 | SQLite checkpointer | M1 | done |
 | F04 | API schema | M1 | done |
 | F05 | Agent registry | M1 | done |
-| F06 | Service app | M1 | todo |
+| F06 | Service app | M1 | done |
 | F07 | Invoke & history | M1 | todo |
 | F08 | SSE streaming | M1 | todo |
 | F09 | User threads | M1 | todo |
@@ -325,16 +325,33 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
 - **Referensi lama:** `service/service.py` (`lifespan`, `verify_bearer`, `/info`), dan
   `run_service.py` (event loop selector di Windows).
 - **Rencana commit:**
-  1. `feat(service): add app factory with lifespan wiring`
-  2. `feat(service): add optional bearer auth dependency`
-  3. `feat(service): map domain errors to http status codes`
-  4. `feat(service): add health and info endpoints`
-  5. `feat(service): add run_service entrypoint`
+  1. `feat(agents): add default agent catalog`
+  2. `feat(service): add app factory with lifespan wiring`
+  3. `feat(service): add optional bearer auth dependency`
+  4. `build: use importlib import mode for pytest`
+  5. `feat(service): map domain errors to http status codes`
+  6. `feat(service): add health and info endpoints`
+  7. `fix(agents): give EmptyAgentConfig an explicit public description`
+  8. `feat(service): add run_service entrypoint`
+  9. `docs: record F06 service app decisions`
+- **Penyesuaian saat implementasi:**
+  - Keputusan user: agent default `chatbot` (konstanta `DEFAULT_AGENT_ID` di `agents/catalog.py`,
+    bukan env var). Error validasi 422 memakai list per field bawaan FastAPI, dan NFR-6 direvisi.
+  - `create_app(settings=None, agents=None, default_agent_id=...)` bisa di-inject untuk test.
+    `default_agent_id` yang tidak terdaftar langsung gagal saat app dibuat.
+  - Lifespan juga menyimpan `ModelFactory` di `app.state` (untuk `default_model` di `/info`).
+    Akses `app.state` lewat dependency bertipe di `service/dependencies.py`.
+  - `ModelNotConfiguredError` → 503. Exception lain → 500 dengan detail generik dan traceback di log.
+  - `/info` hanya menampilkan agent yang tersedia. `agent_to_info` ada di `service/converters.py`.
+  - Ditambah schema `HealthStatus`.
+  - pytest memakai `--import-mode=importlib`, karena `tests/agents/test_errors.py` dan
+    `tests/service/test_errors.py` bentrok di mode default.
+  - Event loop policy Windows dari toolkit lama tidak di-port (hanya dibutuhkan psycopg).
 - **Acceptance criteria:**
-  - [ ] Test dengan `httpx.AsyncClient` + `ASGITransport`.
-  - [ ] `AgentNotFoundError` dari route mana pun menjadi 404 berformat `{"detail": ...}` (dites
+  - [x] Test dengan `httpx.AsyncClient` + `ASGITransport`.
+  - [x] `AgentNotFoundError` dari route mana pun menjadi 404 berformat `{"detail": ...}` (dites
         lewat route dummy di test).
-  - [ ] `/health` lolos tanpa token walaupun `AUTH_SECRET` diset.
+  - [x] `/health` lolos tanpa token walaupun `AUTH_SECRET` diset.
 - **Squash title:** `feat(service): add fastapi app, auth, health and info (F06)`
 
 ### F07: Invoke & history
