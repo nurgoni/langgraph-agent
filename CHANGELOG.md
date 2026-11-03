@@ -11,3 +11,5 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 - Dokumen fondasi: AGENTS.md, PRD.md, README.md, CONTRIBUTING.md, docs/ROADMAP.md,
   .agents/memory.md.
 - Tooling project: uv, ruff, pyrefly, pytest, pre-commit, CI GitHub Actions (F00).
+- `Settings` berbasis pydantic-settings dengan validasi konfigurasi LLM dan allowlist model,
+  konstanta bernama, dan `configure_logging` (F01).

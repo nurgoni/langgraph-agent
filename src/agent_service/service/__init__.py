@@ -1,1 +1,1 @@
-"""FastAPI application, routes and streaming."""
+"""Aplikasi FastAPI, route, dan streaming."""
