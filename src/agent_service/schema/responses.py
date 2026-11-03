@@ -82,6 +82,16 @@ class ServiceMetadata(BaseModel):
     default_model: str
 
 
+class HealthStatus(BaseModel):
+    """Isi endpoint `/health`.
+
+    >>> HealthStatus().model_dump()
+    {'status': 'ok'}
+    """
+
+    status: Literal["ok"] = "ok"
+
+
 if __name__ == "__main__":
     reply = ChatMessage(
         type="ai",

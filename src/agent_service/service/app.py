@@ -5,7 +5,7 @@ from collections.abc import AsyncGenerator, Callable, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Final
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 
 from agent_service.agents.base import BaseAgent
 from agent_service.agents.catalog import DEFAULT_AGENT_ID, create_default_agents
@@ -13,7 +13,9 @@ from agent_service.agents.registry import AgentRegistry
 from agent_service.core.settings import Settings
 from agent_service.llm.factory import ModelFactory
 from agent_service.memory.checkpointer import CheckpointerProvider
+from agent_service.service.auth import verify_bearer
 from agent_service.service.errors import register_exception_handlers
+from agent_service.service.routes import health, info
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +63,8 @@ def create_app(
 
     app = FastAPI(title=APP_TITLE, lifespan=_build_lifespan(resolved_settings, resolved_agents))
     register_exception_handlers(app)
+    app.include_router(health.router)
+    app.include_router(info.router, dependencies=[Depends(verify_bearer)])
     app.state.settings = resolved_settings
     app.state.default_agent_id = default_agent_id
     return app
@@ -69,8 +73,8 @@ def create_app(
 def _build_lifespan(settings: Settings, agents: Sequence[BaseAgent]) -> Lifespan:
     """Buat lifespan yang membuka checkpointer, mendaftarkan, dan memuat semua agent.
 
-    Urutan: `ModelFactory` → `CheckpointerProvider` → `AgentRegistry.load_all()`. Registry
-    disimpan di `app.state.registry`, dan checkpointer ditutup saat shutdown.
+    Urutan: `ModelFactory` → `CheckpointerProvider` → `AgentRegistry.load_all()`. Factory dan
+    registry disimpan di `app.state`, dan checkpointer ditutup saat shutdown.
     """
 
     @asynccontextmanager
@@ -83,6 +87,7 @@ def _build_lifespan(settings: Settings, agents: Sequence[BaseAgent]) -> Lifespan
             for agent in agents:
                 registry.register(agent)
             await registry.load_all()
+            app.state.model_factory = model_factory
             app.state.registry = registry
             yield
         logger.info("Service shut down")
