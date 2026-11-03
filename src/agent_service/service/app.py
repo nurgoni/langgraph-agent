@@ -13,6 +13,7 @@ from agent_service.agents.registry import AgentRegistry
 from agent_service.core.settings import Settings
 from agent_service.llm.factory import ModelFactory
 from agent_service.memory.checkpointer import CheckpointerProvider
+from agent_service.service.errors import register_exception_handlers
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,7 @@ def create_app(
         )
 
     app = FastAPI(title=APP_TITLE, lifespan=_build_lifespan(resolved_settings, resolved_agents))
+    register_exception_handlers(app)
     app.state.settings = resolved_settings
     app.state.default_agent_id = default_agent_id
     return app
