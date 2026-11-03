@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 
+from agent_service.agents.base import EMPTY_CONFIG_DESCRIPTION
 from agent_service.agents.chatbot import ChatbotAgent
 from agent_service.service.converters import agent_to_info
 
@@ -29,3 +30,9 @@ def test_custom_config_schema_is_exported_as_json_schema() -> None:
     info = agent_to_info(LimitedAgent())
 
     assert info.config_schema == LimitConfig.model_json_schema()
+
+
+def test_default_config_schema_has_public_description() -> None:
+    info = agent_to_info(ChatbotAgent())
+
+    assert info.config_schema["description"] == EMPTY_CONFIG_DESCRIPTION

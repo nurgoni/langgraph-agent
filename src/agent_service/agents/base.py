@@ -1,12 +1,20 @@
-"""Kontrak agent: identitas, schema config, dan cara membangun graph."""
+"""Kontrak agent: identitas, schema config, dan cara membangun graph.
+
+>>> EmptyAgentConfig.model_validate({})
+EmptyAgentConfig()
+>>> EmptyAgentConfig.model_json_schema()["description"]
+'This agent accepts no configuration options.'
+"""
 
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Final
 
 from langchain_core.language_models import BaseChatModel
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel, ConfigDict, JsonValue
+
+EMPTY_CONFIG_DESCRIPTION: Final = "This agent accepts no configuration options."
 
 # Any: tipe state, context, input, dan output berbeda di setiap agent.
 type AgentGraph = CompiledStateGraph[Any, Any, Any, Any]
@@ -17,11 +25,13 @@ type Checkpointer = BaseCheckpointSaver[Any]
 class EmptyAgentConfig(BaseModel):
     """Config default untuk agent tanpa opsi: key apa pun ditolak.
 
-    >>> EmptyAgentConfig.model_validate({})
-    EmptyAgentConfig()
+    Docstring `config_schema` menjadi `description` di JSON Schema publik (`/info`), jadi
+    deskripsi publiknya ditulis eksplisit dalam bahasa Inggris.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(
+        extra="forbid", json_schema_extra={"description": EMPTY_CONFIG_DESCRIPTION}
+    )
 
 
 class BaseAgent(ABC):
