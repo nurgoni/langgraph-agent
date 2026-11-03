@@ -1,1 +1,1 @@
-"""Streamlit chat UI (talks to the service through the client only)."""
+"""UI chat Streamlit (berkomunikasi dengan service hanya lewat client)."""

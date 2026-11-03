@@ -1,1 +1,1 @@
-"""Agent contract, registry and agent implementations."""
+"""Kontrak agent, registry, dan implementasi agent."""

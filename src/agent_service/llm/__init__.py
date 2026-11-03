@@ -1,1 +1,1 @@
-"""Chat model creation: ModelFactory and FakeModel."""
+"""Pembuatan chat model: ModelFactory dan FakeModel."""

@@ -1,1 +1,1 @@
-"""Persistence: SQLite checkpointer and thread metadata."""
+"""Persistence: SQLite checkpointer dan metadata thread."""

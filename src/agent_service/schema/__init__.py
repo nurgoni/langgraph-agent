@@ -1,1 +1,1 @@
-"""Pydantic API models shared by service, client and UI (pydantic only)."""
+"""Model Pydantic API yang dipakai bersama service, client, dan UI (hanya pydantic)."""

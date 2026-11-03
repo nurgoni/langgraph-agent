@@ -1,1 +1,1 @@
-"""Settings, logging and shared named constants."""
+"""Settings, logging, dan konstanta bernama yang dipakai bersama."""

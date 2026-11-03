@@ -1,1 +1,1 @@
-"""LangGraph agent service: FastAPI API, Python client and Streamlit UI."""
+"""LangGraph agent service: API FastAPI, Python client, dan UI Streamlit."""

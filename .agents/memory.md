@@ -13,13 +13,30 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** M0 selesai (F00). Repo git, tooling, dan CI siap. Belum ada kode fitur.
-- **Berikutnya:** F01 (core settings) di [docs/ROADMAP.md](../docs/ROADMAP.md#f01-core-settings).
-- **Repo:** belum ada remote. PR dan CI GitHub baru berjalan setelah remote ditambahkan. Sampai
-  saat itu, merge ke `develop` dilakukan sebagai squash merge lokal setelah cek lokal hijau.
-- **Terakhir diperbarui:** 2026-11-01
+- **Fase:** M1 berjalan. F00 selesai, F01 selesai di branch `feature/F01-core-settings` dan
+  menunggu PR ke `develop`.
+- **Berikutnya:** F04 (API schema), lalu F02 dan F03 (lihat urutan di ROADMAP).
+- **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
+  Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
+  GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
+- **Terakhir diperbarui:** 2026-11-03
 
 ## Decision Log
+
+### 2026-11-03: Konvensi dari F01
+
+- **Docstring dan komentar kode berbahasa Indonesia**, mengikuti contoh di AGENTS.md § Langkah 2.
+  Identifier, pesan error, pesan log, dan commit message tetap berbahasa Inggris.
+- **Nama field `Settings` huruf kecil** (`llm_base_url`). pydantic-settings mencocokkannya dengan
+  env var tanpa membedakan besar-kecil huruf, jadi `LLM_BASE_URL` tetap terbaca.
+- **`env_ignore_empty=True`**: env var yang kosong dianggap tidak diisi.
+- **`default_model` selalu terisi setelah validasi.** Di mode fake, default-nya `FAKE_MODEL_NAME`
+  ("fake") dan nama ini otomatis ditambahkan ke allowlist.
+- **Logging memakai function `configure_logging`**, bukan class, karena class dengan satu aksi
+  tanpa state melanggar aturan praktis di AGENTS.md.
+- **Test yang mengubah state global** (root logger, env) wajib memakai fixture yang mengembalikan
+  state tersebut. Test `Settings` memanggil `Settings(_env_file=None)` supaya `.env` milik
+  developer tidak ikut terbaca.
 
 ### 2026-11-01: Konvensi tooling dari F00
 
@@ -148,6 +165,6 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pe
 
 ## TODO Berikutnya
 
-- [ ] Tambahkan remote GitHub, push `main` + `develop`, set `develop` sebagai default branch, dan
-      aktifkan branch protection (CONTRIBUTING.md § Setup Awal Repo).
-- [ ] F01: core settings.
+- [ ] User: push `main`, `develop`, dan `feature/F01-core-settings`. Set `develop` sebagai default
+      branch, aktifkan branch protection (CONTRIBUTING.md § Setup Awal Repo), lalu buka PR F01.
+- [ ] F04: API schema.

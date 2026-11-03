@@ -15,7 +15,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | ID | Fitur | Milestone | Status |
 |---|---|---|---|
 | F00 | Project bootstrap | M0 | done |
-| F01 | Core settings | M1 | todo |
+| F01 | Core settings | M1 | done |
 | F02 | LLM model factory | M1 | todo |
 | F03 | SQLite checkpointer | M1 | todo |
 | F04 | API schema | M1 | todo |
@@ -161,8 +161,12 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
 
 - **Branch:** `feature/F01-core-settings`
 - **FR/NFR:** NFR-1, NFR-7, PRD §8
-- **File:** `core/settings.py` (`Settings`), `core/constants.py`, `core/logging.py`
-  (`LoggingConfigurator`), `tests/core/test_settings.py`
+- **File:** `core/settings.py` (`Settings`), `core/constants.py`, `core/logging_config.py`
+  (`configure_logging`), `tests/core/`
+- **Penyesuaian saat implementasi:**
+  - `LoggingConfigurator` ditulis sebagai function `configure_logging`, karena cuma satu aksi tanpa
+    state (aturan praktis di AGENTS.md).
+  - File diberi nama `logging_config.py` supaya tidak tertukar dengan modul stdlib `logging`.
 - **Catatan desain:**
   - Tidak ada instance `settings` di level modul. Gunakan `Settings()` di lifespan atau
     `Settings.from_env()`.
@@ -171,9 +175,10 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
     wajib diisi.
 - **Referensi lama:** `core/settings.py` (lihat sisi negatifnya di `:178-251` dan `:262`).
 - **Rencana commit:**
-  1. `feat(core): add Settings with env validation and model allowlist`
-  2. `feat(core): add named constants module`
-  3. `feat(core): add LoggingConfigurator with module loggers`
+  1. `feat(core): add named constants for service defaults`
+  2. `feat(core): add Settings with env validation and model allowlist`
+  3. `feat(core): add configure_logging with standard format`
+  4. `docs: record F01 conventions in roadmap, changelog and memory`
 - **Acceptance criteria:**
   - [ ] `import agent_service.core.settings` tanpa env tidak raise.
   - [ ] Env yang tidak valid menghasilkan `ValidationError` dengan pesan yang jelas.
