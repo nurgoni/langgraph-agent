@@ -13,11 +13,13 @@ from fastapi.responses import JSONResponse
 
 from agent_service.agents.errors import AgentNotFoundError, AgentUnavailableError
 from agent_service.llm.factory import ModelNotConfiguredError, UnknownModelError
+from agent_service.service.thread_access import ThreadNotFoundError
 
 logger = logging.getLogger(__name__)
 
 DOMAIN_ERROR_STATUS: Final[Mapping[type[Exception], int]] = {
     AgentNotFoundError: status.HTTP_404_NOT_FOUND,
+    ThreadNotFoundError: status.HTTP_404_NOT_FOUND,
     AgentUnavailableError: status.HTTP_503_SERVICE_UNAVAILABLE,
     UnknownModelError: status.HTTP_422_UNPROCESSABLE_CONTENT,
     ModelNotConfiguredError: status.HTTP_503_SERVICE_UNAVAILABLE,

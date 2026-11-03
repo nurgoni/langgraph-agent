@@ -8,9 +8,11 @@ from pydantic import BaseModel, Field
 from agent_service.agents.errors import AgentNotFoundError, AgentUnavailableError
 from agent_service.llm.factory import ModelNotConfiguredError, UnknownModelError
 from agent_service.service.errors import INTERNAL_ERROR_DETAIL
+from agent_service.service.thread_access import ThreadNotFoundError
 
 DOMAIN_ERRORS: dict[str, Exception] = {
     "not-found": AgentNotFoundError("ghost"),
+    "thread-not-found": ThreadNotFoundError("t9"),
     "unavailable": AgentUnavailableError("broken"),
     "unknown-model": UnknownModelError("gpt-x", ["fake"]),
     "not-configured": ModelNotConfiguredError("no base url"),
@@ -44,6 +46,7 @@ def app(app: FastAPI) -> FastAPI:
     ("name", "expected_status", "expected_detail"),
     [
         ("not-found", 404, "Agent 'ghost' not found"),
+        ("thread-not-found", 404, "Thread 't9' not found"),
         ("unavailable", 503, "Agent 'broken' is unavailable"),
         ("unknown-model", 422, "Unknown model 'gpt-x'. Available models: ['fake']"),
         ("not-configured", 503, "no base url"),
