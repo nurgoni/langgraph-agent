@@ -16,7 +16,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 |---|---|---|---|
 | F00 | Project bootstrap | M0 | done |
 | F01 | Core settings | M1 | done |
-| F02 | LLM model factory | M1 | todo |
+| F02 | LLM model factory | M1 | done |
 | F03 | SQLite checkpointer | M1 | todo |
 | F04 | API schema | M1 | done |
 | F05 | Agent registry | M1 | todo |
@@ -197,12 +197,23 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
   - `FakeModel` mendukung `bind_tools` dan respons tool call yang sudah ditentukan untuk test agent.
 - **Referensi lama:** `core/llm.py` (`FakeToolModel` di `:45`, `get_model` di `:67`).
 - **Rencana commit:**
-  1. `feat(llm): add ModelFactory for openai-compatible models`
+  1. `test: block outbound network access in unit tests`
   2. `feat(llm): add FakeModel with scripted tool calls`
-  3. `test(llm): cover allowlist rejection and model caching`
+  3. `feat(llm): add ModelFactory for openai-compatible models`
+  4. `docs: record F02 model factory decisions`
+- **Penyesuaian saat implementasi:**
+  - Urutan commit dibalik (`FakeModel` dulu, karena dipakai factory). Test ikut di commit kodenya,
+    jadi tidak ada commit `test(llm)` terpisah.
+  - Ditambah fixture autouse `block_network` di `tests/conftest.py`: koneksi selain loopback gagal,
+    kecuali test bertanda `integration`.
+  - `FakeModel` ditulis di atas `BaseChatModel`, bukan `GenericFakeChatModel`, karena yang terakhir
+    membuang `tool_calls` saat streaming.
+  - Ditambah `ModelNotConfiguredError` untuk model non-fake tanpa `LLM_BASE_URL`/`LLM_API_KEY`
+    (mungkin terjadi jika `USE_FAKE_MODEL=true` dan allowlist berisi model asli).
+  - `create(None)` berarti `DEFAULT_MODEL`.
 - **Acceptance criteria:**
-  - [ ] Model di luar allowlist menghasilkan `UnknownModelError`.
-  - [ ] Tidak ada network call di test.
+  - [x] Model di luar allowlist menghasilkan `UnknownModelError`.
+  - [x] Tidak ada network call di test (ditegakkan oleh `block_network`).
 - **Squash title:** `feat(llm): add model factory and fake model (F02)`
 
 ### F03: SQLite checkpointer
