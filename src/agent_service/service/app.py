@@ -15,7 +15,7 @@ from agent_service.llm.factory import ModelFactory
 from agent_service.memory.checkpointer import CheckpointerProvider
 from agent_service.service.auth import verify_bearer
 from agent_service.service.errors import register_exception_handlers
-from agent_service.service.routes import health, info, invoke
+from agent_service.service.routes import health, history, info, invoke
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +67,7 @@ def create_app(
     protected = [Depends(verify_bearer)]
     app.include_router(info.router, dependencies=protected)
     app.include_router(invoke.router, dependencies=protected)
+    app.include_router(history.router, dependencies=protected)
     app.state.settings = resolved_settings
     app.state.default_agent_id = default_agent_id
     return app
