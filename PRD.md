@@ -147,8 +147,10 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
   di-expand.
 - **FR-21** Sidebar: tombol chat baru, daftar thread sebelumnya (dengan aksi rename dan hapus),
   pemilih agent dan model, toggle streaming.
-- **FR-22** `thread_id` dan `agent_id` disimpan di URL query param sehingga percakapan bisa dibuka
-  ulang.
+- **FR-22** `user_id`, `thread_id`, dan `agent` disimpan di URL query param sehingga percakapan dan
+  daftar thread bisa dibuka ulang. `user_id` ikut disimpan karena service hanya membuka thread
+  untuk pemiliknya (FR-28). Siapa pun yang memegang URL lengkap bisa membaca thread tersebut, sesuai
+  v1 yang belum punya auth per user.
 - **FR-23** Menampilkan handoff sub-agent (supervisor) secara bertingkat.
 - **FR-24** Saat agent meminta input (interrupt), pertanyaannya ditampilkan sebagai pesan AI biasa.
 

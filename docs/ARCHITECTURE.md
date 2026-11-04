@@ -27,7 +27,7 @@ src/agent_service/
 ├── schema/    Model Pydantic untuk API: request, response, event SSE, nama header
 ├── service/   create_app, lifespan, auth, route, StreamService, ThreadRepository
 ├── client/    AgentClient (sync + async), StreamRun, SseParser
-└── ui/        Streamlit: app, UiSettings, ChatSession, ChatView, MessageRenderer
+└── ui/        Streamlit: app, UiSettings, UrlState, ChatSession, SidebarView, ChatView, MessageRenderer
 ```
 
 Panah berarti "boleh import". Import ke arah sebaliknya dilarang.
@@ -228,10 +228,15 @@ oleh `tests/client/test_layering.py`.
 `tests/ui/test_layering.py`.
 
 - **`app.py`** dijalankan ulang oleh Streamlit pada setiap interaksi. `UiSettings` membaca
-  `AGENT_URL`/`AUTH_SECRET`. Satu `AgentClient` dibagi bersama semua session lewat
-  `st.cache_resource`.
-- **`ChatSession`** (`st.session_state`) menyimpan `thread_id`, `user_id`, dan message yang sudah
-  tampil. ID diambil dari header respons stream pertama.
+  `AGENT_URL`/`AUTH_SECRET`. Setiap session browser punya `AgentClient` sendiri, karena
+  `agent_id`-nya mengikuti pilihan agent session tersebut.
+- **`UrlState`** menyimpan `user_id`, `thread_id`, dan `agent` di query param. `ChatSession` dibangun
+  dari URL saat session dimulai, lalu ditulis kembali ke URL di akhir setiap run.
+- **`ChatSession`** (`st.session_state`) menyimpan user, thread, agent, model, opsi token, dan message
+  yang sudah tampil. Thread dari URL dimuat riwayatnya sekali.
+- **`SidebarView`** berisi tombol chat baru, pemilih agent dan model dari `/info`, toggle streaming,
+  dan daftar thread (`st.cache_data` dengan `THREAD_LIST_CACHE_TTL_SECONDS`) beserta aksi rename dan
+  hapus. Pilihan disimpan lewat callback widget sebelum script diulang.
 - **`ChatView`** memutar ulang riwayat, lalu men-stream jawaban baru. Pesan user baru disimpan
   setelah service menerima request.
 - **`MessageRenderer`** punya satu method per tipe message. Jawaban AI, tool call, dan hasil tool

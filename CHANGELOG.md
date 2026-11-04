@@ -13,6 +13,9 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
   diambil lazy. Error HTTP dibungkus `AgentClientError` dengan status dan detail (F11).
 - UI chat Streamlit: token streaming, tool call sebagai status yang bisa di-expand, pertanyaan
   interrupt sebagai pesan AI, dan error service ditampilkan di chat (F12).
+- Sidebar UI: chat baru, pemilih agent dan model, toggle streaming, daftar thread dengan aksi
+  rename dan hapus. `user_id`, `thread_id`, dan `agent` disimpan di URL sehingga percakapan bisa
+  dibuka ulang (F13).
 
 ### Fixed
 

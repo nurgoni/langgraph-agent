@@ -28,7 +28,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F10 | Architecture docs | M1 | done |
 | F11 | Agent client | M2 | done |
 | F12 | UI chat | M2 | done |
-| F13 | UI sidebar & threads | M2 | todo |
+| F13 | UI sidebar & threads | M2 | done |
 | F14 | Docker Compose & e2e | M2 | todo |
 | F15 | Research assistant | M3 | todo |
 | F16 | Interrupt agent | M3 | todo |
@@ -601,10 +601,22 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
 - **Referensi lama:** `streamlit_app.py` (sidebar, query param, `@st.cache_data(ttl=600)` di
   `:56`).
 - **Rencana commit:**
-  1. `feat(ui): add UrlState for thread and agent query params`
+  1. `feat(ui): add UrlState for user, thread and agent query params`
   2. `feat(ui): add SidebarView with agent and model pickers`
   3. `feat(ui): list previous threads in sidebar`
   4. `feat(ui): add rename and delete actions for threads`
+  5. `docs: record F13 sidebar decisions`
+- **Penyesuaian saat implementasi:**
+  - Keputusan user: `user_id` ikut disimpan di URL (FR-22 direvisi), karena thread hanya bisa dibuka
+    oleh pemiliknya.
+  - `AgentClient` dibuat per session browser (bukan `st.cache_resource`), karena `agent_id` client
+    mengikuti pilihan agent masing-masing browser.
+  - Toggle streaming dipetakan ke `stream_tokens=False`, bukan beralih ke `invoke`, supaya tool call
+    tetap tampil.
+  - Mengganti agent memulai thread baru. Agent di URL yang tidak dikenal diganti agent default.
+    Thread di URL yang tidak ada (404) diganti chat baru.
+  - Thread baru langsung muncul di sidebar lewat `st.rerun()` setelah run tanpa error.
+  - `THREAD_LIST_CACHE_TTL_SECONDS = 300`, dan cache dihapus setiap kali UI mengubah daftar thread.
 - **Squash title:** `feat(ui): add sidebar with thread history and pickers (F13)`
 
 ### F14: Docker Compose & e2e

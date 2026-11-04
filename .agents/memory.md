@@ -13,15 +13,38 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** v0.1.0 sudah dirilis. M2 berjalan: F11 sudah di `develop`. F12 selesai di
-  `feature/F12-ui-chat`, menunggu push dan PR.
-- **Berikutnya:** F13 (sidebar, riwayat thread, URL state), lalu F14 (lihat urutan di ROADMAP).
+- **Fase:** v0.1.0 sudah dirilis. M2 berjalan: F11 dan F12 sudah di `develop`. F13 selesai di
+  `feature/F13-ui-sidebar-threads`, menunggu push dan PR.
+- **Berikutnya:** F14 (Docker Compose & e2e), lalu rilis v0.2.0.
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Terakhir diperbarui:** 2026-11-04
 
 ## Decision Log
+
+### 2026-11-04: Sidebar & URL state dari F13
+
+- **Keputusan user:** `user_id` disimpan di query param URL bersama `thread_id` dan `agent`
+  (FR-22 direvisi). Pemegang URL bisa membaca thread tersebut.
+- **Keputusan desain:**
+  - `AgentClient` per session browser (`st.session_state["agent_client"]`), menggantikan
+    `st.cache_resource` dari F12. Supersedes catatan F12 "satu client per konfigurasi".
+  - `ChatSession.from_url()` saat session dimulai, dan `session.to_url().write()` di akhir run.
+    `user_id` dibuat UI (UUID) jika tidak ada di URL.
+  - Aksi sidebar memakai callback `on_click`/`on_change`, bukan `if st.button(): ... st.rerun()`.
+  - `ChatView` memanggil `on_thread_created` (menghapus cache daftar thread) dan `st.rerun()`
+    setelah thread baru, hanya jika run tanpa error.
+  - Toggle streaming = `stream_tokens`. Ganti agent = thread baru.
+- **Pelajaran:**
+  - `AppTest.query_params` bisa diisi sebelum `run()` dan ikut memantulkan perubahan URL dari
+    script.
+  - Di `AppTest`, `button.type` adalah tipe elemen. Jenis tombol (`primary`/`secondary`) dibaca dari
+    `button.proto.type`.
+  - Cache `st.cache_data` bersifat global per proses. Test yang memakai daftar thread perlu memanggil
+    `clear_thread_list_cache()` di fixture.
+  - Elemen di sidebar dirender sebelum `ChatView` mengirim pesan, jadi perubahan dari pesan baru
+    butuh `st.rerun()` agar langsung terlihat di sidebar.
 
 ### 2026-11-04: UI chat dari F12
 
@@ -384,9 +407,8 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pe
 
 ## TODO Berikutnya
 
-- [ ] User: push `feature/F12-ui-chat`, lalu buka PR F12 ke `develop`.
+- [ ] User: push `feature/F13-ui-sidebar-threads`, lalu buka PR F13 ke `develop`.
 - [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
       (CONTRIBUTING.md § Setup Awal Repo).
-- [ ] F13: sidebar (chat baru, daftar thread + rename/hapus, pemilih agent/model, toggle
-      streaming) dan `thread_id`/`agent_id` di URL. Tentukan apakah `user_id` ikut disimpan di
-      URL.
+- [ ] F14: Dockerfile service + app, `compose.yaml`, smoke test e2e dengan FakeModel. Sekalian
+      cek streaming token dengan LLM asli.
