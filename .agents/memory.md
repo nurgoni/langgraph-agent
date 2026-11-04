@@ -13,15 +13,31 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** M1 berjalan. F00–F07 sudah di `develop`. F09 selesai di
-  `feature/F09-user-threads`, menunggu push dan PR.
-- **Berikutnya:** F18 (rename & delete thread), lalu F08 (lihat urutan di ROADMAP).
+- **Fase:** M1 berjalan. F00–F07 dan F09 sudah di `develop`. F18 selesai di
+  `feature/F18-thread-management`, menunggu push dan PR.
+- **Berikutnya:** F08 (SSE streaming), lalu F10, lalu rilis v0.1.0 (lihat urutan di ROADMAP).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Terakhir diperbarui:** 2026-11-04
 
 ## Decision Log
+
+### 2026-11-04: Rename & delete thread dari F18
+
+- **Keputusan:**
+  - Judul custom disimpan di tabel `thread_metadata(thread_id, title)` lewat
+    `ThreadMetadataRepository` (`memory/`), sebuah async context manager dengan koneksi
+    `aiosqlite` sendiri ke `SQLITE_DB_PATH`. Lifespan membukanya berdampingan dengan
+    `CheckpointerProvider`.
+  - Koneksi saver tidak dipakai bersama, karena `AsyncSqliteSaver` menjaga transaksinya dengan
+    lock privat.
+  - Rename/delete ada di `ThreadRepository` (bukan `ThreadService` baru). Kepemilikan dibaca dari
+    metadata checkpoint terakhir (`aget_tuple`) lewat `ensure_thread_owner(metadata, ...)`.
+  - Delete: `adelete_thread` lalu hapus judul. Setelahnya `/history` → 404, dan ID thread boleh
+    dipakai ulang.
+  - Listing tetap diurutkan berdasarkan checkpoint terakhir, jadi rename tidak memindahkan thread
+    ke atas.
 
 ### 2026-11-04: User threads dari F09
 
@@ -303,7 +319,7 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pe
 
 ## TODO Berikutnya
 
-- [ ] User: push `feature/F09-user-threads`, lalu buka PR F09 ke `develop`.
+- [ ] User: push `feature/F18-thread-management`, lalu buka PR F18 ke `develop`.
 - [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
       (CONTRIBUTING.md § Setup Awal Repo).
-- [ ] F18: rename & delete thread (`thread_metadata` di SQLite yang sama, judul custom di listing).
+- [ ] F08: SSE streaming (`StreamService`, header ID yang sama dengan `/invoke`, cek kepemilikan).
