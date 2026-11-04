@@ -16,7 +16,7 @@ from agent_service.client.requests import (
     raise_for_status,
     run_ids,
 )
-from agent_service.client.stream import StreamRun
+from agent_service.client.stream import AsyncStreamRun, StreamRun
 from agent_service.schema.requests import (
     THREADS_LIMIT_DEFAULT,
     ChatHistoryInput,
@@ -46,7 +46,8 @@ class AgentClient:
 
     `agent_id=None` berarti route agent default (`/invoke`, `/stream`, dan seterusnya). Ganti
     `agent_id` kapan saja untuk berpindah agent. Satu koneksi HTTP dipakai ulang sampai `close()`
-    atau `aclose()`, atau gunakan `with` / `async with`.
+    atau `aclose()`, atau gunakan `with` / `async with`. Setiap method sync punya pasangan async
+    berawalan `a` (`invoke` menjadi `ainvoke`, `stream` menjadi `astream`).
 
     >>> client = AgentClient(base_url="http://localhost:8080", agent_id="chatbot")
     >>> client.agent_id
@@ -96,9 +97,26 @@ class AgentClient:
         """Tutup koneksi sync."""
         self.close()
 
+    async def __aenter__(self) -> Self:
+        """Pakai client async dalam blok `async with`."""
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        """Tutup koneksi async."""
+        await self.aclose()
+
     def close(self) -> None:
         """Tutup koneksi HTTP sync."""
         self._http_client.close()
+
+    async def aclose(self) -> None:
+        """Tutup koneksi HTTP async."""
+        await self._async_http_client.aclose()
 
     def get_info(self, refresh: bool = False) -> ServiceMetadata:
         """Agent, model, dan nilai default service. Diambil sekali lalu di-cache.
@@ -211,6 +229,74 @@ class AgentClient:
         """
         self._send(self._delete_spec(thread_id, user_id))
 
+    async def aget_info(self, refresh: bool = False) -> ServiceMetadata:
+        """Versi async `get_info`. Cache dipakai bersama dengan versi sync."""
+        if self._info is None or refresh:
+            response = await self._asend(self._info_spec())
+            self._info = parse_model(response, ServiceMetadata)
+        return self._info
+
+    async def ainvoke(
+        self,
+        message: str,
+        *,
+        model: str | None = None,
+        thread_id: str | None = None,
+        user_id: str | None = None,
+        agent_config: dict[str, JsonValue] | None = None,
+    ) -> AgentReply:
+        """Versi async `invoke`."""
+        payload = UserInput(
+            message=message,
+            model=model,
+            thread_id=thread_id,
+            user_id=user_id,
+            agent_config=agent_config or {},
+        )
+        response = await self._asend(self._invoke_spec(payload))
+        thread, user = run_ids(response)
+        return AgentReply(parse_model(response, ChatMessage), thread_id=thread, user_id=user)
+
+    def astream(
+        self,
+        message: str,
+        *,
+        model: str | None = None,
+        thread_id: str | None = None,
+        user_id: str | None = None,
+        agent_config: dict[str, JsonValue] | None = None,
+        stream_tokens: bool = True,
+    ) -> AsyncStreamRun:
+        """Versi async `stream`. Request dikirim saat masuk `async with`."""
+        payload = StreamInput(
+            message=message,
+            model=model,
+            thread_id=thread_id,
+            user_id=user_id,
+            agent_config=agent_config or {},
+            stream_tokens=stream_tokens,
+        )
+        return AsyncStreamRun(self._async_http_client, self._stream_spec(payload))
+
+    async def aget_history(self, thread_id: str, user_id: str) -> ChatHistory:
+        """Versi async `get_history`."""
+        response = await self._asend(self._history_spec(thread_id, user_id))
+        return parse_model(response, ChatHistory)
+
+    async def aget_threads(self, user_id: str, limit: int = THREADS_LIMIT_DEFAULT) -> UserThreads:
+        """Versi async `get_threads`."""
+        response = await self._asend(self._threads_spec(user_id, limit))
+        return parse_model(response, UserThreads)
+
+    async def arename_thread(self, thread_id: str, user_id: str, title: str) -> ThreadSummary:
+        """Versi async `rename_thread`."""
+        response = await self._asend(self._rename_spec(thread_id, user_id, title))
+        return parse_model(response, ThreadSummary)
+
+    async def adelete_thread(self, thread_id: str, user_id: str) -> None:
+        """Versi async `delete_thread`."""
+        await self._asend(self._delete_spec(thread_id, user_id))
+
     def _send(self, spec: RequestSpec) -> httpx.Response:
         """Kirim request sync dan pastikan statusnya 2xx.
 
@@ -220,6 +306,22 @@ class AgentClient:
         logger.debug("%s %s", spec.method, spec.path)
         try:
             response = self._http_client.request(
+                spec.method, spec.path, json=spec.json, params=spec.params
+            )
+        except httpx.RequestError as error:
+            raise AgentClientError(f"{spec.method} {spec.path} failed: {error}") from error
+        raise_for_status(response)
+        return response
+
+    async def _asend(self, spec: RequestSpec) -> httpx.Response:
+        """Kirim request async dan pastikan statusnya 2xx.
+
+        Raises:
+            AgentClientError: Koneksi gagal atau status non-2xx.
+        """
+        logger.debug("%s %s", spec.method, spec.path)
+        try:
+            response = await self._async_http_client.request(
                 spec.method, spec.path, json=spec.json, params=spec.params
             )
         except httpx.RequestError as error:
