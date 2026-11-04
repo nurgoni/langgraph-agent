@@ -14,18 +14,18 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 
 | ID | Fitur | Milestone | Status |
 |---|---|---|---|
-| F00 | Project bootstrap | M0 | todo |
-| F01 | Core settings | M1 | todo |
-| F02 | LLM model factory | M1 | todo |
-| F03 | SQLite checkpointer | M1 | todo |
-| F04 | API schema | M1 | todo |
-| F05 | Agent registry | M1 | todo |
-| F06 | Service app | M1 | todo |
-| F07 | Invoke & history | M1 | todo |
-| F08 | SSE streaming | M1 | todo |
-| F09 | User threads | M1 | todo |
-| F18 | Thread rename & delete | M1 | todo |
-| F10 | Architecture docs | M1 | todo |
+| F00 | Project bootstrap | M0 | done |
+| F01 | Core settings | M1 | done |
+| F02 | LLM model factory | M1 | done |
+| F03 | SQLite checkpointer | M1 | done |
+| F04 | API schema | M1 | done |
+| F05 | Agent registry | M1 | done |
+| F06 | Service app | M1 | done |
+| F07 | Invoke & history | M1 | done |
+| F08 | SSE streaming | M1 | done |
+| F09 | User threads | M1 | done |
+| F18 | Thread rename & delete | M1 | done |
+| F10 | Architecture docs | M1 | done |
 | F11 | Agent client | M2 | todo |
 | F12 | UI chat | M2 | todo |
 | F13 | UI sidebar & threads | M2 | todo |
@@ -161,8 +161,12 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
 
 - **Branch:** `feature/F01-core-settings`
 - **FR/NFR:** NFR-1, NFR-7, PRD §8
-- **File:** `core/settings.py` (`Settings`), `core/constants.py`, `core/logging.py`
-  (`LoggingConfigurator`), `tests/core/test_settings.py`
+- **File:** `core/settings.py` (`Settings`), `core/constants.py`, `core/logging_config.py`
+  (`configure_logging`), `tests/core/`
+- **Penyesuaian saat implementasi:**
+  - `LoggingConfigurator` ditulis sebagai function `configure_logging`, karena cuma satu aksi tanpa
+    state (aturan praktis di AGENTS.md).
+  - File diberi nama `logging_config.py` supaya tidak tertukar dengan modul stdlib `logging`.
 - **Catatan desain:**
   - Tidak ada instance `settings` di level modul. Gunakan `Settings()` di lifespan atau
     `Settings.from_env()`.
@@ -171,9 +175,10 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
     wajib diisi.
 - **Referensi lama:** `core/settings.py` (lihat sisi negatifnya di `:178-251` dan `:262`).
 - **Rencana commit:**
-  1. `feat(core): add Settings with env validation and model allowlist`
-  2. `feat(core): add named constants module`
-  3. `feat(core): add LoggingConfigurator with module loggers`
+  1. `feat(core): add named constants for service defaults`
+  2. `feat(core): add Settings with env validation and model allowlist`
+  3. `feat(core): add configure_logging with standard format`
+  4. `docs: record F01 conventions in roadmap, changelog and memory`
 - **Acceptance criteria:**
   - [ ] `import agent_service.core.settings` tanpa env tidak raise.
   - [ ] Env yang tidak valid menghasilkan `ValidationError` dengan pesan yang jelas.
@@ -192,12 +197,23 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
   - `FakeModel` mendukung `bind_tools` dan respons tool call yang sudah ditentukan untuk test agent.
 - **Referensi lama:** `core/llm.py` (`FakeToolModel` di `:45`, `get_model` di `:67`).
 - **Rencana commit:**
-  1. `feat(llm): add ModelFactory for openai-compatible models`
+  1. `test: block outbound network access in unit tests`
   2. `feat(llm): add FakeModel with scripted tool calls`
-  3. `test(llm): cover allowlist rejection and model caching`
+  3. `feat(llm): add ModelFactory for openai-compatible models`
+  4. `docs: record F02 model factory decisions`
+- **Penyesuaian saat implementasi:**
+  - Urutan commit dibalik (`FakeModel` dulu, karena dipakai factory). Test ikut di commit kodenya,
+    jadi tidak ada commit `test(llm)` terpisah.
+  - Ditambah fixture autouse `block_network` di `tests/conftest.py`: koneksi selain loopback gagal,
+    kecuali test bertanda `integration`.
+  - `FakeModel` ditulis di atas `BaseChatModel`, bukan `GenericFakeChatModel`, karena yang terakhir
+    membuang `tool_calls` saat streaming.
+  - Ditambah `ModelNotConfiguredError` untuk model non-fake tanpa `LLM_BASE_URL`/`LLM_API_KEY`
+    (mungkin terjadi jika `USE_FAKE_MODEL=true` dan allowlist berisi model asli).
+  - `create(None)` berarti `DEFAULT_MODEL`.
 - **Acceptance criteria:**
-  - [ ] Model di luar allowlist menghasilkan `UnknownModelError`.
-  - [ ] Tidak ada network call di test.
+  - [x] Model di luar allowlist menghasilkan `UnknownModelError`.
+  - [x] Tidak ada network call di test (ditegakkan oleh `block_network`).
 - **Squash title:** `feat(llm): add model factory and fake model (F02)`
 
 ### F03: SQLite checkpointer
@@ -211,9 +227,16 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
 - **Referensi lama:** `memory/sqlite.py`, `memory/__init__.py`.
 - **Rencana commit:**
   1. `feat(memory): add async sqlite CheckpointerProvider`
-  2. `test(memory): verify checkpoint persistence across provider instances`
+  2. `docs: record F03 checkpointer decisions`
+- **Penyesuaian saat implementasi:**
+  - Konstruktor menerima `db_path: Path`, bukan `Settings`. Provider hanya butuh path, dan lifespan
+    memanggil `CheckpointerProvider(settings.sqlite_db_path)`.
+  - Test ikut di commit kodenya, jadi tidak ada commit `test(memory)` terpisah.
+  - Folder induk database dibuat otomatis. Membuka provider yang masih terbuka menghasilkan
+    `CheckpointerAlreadyOpenError`, sedangkan provider yang sudah ditutup boleh dibuka lagi.
+  - Store (long-term memory) tidak di-port, karena masuk lingkup Future (PRD §9).
 - **Acceptance criteria:**
-  - [ ] Checkpoint yang ditulis bisa dibaca ulang setelah provider dibuka kembali (`tmp_path`).
+  - [x] Checkpoint yang ditulis bisa dibaca ulang setelah provider dibuka kembali (`tmp_path`).
 - **Squash title:** `feat(memory): add sqlite checkpointer provider (F03)`
 
 ### F04: API schema
@@ -232,9 +255,17 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
   1. `feat(schema): add request models with reserved agent_config keys`
   2. `feat(schema): add response and chat message models`
   3. `feat(schema): add sse stream event model`
+  4. `docs: record F04 contract decisions`
+- **Penyesuaian saat implementasi:**
+  - `ChatHistoryInput` wajib berisi `user_id` (keputusan user, FR-8).
+  - `StreamEvent` adalah discriminated union dari `TokenEvent | MessageEvent | ErrorEvent`, ditambah
+    `STREAM_EVENT_ADAPTER` dan `STREAM_DONE_MARKER`.
+  - `ToolCall` berupa `BaseModel`, bukan TypedDict.
+  - Field bebas memakai `JsonValue`, bukan `Any`.
+  - Model `Feedback` tidak di-port (LangSmith di luar scope).
 - **Acceptance criteria:**
-  - [ ] `agent_config` yang berisi `thread_id`/`user_id`/`model` ditolak.
-  - [ ] Test import memastikan tidak ada dependency di luar pydantic.
+  - [x] `agent_config` yang berisi `thread_id`/`user_id`/`model` ditolak.
+  - [x] Test import memastikan tidak ada dependency di luar pydantic (`tests/schema/test_layering.py`).
 - **Squash title:** `feat(schema): add api request, response and stream models (F04)`
 
 ### F05: Agent registry
@@ -256,15 +287,25 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
 - **Referensi lama:** `agents/agents.py`, `agents/lazy_agent.py`, `agents/chatbot.py`.
 - **Rencana commit:**
   1. `feat(agents): add BaseAgent contract with build and load hooks`
-  2. `feat(agents): add per-agent config schema with strict default`
-  3. `feat(agents): add AgentRegistry with not-found and unavailable errors`
-  4. `feat(agents): add ChatbotAgent as minimal reference agent`
-  5. `test(agents): cover registry lookup, lazy loading and load failure`
-  6. `docs(memory-md): record agent registry design decisions`
+  2. `feat(llm): expose model name resolution on ModelFactory`
+  3. `feat(agents): add ChatbotAgent as minimal reference agent`
+  4. `feat(agents): add AgentRegistry with not-found and unavailable errors`
+  5. `docs: record F05 agent registry decisions`
+- **Penyesuaian saat implementasi:**
+  - Commit config schema digabung ke commit `BaseAgent`. Test ikut di commit kodenya.
+    `ChatbotAgent` dibuat sebelum registry, karena doctest registry memakainya.
+  - `list_info()` diganti `list_agents() -> list[BaseAgent]` ditambah `is_available()`. Aturan layer
+    melarang `agents/` meng-import `schema/`, jadi konversi ke `AgentInfo` dilakukan di service (F06).
+  - Ditambah `ModelFactory.resolve_name()` supaya key cache graph memakai nama model final
+    (`None` dan nama default berbagi satu graph).
+  - Ditambah `get_agent()` (untuk `parse_config`) dan `DuplicateAgentError`.
+  - `agent_id` dan `description` adalah atribut instance (argumen konstruktor), supaya satu class
+    seperti `ToolCallingAgent` (F15) bisa didaftarkan beberapa kali dengan ID berbeda.
+  - Agent default untuk `/info` belum ditentukan di sini. Keputusannya ada di F06.
 - **Acceptance criteria:**
-  - [ ] Agent yang `load()`-nya gagal tidak menghentikan registry.
-  - [ ] Model berbeda menghasilkan graph berbeda (FR-4).
-  - [ ] `parse_config` menolak key yang tidak dikenal untuk agent tanpa config custom.
+  - [x] Agent yang `load()`-nya gagal tidak menghentikan registry.
+  - [x] Model berbeda menghasilkan graph berbeda (FR-4).
+  - [x] `parse_config` menolak key yang tidak dikenal untuk agent tanpa config custom.
 - **Squash title:** `feat(agents): add agent registry and chatbot agent (F05)`
 
 ### F06: Service app
@@ -284,16 +325,33 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
 - **Referensi lama:** `service/service.py` (`lifespan`, `verify_bearer`, `/info`), dan
   `run_service.py` (event loop selector di Windows).
 - **Rencana commit:**
-  1. `feat(service): add app factory with lifespan wiring`
-  2. `feat(service): add optional bearer auth dependency`
-  3. `feat(service): map domain errors to http status codes`
-  4. `feat(service): add health and info endpoints`
-  5. `feat(service): add run_service entrypoint`
+  1. `feat(agents): add default agent catalog`
+  2. `feat(service): add app factory with lifespan wiring`
+  3. `feat(service): add optional bearer auth dependency`
+  4. `build: use importlib import mode for pytest`
+  5. `feat(service): map domain errors to http status codes`
+  6. `feat(service): add health and info endpoints`
+  7. `fix(agents): give EmptyAgentConfig an explicit public description`
+  8. `feat(service): add run_service entrypoint`
+  9. `docs: record F06 service app decisions`
+- **Penyesuaian saat implementasi:**
+  - Keputusan user: agent default `chatbot` (konstanta `DEFAULT_AGENT_ID` di `agents/catalog.py`,
+    bukan env var). Error validasi 422 memakai list per field bawaan FastAPI, dan NFR-6 direvisi.
+  - `create_app(settings=None, agents=None, default_agent_id=...)` bisa di-inject untuk test.
+    `default_agent_id` yang tidak terdaftar langsung gagal saat app dibuat.
+  - Lifespan juga menyimpan `ModelFactory` di `app.state` (untuk `default_model` di `/info`).
+    Akses `app.state` lewat dependency bertipe di `service/dependencies.py`.
+  - `ModelNotConfiguredError` → 503. Exception lain → 500 dengan detail generik dan traceback di log.
+  - `/info` hanya menampilkan agent yang tersedia. `agent_to_info` ada di `service/converters.py`.
+  - Ditambah schema `HealthStatus`.
+  - pytest memakai `--import-mode=importlib`, karena `tests/agents/test_errors.py` dan
+    `tests/service/test_errors.py` bentrok di mode default.
+  - Event loop policy Windows dari toolkit lama tidak di-port (hanya dibutuhkan psycopg).
 - **Acceptance criteria:**
-  - [ ] Test dengan `httpx.AsyncClient` + `ASGITransport`.
-  - [ ] `AgentNotFoundError` dari route mana pun menjadi 404 berformat `{"detail": ...}` (dites
+  - [x] Test dengan `httpx.AsyncClient` + `ASGITransport`.
+  - [x] `AgentNotFoundError` dari route mana pun menjadi 404 berformat `{"detail": ...}` (dites
         lewat route dummy di test).
-  - [ ] `/health` lolos tanpa token walaupun `AUTH_SECRET` diset.
+  - [x] `/health` lolos tanpa token walaupun `AUTH_SECRET` diset.
 - **Squash title:** `feat(service): add fastapi app, auth, health and info (F06)`
 
 ### F07: Invoke & history
@@ -314,14 +372,32 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
   `service/utils.py:42` (`langchain_to_chat_message`), `:82` (`messages_from_checkpoint`).
 - **Rencana commit:**
   1. `feat(service): add message converters from langchain to api schema`
-  2. `feat(service): add RunInputBuilder with interrupt resume support`
-  3. `feat(service): validate agent_config against agent config schema`
-  4. `feat(service): add invoke endpoint`
-  5. `feat(service): add history endpoint`
+  2. `feat(service): add thread ownership check from checkpoint metadata`
+  3. `feat(service): build run input with config validation and resume`
+  4. `feat(schema): add thread and user id header names`
+  5. `feat(service): add invoke endpoint`
+  6. `fix(llm): return a fresh message from FakeModel on every call`
+  7. `feat(service): add history endpoint`
+  8. `docs: record F07 invoke and history decisions`
+- **Penyesuaian saat implementasi:**
+  - Keputusan user: ID thread/user dikembalikan lewat header `X-Thread-Id`/`X-User-Id`
+    (`schema/headers.py`), bukan field di `ChatMessage`. `/invoke` juga mengecek pemilik thread
+    (FR-28 baru), bukan hanya `/history`.
+  - `RunInputBuilder` ditulis sebagai function `build_run_input` (tanpa state, aturan praktis
+    AGENTS.md). Commit validasi config digabung ke sini.
+  - Config tidak valid dilempar sebagai `RequestValidationError` dengan `loc` diawali
+    `("body", "agent_config")`, sehingga format 422-nya sama dengan error body lain.
+    `InvalidAgentConfigError` tidak dibuat.
+  - Ditambah `service/thread_access.py` (`ThreadNotFoundError` → 404, `ensure_thread_owner`).
+  - Converter: `messages_from_state` menjadi `state_to_chat_messages`, ditambah
+    `final_chat_message` dan `interrupt_to_chat_message`. Fallback `__previous__` (functional API)
+    tidak di-port.
+  - Bug `FakeModel` dari F02 ditemukan lewat test history dan diperbaiki: respons kini disalin di
+    setiap panggilan.
 - **Acceptance criteria:**
-  - [ ] Thread yang sedang interrupt menerima `Command(resume=...)` (dites dengan agent fake).
-  - [ ] `thread_id` kosong diisi otomatis dan dikembalikan.
-  - [ ] `agent_config` yang tidak valid menghasilkan 422 beserta nama field yang salah. Config
+  - [x] Thread yang sedang interrupt menerima `Command(resume=...)` (dites dengan agent fake).
+  - [x] `thread_id` kosong diisi otomatis dan dikembalikan.
+  - [x] `agent_config` yang tidak valid menghasilkan 422 beserta nama field yang salah. Config
         yang valid sampai ke node graph lewat `configurable`.
 - **Squash title:** `feat(service): add invoke and history endpoints (F07)`
 
@@ -341,14 +417,26 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
 - **Referensi lama:** `service/service.py:243-353`. Ini contoh yang **tidak boleh** ditiru (nesting
   6+, deteksi berbasis string di `:282`).
 - **Rencana commit:**
-  1. `feat(service): add SseFormatter for token, message and error frames`
+  1. `feat(service): add sse frame formatting for stream events`
   2. `feat(service): add StreamService handling updates and message chunks`
   3. `feat(service): add stream endpoint`
-  4. `test(service): ensure done frame is sent on agent error`
+  4. `docs: record F08 streaming decisions`
+- **Penyesuaian saat implementasi:**
+  - `SseFormatter` ditulis sebagai function `sse_frame` + konstanta `DONE_FRAME` (transformasi
+    murni). `StreamService` dibuat per request, karena graph/run/opsi token dipakai bersama oleh
+    beberapa handler.
+  - `StreamService(graph, run, stream_tokens).stream()`, bukan `stream(run_input)`. Validasi
+    (`build_run_input`) terjadi di route sebelum response dimulai, jadi request salah tetap 404/422
+    JSON.
+  - `[DONE]` di-yield setelah blok `try/except`, bukan di `finally`, supaya client yang putus tidak
+    memicu `RuntimeError` saat `GeneratorExit`.
+  - Echo human dibuang berdasarkan tipe (`HumanMessage`), bukan pencocokan isi seperti kode lama.
+  - `subgraphs=True` dan penanganan supervisor belum ada (F17).
+  - Test error di tengah stream ikut di commit `StreamService`.
 - **Acceptance criteria:**
-  - [ ] Urutan frame sesuai PRD §7.3.
-  - [ ] Nesting ≤ 2 di semua method.
-  - [ ] Ada test untuk error di tengah stream.
+  - [x] Urutan frame sesuai PRD §7.3.
+  - [x] Nesting ≤ 2 di semua method.
+  - [x] Ada test untuk error di tengah stream.
 - **Squash title:** `feat(service): add sse streaming endpoint (F08)`
 
 ### F09: User threads
@@ -363,11 +451,21 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
 - **Referensi lama:** `service/threads.py` (pola yang baik, konstanta di `:21-32`).
 - **Rencana commit:**
   1. `feat(service): add ThreadRepository listing threads per user`
-  2. `feat(service): add threads endpoint with pagination`
-  3. `test(service): verify threads are isolated per user`
+  2. `feat(service): add threads endpoint with limit validation`
+  3. `docs: record F09 user threads decisions`
+- **Penyesuaian saat implementasi:**
+  - Test isolasi ikut di commit kodenya, jadi tidak ada commit `test(service)` terpisah.
+  - "Paginasi" berarti `limit` saja (sesuai `UserThreadsQuery` dari F04). Tidak ada cursor/offset.
+  - Listing juga difilter per `agent_id`, bukan hanya `user_id`.
+  - Thread tanpa message human berjudul `DEFAULT_THREAD_TITLE` ("Untitled thread"), karena
+    `ThreadSummary.title` wajib berupa string.
+  - `ThreadRepository` dibuat sekali di lifespan (`app.state.thread_repository`). Ukuran halaman
+    dan batas scan menjadi argumen konstruktor supaya paging bisa dites.
+  - Agent tidak dikenal → 404. Agent unavailable tetap bisa didaftar thread-nya (listing tidak
+    butuh graph).
 - **Acceptance criteria:**
-  - [ ] User A tidak bisa melihat thread milik user B.
-  - [ ] `limit` di luar 1–100 menghasilkan 422.
+  - [x] User A tidak bisa melihat thread milik user B.
+  - [x] `limit` di luar 1–100 menghasilkan 422.
 - **Squash title:** `feat(service): add user threads endpoint (F09)`
 
 ### F18: Thread rename & delete
@@ -385,13 +483,26 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
   - Bergantung pada F03 (koneksi SQLite) dan F09 (listing).
 - **Rencana commit:**
   1. `feat(memory): add ThreadMetadataRepository for custom thread titles`
-  2. `feat(service): add thread rename endpoint with ownership check`
-  3. `feat(service): add thread delete endpoint removing checkpoints`
-  4. `feat(service): show custom titles in thread listing`
+  2. `refactor(service): check thread ownership from checkpoint metadata`
+  3. `feat(service): add thread rename endpoint with ownership check`
+  4. `feat(service): add thread delete endpoint removing checkpoints`
+  5. `feat(service): show custom titles in thread listing`
+  6. `docs: record F18 thread management decisions`
+- **Penyesuaian saat implementasi:**
+  - `ThreadService` tidak dibuat terpisah. Rename/delete ditambahkan ke `ThreadRepository` dari F09,
+    yang kini juga menerima `ThreadMetadataRepository`.
+  - `ThreadMetadataRepository` memakai koneksi `aiosqlite` sendiri ke file SQLite yang sama, bukan
+    koneksi saver. `aiosqlite` kini menjadi dependency eksplisit.
+  - Tabel `thread_metadata` hanya berisi `thread_id` dan `title`. Kepemilikan tetap dicek dari
+    metadata checkpoint, dan rename tidak mengubah urutan listing.
+  - Kepemilikan juga mencakup `agent_id`, sama dengan F07. `ensure_thread_owner` kini menerima
+    metadata checkpoint (bukan `StateSnapshot`), dan `is_thread_owner` dipakai bersama listing.
+  - Ditambah varian agent default `PATCH/DELETE /threads/{thread_id}`.
+  - Setelah delete, `/history` menjawab 404 (thread tidak ada), bukan riwayat kosong.
 - **Acceptance criteria:**
-  - [ ] Setelah rename, judul baru muncul di `GET /threads`.
-  - [ ] Setelah delete, `/history` thread tersebut kosong dan thread hilang dari listing.
-  - [ ] User B mendapat 404 saat rename/delete thread milik user A.
+  - [x] Setelah rename, judul baru muncul di `GET /threads`.
+  - [x] Setelah delete, `/history` thread tersebut menjawab 404 dan thread hilang dari listing.
+  - [x] User B mendapat 404 saat rename/delete thread milik user A.
 - **Squash title:** `feat(service): add thread rename and delete endpoints (F18)`
 
 ### F10: Architecture docs
@@ -403,6 +514,13 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
 - **Rencana commit:**
   1. `docs: add architecture overview with request flow`
   2. `docs: link architecture doc from readme and agents guide`
+  3. `docs: record F10 and v0.1.0 release steps`
+- **Penyesuaian saat implementasi:**
+  - Dibuat sebagai stacked branch di atas `feature/F08-sse-streaming`, karena dokumen ini
+    menjelaskan `StreamService` dan keduanya mengubah ROADMAP/memory.
+  - Nama di dokumen mengikuti kode sebenarnya (`build_run_input`, `ThreadRepository`,
+    `ThreadMetadataRepository`), bukan nama rencana awal (`RunInputBuilder`).
+  - Ditambah bagian kepemilikan thread, tabel error, persistence, dan testing.
 - **Squash title:** `docs: add architecture documentation (F10)`
 - **Setelah merge:** rilis **v0.1.0**.
 

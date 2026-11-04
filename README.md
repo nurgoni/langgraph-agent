@@ -6,7 +6,7 @@ lewat satu API FastAPI, lengkap dengan streaming SSE, Python client, dan UI chat
 Project ini adalah rewrite dari [`agent-service-toolkit/`](agent-service-toolkit/) dengan fokus pada
 kode yang sederhana, eksplisit, dan mudah dites (Zen of Python).
 
-> **Status:** fase dokumentasi, belum ada kode. Lihat [PRD.md](PRD.md) untuk requirement dan
+> **Status:** M1 berjalan. Semua endpoint service sudah tersedia, termasuk streaming SSE serta rename dan hapus thread. Lihat [PRD.md](PRD.md) untuk requirement dan
 > [.agents/memory.md](.agents/memory.md) untuk status terkini.
 
 ## Fitur
@@ -84,7 +84,12 @@ docker compose up --build
 | POST | `/{agent_id}/stream` | Jalankan agent dengan streaming SSE |
 | POST | `/{agent_id}/history` | Riwayat satu thread |
 | GET | `/{agent_id}/threads` | Daftar thread milik user |
-| GET | `/health` | Health check |
+| PATCH | `/{agent_id}/threads/{thread_id}` | Ganti judul thread |
+| DELETE | `/{agent_id}/threads/{thread_id}` | Hapus thread beserta riwayatnya |
+| GET | `/health` | Health check, selalu tanpa auth |
+
+Response `/invoke` dan `/stream` membawa header `X-Thread-Id` dan `X-User-Id`. Kirim keduanya lagi
+untuk melanjutkan thread yang sama. Thread milik user lain menjawab 404.
 
 ```bash
 curl -N -X POST http://localhost:8080/chatbot/stream \
@@ -149,6 +154,7 @@ Aturan penulisan kode (prosedur 5 langkah, Class vs Function, checklist Zen) ada
 |---|---|
 | [AGENTS.md](AGENTS.md) | Aturan kode dan workflow untuk coding agent dan kontributor |
 | [PRD.md](PRD.md) | Requirement, kontrak API, scope, milestone |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Lifespan, alur request, kepemilikan thread, cara menambah agent |
 | [.agents/memory.md](.agents/memory.md) | Status, decision log, pelajaran dari kode lama |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Daftar fitur, urutan eksekusi, rencana commit per fitur |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Git lifecycle: branch, commit message, PR, release, hotfix |

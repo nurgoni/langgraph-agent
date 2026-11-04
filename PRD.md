@@ -88,25 +88,37 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
 
 ### API
 
-- **FR-5** `GET /info` mengembalikan daftar agent, agent default, daftar model, dan model default.
+- **FR-5** `GET /info` mengembalikan daftar agent yang tersedia (agent yang gagal load tidak
+  ditampilkan), agent default (`chatbot`), daftar model, dan model default.
 - **FR-6** `POST /{agent_id}/invoke` menjalankan agent sampai selesai dan mengembalikan
   `ChatMessage` terakhir.
-- **FR-7** `POST /{agent_id}/stream` mengalirkan event SSE (lihat §7.2).
-- **FR-8** `POST /{agent_id}/history` mengembalikan riwayat message satu thread.
+- **FR-7** `POST /{agent_id}/stream` mengalirkan event SSE (lihat §7.3). Request yang tidak valid
+  (agent/model tidak dikenal, `agent_config` salah, thread milik user lain) dijawab dengan status
+  HTTP biasa sebelum stream dimulai. Error di tengah run menjadi frame `error` dengan pesan
+  generik, lalu `[DONE]`.
+- **FR-8** `POST /{agent_id}/history` mengembalikan riwayat message satu thread. Request wajib
+  menyertakan `user_id`. Thread milik user lain diperlakukan sebagai tidak ada (404), sama dengan
+  FR-25/26.
 - **FR-9** `GET /{agent_id}/threads?user_id=...` mengembalikan daftar thread milik user (judul,
-  waktu update), dengan paginasi.
+  waktu update), yang terakhir di-update lebih dulu, dibatasi `limit` (1–100, default 20). Judul
+  diambil dari message human pertama, atau `Untitled thread` jika belum ada.
 - **FR-25** `PATCH /{agent_id}/threads/{thread_id}` mengganti judul thread (`{"user_id", "title"}`).
   Judul custom disimpan terpisah dari checkpoint dan menimpa judul otomatis. Hanya pemilik thread
   yang boleh mengganti judul. Thread milik user lain diperlakukan sebagai tidak ada (404).
 - **FR-26** `DELETE /{agent_id}/threads/{thread_id}?user_id=...` menghapus thread: semua checkpoint
   (`checkpointer.adelete_thread`) dan metadata judulnya. Aturan kepemilikan sama dengan FR-25.
-  Response 204.
+  Response 204. Setelah dihapus, `/history` thread itu menjawab 404 dan ID-nya boleh dipakai
+  untuk thread baru.
 - **FR-10** `GET /health` selalu tanpa auth.
 - **FR-11** Jika `AUTH_SECRET` diset, semua endpoint kecuali `/health` membutuhkan
   `Authorization: Bearer <AUTH_SECRET>`.
 - **FR-12** Jika thread sedang dalam status `interrupt`, input berikutnya dikirim sebagai
   `Command(resume=...)`.
-- **FR-13** `thread_id` dan `user_id` yang kosong diisi UUID baru dan dikembalikan ke client.
+- **FR-13** `thread_id` dan `user_id` yang kosong diisi UUID baru dan dikembalikan ke client lewat
+  header response `X-Thread-Id` dan `X-User-Id` (`/invoke` dan `/stream`).
+- **FR-28** Thread yang sudah ada hanya bisa dilanjutkan (`/invoke`, `/stream`) dan dibaca
+  (`/history`) oleh user dan agent yang membuatnya. Selain itu → 404. Kepemilikan dicek dari
+  metadata checkpoint (`user_id`, `agent_id`).
 - **FR-14** `model` divalidasi terhadap allowlist `AVAILABLE_MODELS`. Model tidak dikenal → 422.
 - **FR-15** `agent_id` tidak dikenal → 404. Agent unavailable → 503.
 - **FR-27** `agent_config` divalidasi **per agent**. Setiap agent mendeklarasikan
@@ -146,7 +158,7 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
 | NFR-3 | Coverage | ≥ 80% baris |
 | NFR-4 | Kompleksitas | Nesting ≤ 2, function/method ±≤ 40 baris (lihat AGENTS.md) |
 | NFR-5 | Startup | Service siap < `STARTUP_TIMEOUT_SECONDS` (default 10 detik) tanpa jaringan |
-| NFR-6 | Error contract | Semua error API berbentuk `{"detail": str}` dengan status code yang tepat |
+| NFR-6 | Error contract | Error domain dan error tak terduga berbentuk `{"detail": str}` dengan status code yang tepat. Error validasi request (422) memakai format bawaan FastAPI: `detail` berupa list per field |
 | NFR-7 | Observability | Logging terstruktur via `logging`. Setiap request punya `run_id` di log |
 | NFR-8 | Reproducible | `uv.lock` di-commit. Docker image di-build dari lock file |
 
@@ -174,8 +186,9 @@ UserInput       { message: str, model?: str, thread_id?: str, user_id?: str, age
 StreamInput     UserInput + { stream_tokens: bool = true }
 ChatMessage     { type: "human"|"ai"|"tool"|"custom", content: str, tool_calls: list,
                   tool_call_id?: str, run_id?: str, custom_data?: dict }
+ChatHistoryInput { thread_id: str, user_id: str }
 ChatHistory     { messages: list[ChatMessage] }
-ThreadSummary   { thread_id: str, title: str, updated_at: datetime }
+ThreadSummary   { thread_id: str, agent_id: str, title: str, updated_at?: datetime }
 ThreadRenameInput { user_id: str, title: str (1–TITLE_MAX_LENGTH karakter) }
 AgentInfo       { key: str, description: str, config_schema: dict (JSON Schema) }
 ```
@@ -194,7 +207,10 @@ data: {"type": "error",   "content": "pesan error"}
 data: [DONE]
 ```
 
-Stream selalu diakhiri `[DONE]`, termasuk ketika terjadi error.
+Stream selalu diakhiri `[DONE]`, termasuk ketika terjadi error. Urutan per run: frame `token`
+(jika `stream_tokens`), lalu frame `message` untuk setiap message baru dari node (jawaban AI, tool
+call, hasil tool, pertanyaan interrupt, event custom), lalu `[DONE]`. Input human tidak di-echo.
+Node yang LLM-nya diberi tag `skip_stream` tidak menghasilkan frame `token`.
 
 ## 8. Konfigurasi (env var v1)
 

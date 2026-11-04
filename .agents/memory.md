@@ -13,11 +13,226 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** dokumentasi fondasi + roadmap selesai. Belum ada kode, dan repo belum di-`git init`.
-- **Berikutnya:** F00 (project bootstrap) di [docs/ROADMAP.md](../docs/ROADMAP.md#f00-project-bootstrap).
-- **Terakhir diperbarui:** 2026-11-01
+- **Fase:** M1 selesai di branch fitur. F00–F07, F09, dan F18 sudah di `develop`. F08 menunggu PR.
+  F10 adalah **stacked branch** di atas F08.
+- **Setelah F08 di-squash merge:** jalankan
+  `git rebase --onto origin/develop feature/F08-sse-streaming feature/F10-docs-architecture`, lalu
+  push (`--force-with-lease`) dan buka PR F10.
+- **Berikutnya:** rilis v0.1.0 setelah F08 dan F10 ada di `develop` (CONTRIBUTING.md § Release),
+  lalu M2 dimulai dari F11.
+- **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
+  Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
+  GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
+- **Terakhir diperbarui:** 2026-11-04
 
 ## Decision Log
+
+### 2026-11-04: SSE streaming dari F08
+
+- **Keputusan:**
+  - Route `/stream` menjalankan `build_run_input` sebelum membuat `StreamingResponse`, jadi semua
+    error request tetap berupa status HTTP. `StreamService` hanya menangani error di tengah run.
+  - `StreamService` memakai stream mode `updates` (message baru + `__interrupt__`), `messages`
+    (token), dan `custom` (`get_stream_writer`, berupa dict atau message LangChain).
+  - `[DONE]` di-yield setelah `try/except Exception`, **bukan di `finally`**. Yield di dalam
+    `finally` saat client putus memicu `RuntimeError` (async generator mengabaikan `GeneratorExit`).
+- **Status catatan F02:** jalur token streaming LangGraph `stream_mode="messages"` terbukti memakai
+  `_stream` model (dites dengan `FakeModel`). Perilaku `ChatOpenAI` tanpa `streaming=True` belum
+  diverifikasi dengan endpoint asli (butuh network). Cek saat test integrasi atau saat smoke test
+  F14.
+- **Pelajaran:**
+  - `ruff format --check .` (dipakai CI) juga memformat blok kode Python di file Markdown, tetapi hook
+    pre-commit ruff hanya berjalan untuk file Python. Jalankan `uv run ruff format --check .` setelah
+    mengubah contoh kode di dokumen.
+  - Package `langchain` (`create_agent`) tidak terpasang. Graph tool-calling di test
+  memakai `ToolNode` + `tools_condition` dari `langgraph.prebuilt`.
+
+### 2026-11-04: Rename & delete thread dari F18
+
+- **Keputusan:**
+  - Judul custom disimpan di tabel `thread_metadata(thread_id, title)` lewat
+    `ThreadMetadataRepository` (`memory/`), sebuah async context manager dengan koneksi
+    `aiosqlite` sendiri ke `SQLITE_DB_PATH`. Lifespan membukanya berdampingan dengan
+    `CheckpointerProvider`.
+  - Koneksi saver tidak dipakai bersama, karena `AsyncSqliteSaver` menjaga transaksinya dengan
+    lock privat.
+  - Rename/delete ada di `ThreadRepository` (bukan `ThreadService` baru). Kepemilikan dibaca dari
+    metadata checkpoint terakhir (`aget_tuple`) lewat `ensure_thread_owner(metadata, ...)`.
+  - Delete: `adelete_thread` lalu hapus judul. Setelahnya `/history` → 404, dan ID thread boleh
+    dipakai ulang.
+  - Listing tetap diurutkan berdasarkan checkpoint terakhir, jadi rename tidak memindahkan thread
+    ke atas.
+
+### 2026-11-04: User threads dari F09
+
+- **Keputusan:**
+  - `ThreadRepository(checkpointer)` dibuat sekali di lifespan. Listing membaca head checkpoint
+    (`step == -1`) dengan filter metadata `user_id` + `agent_id`, mengecek ulang pemilik di setiap
+    head, lalu mengurutkan berdasarkan `checkpoint_id` tip (UUID berurutan waktu). Pola dan
+    konstanta (`THREAD_HEAD_STEP`, `MAX_THREAD_HEADS`, `HEAD_PAGE_SIZE`, `MAX_HEAD_ROWS`) dari kode
+    lama.
+  - Paginasi = `limit` saja. Judul fallback `DEFAULT_THREAD_TITLE`.
+  - F18 menambah rename/delete ke `ThreadRepository` (atau `ThreadService` di atasnya).
+- **Pelajaran:**
+  - Sudah diverifikasi di langgraph 1.2/checkpoint 4.3: checkpoint input tiap thread ber-`step -1`
+    dan membawa metadata run. `AsyncSqliteSaver.alist(None, filter=...)` mengurutkan lintas thread
+    berdasarkan `checkpoint_id` menurun.
+  - Test listing memakai `CheckpointerProvider` SQLite asli di `tmp_path`, karena urutan dan filter
+    `InMemorySaver` tidak identik dengan SQLite.
+  - Saat user bilang F sebelumnya sudah di-merge tapi `origin/develop` belum berisi commit-nya,
+    jalankan `git fetch origin` sendiri sebelum membuat branch.
+
+### 2026-11-03: Invoke & history dari F07
+
+- **Keputusan user:**
+  - ID thread/user dikembalikan lewat header `X-Thread-Id`/`X-User-Id` (`schema/headers.py`).
+    `/stream` (F08) dan client (F11) memakai header yang sama.
+  - Kepemilikan thread juga dicek di `/invoke` (dan nanti `/stream`): thread yang sudah ada milik
+    user/agent lain → 404 (FR-28). Client wajib mengirim `user_id` yang sama untuk melanjutkan
+    thread.
+- **Keputusan desain:**
+  - Setiap run menyimpan `run_metadata(user_id, agent_id)` di `RunnableConfig["metadata"]`.
+    LangGraph menyalinnya ke metadata checkpoint, dan `ensure_thread_owner` membacanya.
+    `snapshot.metadata is None` berarti thread baru. F09/F18 memakai metadata yang sama.
+  - `build_run_input` adalah function. Config agent yang tidak valid → `RequestValidationError`
+    dengan `loc` `body.agent_config.*`.
+  - Route punya dua varian, `/{agent_id}/x` dan `/x` (agent default), yang memanggil satu helper.
+- **Pelajaran:**
+  - Reducer `add_messages` mengisi `id` message secara in-place. Model atau node yang mengembalikan
+    objek message yang sama berulang kali akan **menimpa** message lama. Selalu kembalikan objek
+    baru (`FakeModel` kini memakai `model_copy(deep=True)`).
+  - Pre-commit menyimpan sementara perubahan yang belum di-stage, tapi file untracked tetap
+    dicek pyrefly. Stage semua file yang dibutuhkan oleh file untracked.
+  - Dengan `--import-mode=importlib`, file test tidak bisa saling import. Agent fake bersama
+    disediakan lewat fixture di `tests/service/conftest.py`.
+
+### 2026-11-03: Service app dari F06
+
+- **Keputusan user:**
+  - Agent default `chatbot`, sebagai konstanta `DEFAULT_AGENT_ID` di `agents/catalog.py`.
+  - Error validasi 422 memakai format bawaan FastAPI (list per field). Error domain dan error tak
+    terduga tetap `{"detail": str}`. NFR-6 sudah direvisi.
+- **Keputusan desain:**
+  - `create_app()` tanpa argumen membaca `Settings()` saat dipanggil, bukan saat import. Semua
+    resource dibuat di lifespan. `app.state` berisi `settings`, `default_agent_id`,
+    `model_factory`, dan `registry`. Route mengaksesnya lewat alias `SettingsDep`, `RegistryDep`,
+    dan lainnya di `service/dependencies.py`.
+  - Auth dipasang per router di `create_app` (`include_router(..., dependencies=[Depends(
+    verify_bearer)])`). `/health` tidak dipasangi auth.
+  - Status error dicari lewat MRO exception (`status_code_for`), jadi subclass ikut terpetakan.
+    Handler `Exception` → 500 generik adalah batas sistem dan wajib `logger.exception`.
+  - `/info` hanya menampilkan agent yang tersedia.
+- **Pelajaran:**
+  - `ASGITransport` httpx tidak menjalankan lifespan. Test service membungkus client dengan
+    `async with app.router.lifespan_context(app)` (lihat `tests/service/conftest.py`).
+  - Handler `Exception` di Starlette tetap me-raise ulang setelah mengirim 500. Pakai
+    `ASGITransport(raise_app_exceptions=False)` untuk test 500.
+  - Pydantic memakai docstring model sebagai `description` di JSON Schema. Model yang menjadi
+    `config_schema` agent butuh deskripsi publik eksplisit (bahasa Inggris) lewat
+    `json_schema_extra`, kalau tidak docstring internal ikut tampil di `/info`.
+  - `@asynccontextmanager` harus memakai `-> AsyncGenerator[...]`, karena pyrefly menandai
+    `AsyncIterator` sebagai deprecated.
+  - pytest memakai `--import-mode=importlib`, karena `tests/` mirror `src/` tanpa `__init__.py`.
+
+### 2026-11-03: Agent registry dari F05
+
+- **Keputusan:**
+  - `AgentRegistry(model_factory, checkpointer)` menyimpan cache graph per `(agent_id, nama model
+    final)`. `load_all()` menjalankan `load()` dan meng-compile graph untuk model default. Kegagalan
+    di tahap ini menandai agent unavailable. Ini satu-satunya `except Exception` di `agents/`.
+  - Node yang butuh model ditulis sebagai **closure** di dalam `build()`, bukan method. Satu
+    instance agent membangun graph untuk beberapa model, jadi model tidak bisa disimpan di `self`.
+    Ini pengecualian dari aturan "node ber-dependency = method" di AGENTS.md.
+  - Node agent bersifat async. Graph dijalankan lewat `ainvoke`/`astream`, karena `invoke` sync
+    gagal ("No synchronous function provided").
+  - `agents/` tidak meng-import `schema/`. Service (F06) yang mengubah `BaseAgent` menjadi
+    `AgentInfo` dengan `config_schema.model_json_schema()`.
+- **Pelajaran:** pyrefly menolak `StateGraph(MessagesState)` (`bad-specialization`), karena tidak
+  mengenali TypedDict sebagai `TypedDictLike` milik LangGraph. Ini false positive. Pakai
+  `# pyrefly: ignore[bad-specialization]` per baris beserta komentar alasannya, jangan ganti
+  state menjadi pydantic.
+
+### 2026-11-03: CheckpointerProvider dari F03
+
+- **Keputusan:**
+  - `CheckpointerProvider(db_path)` menerima path, bukan `Settings`. Dependency dibuat sesempit
+    yang dibutuhkan, selama tidak ada beberapa nilai settings yang terus dioper bersama.
+  - Provider membuat folder induk, menjalankan `setup()` saat `__aenter__`, dan menutup koneksi
+    di `__aexit__` lewat `AsyncExitStack`. `pop_all()` membuat koneksi langsung ditutup jika
+    `setup()` gagal.
+  - Store (long-term memory) tidak ada di v1.
+- **Alasan:** startup gagal cepat jika path database tidak bisa ditulis, dan request pertama tidak
+  menanggung biaya membuat tabel.
+
+### 2026-11-03: Model factory dan FakeModel dari F02
+
+- **Keputusan:**
+  - `ModelFactory(settings).create(name | None)` menyimpan cache per instance factory. Nama di luar
+    allowlist → `UnknownModelError` (service memetakannya ke 422). Model non-fake tanpa
+    `LLM_BASE_URL`/`LLM_API_KEY` → `ModelNotConfiguredError`, bukan diam-diam jatuh ke
+    `OPENAI_API_KEY`.
+  - `FakeModel` mewarisi `BaseChatModel`. Respons di-script lewat `responses` (string atau
+    `AIMessage`, berputar). Saat streaming, teks dipecah per kata dan `tool_calls` dikirim sebagai
+    chunk terakhir.
+  - `ChatOpenAI` tidak diberi `streaming=True`. LangGraph tetap men-stream token lewat callback
+    `stream_mode="messages"`. Cek ulang di F08.
+  - Fixture autouse `block_network` (`tests/conftest.py`) menggagalkan koneksi non-loopback di unit
+    test.
+- **Alasan:** `GenericFakeChatModel` membuang `tool_calls` saat streaming, sehingga tool call di
+  agent loop LangGraph tidak pernah muncul. Aturan "tanpa network call" sekarang ditegakkan oleh
+  test, bukan hanya oleh review.
+- **Pelajaran:** `BaseChatModel.stream()` selalu menambahkan chunk kosong penanda akhir. Test token
+  harus menyaring chunk dengan konten kosong.
+
+### 2026-11-03: Kontrak schema dari F04
+
+- **Keputusan:**
+  - `ChatHistoryInput` wajib berisi `user_id`. History memakai cek kepemilikan yang sama dengan
+    rename/delete (404 untuk thread milik user lain).
+  - Field bebas (`agent_config`, `args`, `response_metadata`, `custom_data`, `config_schema`)
+    memakai `pydantic.JsonValue`, bukan `Any`.
+  - Event SSE dimodelkan sebagai discriminated union pada field `type`. Service (F08) dan client
+    (F11) memakai `STREAM_EVENT_ADAPTER` dan `STREAM_DONE_MARKER` yang sama.
+  - Konstanta batas (`THREADS_LIMIT_*`, `TITLE_MAX_LENGTH`) tinggal di `schema/requests.py`, karena
+    schema tidak boleh import `core/`. Service memakai konstanta ini langsung dari schema.
+- **Alasan:** keputusan user (`user_id`) dan aturan layer di AGENTS.md. Aturan layer ditegakkan oleh
+  `tests/schema/test_layering.py`.
+- **Workflow:** jika fitur berikutnya bergantung pada branch yang belum di-merge (terutama karena
+  `pyproject.toml`/`uv.lock`), buat stacked branch, lalu `rebase --onto` setelah induknya
+  di-squash merge.
+
+### 2026-11-03: Konvensi dari F01
+
+- **Docstring dan komentar kode berbahasa Indonesia**, mengikuti contoh di AGENTS.md § Langkah 2.
+  Identifier, pesan error, pesan log, dan commit message tetap berbahasa Inggris.
+- **Nama field `Settings` huruf kecil** (`llm_base_url`). pydantic-settings mencocokkannya dengan
+  env var tanpa membedakan besar-kecil huruf, jadi `LLM_BASE_URL` tetap terbaca.
+- **`env_ignore_empty=True`**: env var yang kosong dianggap tidak diisi.
+- **`default_model` selalu terisi setelah validasi.** Di mode fake, default-nya `FAKE_MODEL_NAME`
+  ("fake") dan nama ini otomatis ditambahkan ke allowlist.
+- **Logging memakai function `configure_logging`**, bukan class, karena class dengan satu aksi
+  tanpa state melanggar aturan praktis di AGENTS.md.
+- **Test yang mengubah state global** (root logger, env) wajib memakai fixture yang mengembalikan
+  state tersebut. Test `Settings` memanggil `Settings(_env_file=None)` supaya `.env` milik
+  developer tidak ikut terbaca.
+
+### 2026-11-01: Konvensi tooling dari F00
+
+- **Keputusan:**
+  - Dependency runtime ditambahkan oleh fitur yang pertama kali membutuhkannya (`dependencies = []`
+    di F00).
+  - Tool dev di-pin sampai minor (`ruff ~=0.17.1`, `pyrefly ~=1.4.0`), karena rilis minor bisa
+    mengubah hasil lint/format.
+  - Hook pre-commit untuk ruff/pyrefly memakai `uv run` (hook lokal), sehingga versinya sama dengan
+    `uv.lock`.
+  - pytest berjalan di stage `pre-push`.
+  - uv di CI di-pin ke versi yang menulis `uv.lock` (0.12.18).
+  - `exclude-newer` memakai tanggal absolut dan dimajukan setiap kali dependency di-refresh.
+  - `.gitattributes` memaksa line ending LF, karena git di mesin Windows ini memakai `autocrlf`.
+  - Git author di repo ini: `user.name = nurgoni` (config lokal).
+- **Alasan:** toolkit lama mengalami drift versi antara hook dan dev dependency (ruff v0.11.9 vs
+  0.15). Pytest mengembalikan exit code 5 kalau tidak ada test, jadi setiap commit minimal punya
+  smoke test.
 
 ### 2026-11-01: Thread rename/delete + validasi `agent_config` per agent masuk v1
 
@@ -128,5 +343,10 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pe
 
 ## TODO Berikutnya
 
-- [ ] F00: `git init`, root commit dokumen, branch `develop`, tooling, CI
-      (lihat [ROADMAP](../docs/ROADMAP.md#f00-project-bootstrap)).
+- [ ] User: push `feature/F08-sse-streaming` dan `feature/F10-docs-architecture`, lalu buka PR F08.
+- [ ] User: setelah F08 di-merge, rebase F10 ke `develop` lalu buka PR F10.
+- [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
+      (CONTRIBUTING.md § Setup Awal Repo).
+- [ ] Rilis v0.1.0: `release/v0.1.0` dari `develop`, bump `version`, pindahkan `[Unreleased]` di
+      CHANGELOG, PR ke `main` dengan merge commit (`--no-ff`), tag `v0.1.0`, back-merge ke
+      `develop`.
