@@ -1,0 +1,16 @@
+# Override untuk LLM OpenAI-compatible asli:
+#   docker compose -f compose.yaml -f compose.llm.yaml up --build
+# Nilai diambil dari .env. Jika LLM berjalan di host (misalnya Ollama di localhost), set
+# DOCKER_LLM_BASE_URL=http://host.docker.internal:<port>/v1, karena localhost di dalam container
+# adalah container itu sendiri.
+services:
+  agent-service:
+    environment:
+      USE_FAKE_MODEL: "false"
+      LLM_BASE_URL: ${DOCKER_LLM_BASE_URL:-${LLM_BASE_URL:?Set LLM_BASE_URL or DOCKER_LLM_BASE_URL}}
+      LLM_API_KEY: ${LLM_API_KEY:?Set LLM_API_KEY}
+      DEFAULT_MODEL: ${DEFAULT_MODEL:?Set DEFAULT_MODEL}
+      AVAILABLE_MODELS: ${AVAILABLE_MODELS:-}
+    extra_hosts:
+      # Supaya host.docker.internal juga tersedia di Docker Engine Linux.
+      - "host.docker.internal:host-gateway"
