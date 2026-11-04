@@ -13,19 +13,40 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** M1 selesai di branch fitur. F00–F07, F09, dan F18 sudah di `develop`. F08 menunggu PR.
-  F10 adalah **stacked branch** di atas F08.
-- **Setelah F08 di-squash merge:** jalankan
-  `git rebase --onto origin/develop feature/F08-sse-streaming feature/F10-docs-architecture`, lalu
-  push (`--force-with-lease`) dan buka PR F10.
-- **Berikutnya:** rilis v0.1.0 setelah F08 dan F10 ada di `develop` (CONTRIBUTING.md § Release),
-  lalu M2 dimulai dari F11.
+- **Fase:** v0.1.0 (M1: core + service) sudah dirilis dan di-tag. M2 berjalan. F11 selesai di
+  `feature/F11-agent-client`, menunggu push dan PR.
+- **Berikutnya:** F12 (UI chat), lalu F13 (lihat urutan di ROADMAP).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Terakhir diperbarui:** 2026-11-04
 
 ## Decision Log
+
+### 2026-11-04: Agent client dari F11
+
+- **Keputusan user:** `invoke` → `AgentReply(message, thread_id, user_id)`. `stream`/`astream` →
+  context manager `StreamRun`/`AsyncStreamRun` dengan `thread_id`/`user_id`. Frame `error`
+  di-yield sebagai `ErrorEvent`, sedangkan `AgentClientError` hanya untuk HTTP, koneksi, respons
+  rusak, atau stream tanpa `[DONE]`.
+- **Keputusan desain:**
+  - `client/` hanya meng-import `schema/`, httpx, pydantic, dan stdlib (ditegakkan oleh test
+    layering). `auth_secret` dan `base_url` diberikan pemanggil. UI (F12) membacanya dari
+    `UiSettings`.
+  - Request disusun sebagai `RequestSpec` (`client/requests.py`) dan dipakai bersama oleh sync dan
+    async. Body selalu dibangun dari schema request, sehingga validasi terjadi di sisi client.
+  - `agent_id=None` memakai route agent default. ID di path di-escape (`path_segment`).
+- **Supersedes (F02, "`ChatOpenAI` tidak diberi `streaming=True`"):** smoke test dengan LLM asli
+  membuktikan bahwa tanpa `streaming=True`, `stream_mode="messages"` hanya menerima satu chunk.
+  `ModelFactory` kini memakai `streaming=True`.
+- **Pelajaran:**
+  - `.env` developer bisa berisi LLM asli (`DEFAULT_MODEL` model asli). Env `USE_FAKE_MODEL=true`
+    tidak mengganti model default dari `.env`. Untuk smoke test tanpa LLM, set juga
+    `DEFAULT_MODEL=fake`.
+  - Smoke test terhadap LLM asli adalah satu-satunya cara menangkap perilaku streaming provider.
+    `FakeModel` selalu men-stream.
+  - Heredoc bash yang panjang dan berisi banyak backtick kadang gagal di-parse oleh tool shell.
+    Tulis script edit ke file scratchpad, lalu jalankan.
 
 ### 2026-11-04: SSE streaming dari F08
 
@@ -343,10 +364,8 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pe
 
 ## TODO Berikutnya
 
-- [ ] User: push `feature/F08-sse-streaming` dan `feature/F10-docs-architecture`, lalu buka PR F08.
-- [ ] User: setelah F08 di-merge, rebase F10 ke `develop` lalu buka PR F10.
+- [ ] User: push `feature/F11-agent-client`, lalu buka PR F11 ke `develop`.
 - [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
       (CONTRIBUTING.md § Setup Awal Repo).
-- [ ] Rilis v0.1.0: `release/v0.1.0` dari `develop`, bump `version`, pindahkan `[Unreleased]` di
-      CHANGELOG, PR ke `main` dengan merge commit (`--no-ff`), tag `v0.1.0`, back-merge ke
-      `develop`.
+- [ ] F12: UI chat Streamlit (`UiSettings` membaca `AGENT_URL`/`AUTH_SECRET`, memakai
+      `AgentClient`).

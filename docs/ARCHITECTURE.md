@@ -26,7 +26,7 @@ src/agent_service/
 ├── memory/    CheckpointerProvider, ThreadMetadataRepository (SQLite)
 ├── schema/    Model Pydantic untuk API: request, response, event SSE, nama header
 ├── service/   create_app, lifespan, auth, route, StreamService, ThreadRepository
-├── client/    (M2) AgentClient
+├── client/    AgentClient (sync + async), StreamRun, SseParser
 └── ui/        (M2) Streamlit
 ```
 
@@ -207,6 +207,21 @@ lock privat milik saver. Penghapusan thread memanggil `adelete_thread` lalu meng
    test endpoint, tambahkan agent lewat `create_app(settings, agents=[...])` seperti di
    `tests/service/conftest.py`.
 
+## Client
+
+`AgentClient` (`client/`) hanya bergantung pada `schema/`, httpx, dan pydantic. Aturan ini dicek
+oleh `tests/client/test_layering.py`.
+
+- **Tidak ada request di konstruktor.** `get_info()` diambil saat pertama dipakai lalu di-cache.
+- **`invoke`** mengembalikan `AgentReply`, berisi message beserta ID thread/user dari header
+  respons.
+- **`stream`** mengembalikan `StreamRun`. Request dikirim saat masuk `with`, sehingga error
+  404/422 dilempar di situ sebagai `AgentClientError`. Event berupa model `StreamEvent` yang sama
+  dengan milik service. Frame `error` diteruskan sebagai `ErrorEvent`, dan stream yang berakhir
+  tanpa `[DONE]` dianggap error.
+- **Satu `RequestSpec` per operasi.** Spec ini dipakai bersama oleh method sync dan async
+  (berawalan `a`).
+
 ## Testing
 
 - **Tidak ada network di unit test.** Fixture autouse `block_network` (`tests/conftest.py`)
@@ -215,5 +230,7 @@ lock privat milik saver. Penghapusan thread memanggil `adelete_thread` lalu meng
   setiap panggilan mengembalikan salinan message baru.
 - **Test endpoint memakai `httpx.AsyncClient` + `ASGITransport`.** Lifespan dijalankan manual
   dengan `app.router.lifespan_context(app)`, karena `ASGITransport` melewatinya.
+- **Client dites dua kali:** dengan `httpx.MockTransport`, dan sebagai test kontrak terhadap app
+  asli lewat `httpx.ASGITransport` (`tests/client/test_client_contract.py`).
 - **pytest memakai `--import-mode=importlib`.** Akibatnya file test tidak saling import, dan fake
   bersama disediakan lewat fixture.
