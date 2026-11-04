@@ -1,0 +1,19 @@
+# Hanya pyproject.toml, uv.lock, README.md, dan src/ yang dibutuhkan image.
+.git
+.github
+.venv
+.env
+.env.*
+!.env.example
+*.db
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.ruff_cache
+.coverage
+htmlcov
+agent-service-toolkit
+tests
+docs
+.agents
+.claude
