@@ -29,3 +29,5 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
   `agent_config` divalidasi per agent (F07).
 - Endpoint `/threads`: daftar thread milik user per agent, yang terakhir di-update lebih dulu,
   dengan `limit` 1–100 (F09).
+- Rename (`PATCH`) dan hapus (`DELETE`) thread. Judul custom disimpan di tabel `thread_metadata`
+  dan tampil di listing. Thread milik user lain menjawab 404 (F18).

@@ -104,7 +104,8 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
   yang boleh mengganti judul. Thread milik user lain diperlakukan sebagai tidak ada (404).
 - **FR-26** `DELETE /{agent_id}/threads/{thread_id}?user_id=...` menghapus thread: semua checkpoint
   (`checkpointer.adelete_thread`) dan metadata judulnya. Aturan kepemilikan sama dengan FR-25.
-  Response 204.
+  Response 204. Setelah dihapus, `/history` thread itu menjawab 404 dan ID-nya boleh dipakai
+  untuk thread baru.
 - **FR-10** `GET /health` selalu tanpa auth.
 - **FR-11** Jika `AUTH_SECRET` diset, semua endpoint kecuali `/health` membutuhkan
   `Authorization: Bearer <AUTH_SECRET>`.

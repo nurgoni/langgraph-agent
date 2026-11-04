@@ -6,7 +6,7 @@ lewat satu API FastAPI, lengkap dengan streaming SSE, Python client, dan UI chat
 Project ini adalah rewrite dari [`agent-service-toolkit/`](agent-service-toolkit/) dengan fokus pada
 kode yang sederhana, eksplisit, dan mudah dites (Zen of Python).
 
-> **Status:** M1 berjalan. Endpoint `/health`, `/info`, `/invoke`, `/history`, dan `/threads` sudah tersedia. `stream` serta rename/delete thread belum. Lihat [PRD.md](PRD.md) untuk requirement dan
+> **Status:** M1 berjalan. Semua endpoint kecuali `/stream` sudah tersedia, termasuk rename dan hapus thread. Lihat [PRD.md](PRD.md) untuk requirement dan
 > [.agents/memory.md](.agents/memory.md) untuk status terkini.
 
 ## Fitur
@@ -84,6 +84,8 @@ docker compose up --build
 | POST | `/{agent_id}/stream` | Jalankan agent dengan streaming SSE |
 | POST | `/{agent_id}/history` | Riwayat satu thread |
 | GET | `/{agent_id}/threads` | Daftar thread milik user |
+| PATCH | `/{agent_id}/threads/{thread_id}` | Ganti judul thread |
+| DELETE | `/{agent_id}/threads/{thread_id}` | Hapus thread beserta riwayatnya |
 | GET | `/health` | Health check, selalu tanpa auth |
 
 Response `/invoke` dan `/stream` membawa header `X-Thread-Id` dan `X-User-Id`. Kirim keduanya lagi

@@ -24,7 +24,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F07 | Invoke & history | M1 | done |
 | F08 | SSE streaming | M1 | todo |
 | F09 | User threads | M1 | done |
-| F18 | Thread rename & delete | M1 | todo |
+| F18 | Thread rename & delete | M1 | done |
 | F10 | Architecture docs | M1 | todo |
 | F11 | Agent client | M2 | todo |
 | F12 | UI chat | M2 | todo |
@@ -471,13 +471,26 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
   - Bergantung pada F03 (koneksi SQLite) dan F09 (listing).
 - **Rencana commit:**
   1. `feat(memory): add ThreadMetadataRepository for custom thread titles`
-  2. `feat(service): add thread rename endpoint with ownership check`
-  3. `feat(service): add thread delete endpoint removing checkpoints`
-  4. `feat(service): show custom titles in thread listing`
+  2. `refactor(service): check thread ownership from checkpoint metadata`
+  3. `feat(service): add thread rename endpoint with ownership check`
+  4. `feat(service): add thread delete endpoint removing checkpoints`
+  5. `feat(service): show custom titles in thread listing`
+  6. `docs: record F18 thread management decisions`
+- **Penyesuaian saat implementasi:**
+  - `ThreadService` tidak dibuat terpisah. Rename/delete ditambahkan ke `ThreadRepository` dari F09,
+    yang kini juga menerima `ThreadMetadataRepository`.
+  - `ThreadMetadataRepository` memakai koneksi `aiosqlite` sendiri ke file SQLite yang sama, bukan
+    koneksi saver. `aiosqlite` kini menjadi dependency eksplisit.
+  - Tabel `thread_metadata` hanya berisi `thread_id` dan `title`. Kepemilikan tetap dicek dari
+    metadata checkpoint, dan rename tidak mengubah urutan listing.
+  - Kepemilikan juga mencakup `agent_id`, sama dengan F07. `ensure_thread_owner` kini menerima
+    metadata checkpoint (bukan `StateSnapshot`), dan `is_thread_owner` dipakai bersama listing.
+  - Ditambah varian agent default `PATCH/DELETE /threads/{thread_id}`.
+  - Setelah delete, `/history` menjawab 404 (thread tidak ada), bukan riwayat kosong.
 - **Acceptance criteria:**
-  - [ ] Setelah rename, judul baru muncul di `GET /threads`.
-  - [ ] Setelah delete, `/history` thread tersebut kosong dan thread hilang dari listing.
-  - [ ] User B mendapat 404 saat rename/delete thread milik user A.
+  - [x] Setelah rename, judul baru muncul di `GET /threads`.
+  - [x] Setelah delete, `/history` thread tersebut menjawab 404 dan thread hilang dari listing.
+  - [x] User B mendapat 404 saat rename/delete thread milik user A.
 - **Squash title:** `feat(service): add thread rename and delete endpoints (F18)`
 
 ### F10: Architecture docs

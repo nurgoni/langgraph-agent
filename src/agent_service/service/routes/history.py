@@ -51,5 +51,5 @@ async def read_history(
     graph = registry.get_graph(agent_id)
     config = RunnableConfig(configurable={"thread_id": history_input.thread_id})
     snapshot = await graph.aget_state(config)
-    ensure_thread_owner(snapshot, history_input.thread_id, history_input.user_id, agent_id)
+    ensure_thread_owner(snapshot.metadata, history_input.thread_id, history_input.user_id, agent_id)
     return ChatHistory(messages=state_to_chat_messages(snapshot.values))

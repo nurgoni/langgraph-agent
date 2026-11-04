@@ -42,12 +42,12 @@ async def test_unknown_thread_is_new(graph: AgentGraph) -> None:
 
     assert is_new_thread(snapshot)
     with pytest.raises(ThreadNotFoundError):
-        ensure_thread_owner(snapshot, "missing", OWNER, "chatbot")
+        ensure_thread_owner(snapshot.metadata, "missing", OWNER, "chatbot")
 
 
 async def test_owner_passes(owned_snapshot: StateSnapshot) -> None:
     assert not is_new_thread(owned_snapshot)
-    ensure_thread_owner(owned_snapshot, THREAD_ID, OWNER, "chatbot")
+    ensure_thread_owner(owned_snapshot.metadata, THREAD_ID, OWNER, "chatbot")
 
 
 @pytest.mark.parametrize(("user_id", "agent_id"), [("user-b", "chatbot"), (OWNER, "other")])
@@ -55,6 +55,6 @@ async def test_other_user_or_agent_is_not_found(
     owned_snapshot: StateSnapshot, user_id: str, agent_id: str
 ) -> None:
     with pytest.raises(ThreadNotFoundError) as error_info:
-        ensure_thread_owner(owned_snapshot, THREAD_ID, user_id, agent_id)
+        ensure_thread_owner(owned_snapshot.metadata, THREAD_ID, user_id, agent_id)
 
     assert error_info.value.thread_id == THREAD_ID
