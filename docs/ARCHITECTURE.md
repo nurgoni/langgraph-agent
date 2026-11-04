@@ -242,6 +242,14 @@ oleh `tests/client/test_layering.py`.
 - **`MessageRenderer`** punya satu method per tipe message. Jawaban AI, tool call, dan hasil tool
   berurutan digabung dalam satu blok chat, dengan tool call tampil sebagai `st.status`.
 
+## Deployment
+
+`docker/Dockerfile` punya dua target dari base yang sama: `service`
+(`python -m agent_service.run_service`, SQLite di volume `/data`) dan `ui` (`streamlit run`).
+`compose.yaml` menjalankan keduanya. Service memakai FakeModel secara default, dan UI menunggu
+healthcheck service, lalu menghubunginya di `http://agent-service:8080`. `compose.llm.yaml`
+menimpa konfigurasi model dengan LLM asli.
+
 ## Testing
 
 - **Tidak ada network di unit test.** Fixture autouse `block_network` (`tests/conftest.py`)
@@ -254,5 +262,8 @@ oleh `tests/client/test_layering.py`.
   asli lewat `httpx.ASGITransport` (`tests/client/test_client_contract.py`).
 - **UI dites dengan `streamlit.testing.v1.AppTest`.** Test menyuntikkan `AgentClient` dengan
   `httpx.MockTransport` lewat `st.session_state[CLIENT_OVERRIDE_KEY]`.
+- **Test e2e bermarker `integration`** (`tests/integration/`) menjalankan stack Compose sungguhan.
+  Test ini dilewati `pytest` default, dan dijalankan dengan `pytest -m integration` serta job CI
+  `e2e`.
 - **pytest memakai `--import-mode=importlib`.** Akibatnya file test tidak saling import, dan fake
   bersama disediakan lewat fixture.

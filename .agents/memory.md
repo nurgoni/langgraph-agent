@@ -13,15 +13,32 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** v0.1.0 sudah dirilis. M2 berjalan: F11 dan F12 sudah di `develop`. F13 selesai di
-  `feature/F13-ui-sidebar-threads`, menunggu push dan PR.
-- **Berikutnya:** F14 (Docker Compose & e2e), lalu rilis v0.2.0.
+- **Fase:** v0.1.0 sudah dirilis. M2: F11–F13 sudah di `develop`. F14 selesai di
+  `feature/F14-compose-e2e`, menunggu push dan PR. Setelah merge: rilis v0.2.0.
+- **Berikutnya:** rilis v0.2.0, lalu M3 dimulai dari F15 (research assistant).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Terakhir diperbarui:** 2026-11-04
 
 ## Decision Log
+
+### 2026-11-04: Docker Compose & e2e dari F14
+
+- **Keputusan:**
+  - Satu `docker/Dockerfile` dengan target `service` dan `ui` (base yang sama, uv 0.12.18, `uv sync
+    --frozen --no-dev --no-editable`), user non-root, SQLite di `/data`, healthcheck Python.
+  - `compose.yaml` menulis konfigurasi service secara eksplisit (FakeModel). Hanya `AUTH_SECRET`,
+    `LOG_LEVEL`, `SERVICE_PORT`, dan `UI_PORT` yang diambil dari shell atau `.env`.
+    `compose.llm.yaml` untuk LLM asli, dengan `DOCKER_LLM_BASE_URL` (interpolasi bertingkat
+    `${A:-${B:?}}` didukung Compose v5).
+  - Test e2e (`-m integration`) memakai project `agent-service-e2e` dan port acak, dan selalu
+    `down -v`. UI diuji dengan `AppTest` di dalam container UI. Job CI `e2e` berjalan setelah job
+    `check`.
+- **Verifikasi:** streaming token dengan LLM asli lewat `compose.llm.yaml` menghasilkan 7 frame
+  token (qwen3.5:9b di host lewat `host.docker.internal`). TODO dari F08/F11 selesai.
+- **Utang:** image sekitar 1 GB karena dependency service dan UI belum dipisah (extras). Opsi
+  perbaikan: optional-dependencies `service`/`ui`, dengan `uv sync --all-extras` untuk dev dan CI.
 
 ### 2026-11-04: Sidebar & URL state dari F13
 
@@ -407,8 +424,9 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pe
 
 ## TODO Berikutnya
 
-- [ ] User: push `feature/F13-ui-sidebar-threads`, lalu buka PR F13 ke `develop`.
+- [ ] User: push `feature/F14-compose-e2e`, lalu buka PR F14 ke `develop`. Cek job CI `e2e`
+      (pertama kali berjalan di GitHub Actions).
 - [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
       (CONTRIBUTING.md § Setup Awal Repo).
-- [ ] F14: Dockerfile service + app, `compose.yaml`, smoke test e2e dengan FakeModel. Sekalian
-      cek streaming token dengan LLM asli.
+- [ ] Rilis v0.2.0: `release/v0.2.0` dari `develop`, bump `version`, pindahkan `[Unreleased]`,
+      PR ke `main` (`--no-ff`), tag `v0.2.0`, back-merge ke `develop`.

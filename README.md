@@ -6,7 +6,7 @@ lewat satu API FastAPI, lengkap dengan streaming SSE, Python client, dan UI chat
 Project ini adalah rewrite dari [`agent-service-toolkit/`](agent-service-toolkit/) dengan fokus pada
 kode yang sederhana, eksplisit, dan mudah dites (Zen of Python).
 
-> **Status:** v0.1.0 (service) sudah dirilis. M2 berjalan: `AgentClient` dan UI Streamlit (chat, riwayat thread, pemilih agent/model) sudah tersedia. Docker Compose (F14) belum. Lihat [PRD.md](PRD.md) untuk requirement dan
+> **Status:** v0.1.0 (service) sudah dirilis. M2 selesai di branch fitur: `AgentClient`, UI Streamlit, dan stack Docker Compose dengan test e2e. Rilis v0.2.0 menyusul. Lihat [PRD.md](PRD.md) untuk requirement dan
 > [.agents/memory.md](.agents/memory.md) untuk status terkini.
 
 ## Fitur
@@ -63,8 +63,25 @@ percakapan. Siapa pun yang memegang URL tersebut bisa membaca thread-nya.
 ### Docker Compose
 
 ```bash
-docker compose up --build
+docker compose up --build        # API di :8080, UI di :8501
+docker compose down              # hentikan (tambahkan -v untuk menghapus data SQLite)
 ```
+
+- **Model:** stack memakai FakeModel secara default, jadi bisa jalan tanpa API key. Konfigurasi LLM
+  di `.env` sengaja tidak dipakai di dalam container.
+- **Variabel yang diambil dari shell atau `.env`:** `AUTH_SECRET` (dipakai service dan UI) dan
+  `LOG_LEVEL`. Port bisa dipindah dengan `SERVICE_PORT` dan `UI_PORT`.
+- **Data:** thread tersimpan di volume `agent-data`, jadi tetap ada setelah container di-restart.
+
+Untuk LLM OpenAI-compatible asli (nilai `LLM_*` dan `DEFAULT_MODEL` dibaca dari `.env`):
+
+```bash
+docker compose -f compose.yaml -f compose.llm.yaml up --build
+```
+
+Jika LLM berjalan di host (misalnya Ollama di `localhost:11434`), set
+`DOCKER_LLM_BASE_URL=http://host.docker.internal:11434/v1`. Dari dalam container, `localhost`
+menunjuk ke container itu sendiri.
 
 ## Konfigurasi
 
@@ -135,7 +152,8 @@ dan UI otomatis menampilkan agent baru.
 ## Development
 
 ```bash
-uv run pytest                 # test
+uv run pytest                 # test (tanpa test integration)
+uv run pytest -m integration  # test e2e Docker Compose (butuh Docker)
 uv run ruff check . --fix     # lint
 uv run ruff format .          # format
 uv run pyrefly check          # type check

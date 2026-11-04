@@ -1,0 +1,45 @@
+# Stack lokal: service API (:8080) + UI Streamlit (:8501).
+#   docker compose up --build
+# Default-nya FakeModel, jadi stack berjalan tanpa API key. Untuk LLM asli, tambahkan
+# compose.llm.yaml (lihat README).
+name: agent-service
+
+services:
+  agent-service:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: service
+    image: agent-service:local
+    ports:
+      - "${SERVICE_PORT:-8080}:8080"
+    environment:
+      # Ditulis eksplisit, bukan env_file: konfigurasi LLM di .env (misalnya LLM_BASE_URL ke
+      # localhost) tidak berlaku dari dalam container.
+      USE_FAKE_MODEL: "true"
+      DEFAULT_MODEL: fake
+      AVAILABLE_MODELS: fake
+      AUTH_SECRET: ${AUTH_SECRET:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - agent-data:/data
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: ui
+    image: agent-service-ui:local
+    ports:
+      - "${UI_PORT:-8501}:8501"
+    environment:
+      AGENT_URL: http://agent-service:8080
+      AUTH_SECRET: ${AUTH_SECRET:-}
+    depends_on:
+      agent-service:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  agent-data:
