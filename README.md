@@ -54,6 +54,9 @@ uv run python -m agent_service.run_service
 uv run streamlit run src/agent_service/ui/app.py
 ```
 
+UI hanya client: service (langkah 3) harus sudah berjalan di `AGENT_URL`. Jika belum, UI
+menampilkan pesan "Cannot reach the agent service at ..." saat pesan dikirim.
+
 ### Docker Compose
 
 ```bash

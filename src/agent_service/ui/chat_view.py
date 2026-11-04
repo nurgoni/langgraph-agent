@@ -5,7 +5,12 @@ from typing import Final
 
 import streamlit as st
 
-from agent_service.client import AgentClient, AgentClientError, StreamRun
+from agent_service.client import (
+    AgentClient,
+    AgentClientError,
+    ServiceUnreachableError,
+    StreamRun,
+)
 from agent_service.schema.responses import ChatMessage
 from agent_service.schema.stream import ErrorEvent, MessageEvent, StreamEvent, TokenEvent
 from agent_service.ui.message_renderer import MessageRenderer
@@ -15,6 +20,10 @@ logger = logging.getLogger(__name__)
 
 CHAT_INPUT_PLACEHOLDER: Final = "Type a message…"
 SERVICE_ERROR_TEMPLATE: Final = "Agent service error: {error}"
+UNREACHABLE_TEMPLATE: Final = (
+    "Cannot reach the agent service at {url}. Start it with "
+    "`uv run python -m agent_service.run_service`, or set AGENT_URL to the running service."
+)
 
 
 class ChatView:
@@ -54,7 +63,13 @@ class ChatView:
                     self._handle_event(event, renderer)
         except AgentClientError as error:
             logger.warning("Agent request failed: %s", error)
-            renderer.render_error(SERVICE_ERROR_TEMPLATE.format(error=error))
+            renderer.render_error(self._error_text(error))
+
+    def _error_text(self, error: AgentClientError) -> str:
+        """Pesan error untuk user, dengan petunjuk jika service tidak terjangkau."""
+        if isinstance(error, ServiceUnreachableError):
+            return UNREACHABLE_TEMPLATE.format(url=self._client.base_url)
+        return SERVICE_ERROR_TEMPLATE.format(error=error)
 
     def _start_turn(self, run: StreamRun, human_message: ChatMessage) -> None:
         """Simpan ID run dan pesan user, setelah service menerima request."""

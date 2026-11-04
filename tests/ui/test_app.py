@@ -169,3 +169,29 @@ def test_history_is_replayed_on_rerun(clients: list[AgentClient]) -> None:
 
     assert [block.name for block in app.chat_message] == ["human", "ai"]
     assert len(service.requests) == 1
+
+
+def test_unreachable_service_shows_how_to_start_it(clients: list[AgentClient]) -> None:
+    def refuse(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("[WinError 10061] connection refused", request=request)
+
+    app = start_app(FakeService(refuse), clients)
+
+    send(app, "Hai")
+
+    message = app.error[0].value
+    assert "Cannot reach the agent service at http://localhost:8080" in message
+    assert "agent_service.run_service" in message
+    assert session_of(app).messages == []
+
+
+def test_broken_stream_is_not_reported_as_unreachable(clients: list[AgentClient]) -> None:
+    body = 'data: {"type": "token", "content": "Hal"}\n\n'
+    service = FakeService(lambda request: httpx.Response(200, text=body, headers=ID_HEADERS))
+    app = start_app(service, clients)
+
+    send(app, "Hai")
+
+    message = app.error[0].value
+    assert "Stream ended before [DONE]" in message
+    assert "Cannot reach" not in message
