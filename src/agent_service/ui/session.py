@@ -19,6 +19,7 @@ class ChatSession:
     `user_id` selalu ada (dari URL atau UUID baru) supaya daftar thread dan link bisa dibuka ulang.
     `thread_id` kosong sampai run pertama, lalu diambil dari header respons service.
     `history_loaded` bernilai `False` jika thread dibuka dari URL dan riwayatnya belum dimuat.
+    `agent_id`/`model` bernilai `None` berarti agent/model default service.
 
     >>> session = ChatSession(user_id="u1")
     >>> session.remember_run("t1", "u1")
@@ -29,6 +30,8 @@ class ChatSession:
     user_id: str
     thread_id: str | None = None
     agent_id: str | None = None
+    model: str | None = None
+    stream_tokens: bool = True
     messages: list[ChatMessage] = field(default_factory=list)
     history_loaded: bool = True
 
@@ -75,3 +78,8 @@ class ChatSession:
         self.thread_id = None
         self.messages = []
         self.history_loaded = True
+
+    def switch_agent(self, agent_id: str | None) -> None:
+        """Ganti agent dan mulai thread baru, karena thread terikat pada agent yang membuatnya."""
+        self.agent_id = agent_id
+        self.start_new_thread()

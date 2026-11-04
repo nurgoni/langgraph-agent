@@ -28,14 +28,30 @@ ANSWER_STREAM = sse(
 )
 
 
-class FakeService:
-    """Transport tiruan yang merekam request dan menjawab `/stream` dengan body tetap."""
+INFO = {
+    "agents": [
+        {"key": "chatbot", "description": "Simple chatbot", "config_schema": {}},
+        {"key": "research", "description": "Searches the web", "config_schema": {}},
+    ],
+    "models": ["fake", "gpt-test"],
+    "default_agent": "chatbot",
+    "default_model": "fake",
+}
 
-    def __init__(self, respond: Callable[[httpx.Request], httpx.Response]) -> None:
+
+class FakeService:
+    """Transport tiruan: `/info` selalu dijawab, request lain direkam lalu dijawab `respond`."""
+
+    def __init__(
+        self, respond: Callable[[httpx.Request], httpx.Response], info_status: int = 200
+    ) -> None:
         self.requests: list[httpx.Request] = []
         self._respond = respond
+        self._info_status = info_status
 
     def handle(self, request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/info":
+            return httpx.Response(self._info_status, json=INFO)
         self.requests.append(request)
         return self._respond(request)
 
@@ -77,7 +93,7 @@ def session_of(app: AppTest) -> ChatSession:
     return session
 
 
-def test_app_renders_title_without_calling_service(clients: list[AgentClient]) -> None:
+def test_app_renders_without_running_agent(clients: list[AgentClient]) -> None:
     service = FakeService(lambda request: httpx.Response(500))
 
     app = start_app(service, clients)
@@ -260,10 +276,81 @@ def test_unreachable_service_keeps_thread_and_retries(clients: list[AgentClient]
     def refuse(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("connection refused", request=request)
 
-    service = FakeService(refuse)
+    service = FakeService(refuse, info_status=503)
     app = start_app(service, clients, {"user_id": "u1", "thread_id": "t1"})
     app.run()
 
     assert "Cannot reach the agent service" in app.error[0].value
     assert session_of(app).thread_id == "t1"
     assert len(service.requests) == 2
+
+
+def stream_service() -> FakeService:
+    return FakeService(lambda request: httpx.Response(200, text=ANSWER_STREAM, headers=ID_HEADERS))
+
+
+def test_sidebar_shows_agents_models_and_default_selection(clients: list[AgentClient]) -> None:
+    app = start_app(stream_service(), clients)
+
+    agent_picker = app.sidebar.selectbox(key="sidebar_agent")
+    model_picker = app.sidebar.selectbox(key="sidebar_model")
+    assert agent_picker.options == ["chatbot", "research"]
+    assert agent_picker.value == "chatbot"
+    assert model_picker.value == "fake"
+    assert app.sidebar.caption[0].value == "Simple chatbot"
+
+
+def test_choosing_agent_starts_new_thread_on_that_agent(clients: list[AgentClient]) -> None:
+    service = stream_service()
+    app = start_app(service, clients)
+    send(app, "Hai")
+
+    app.sidebar.selectbox(key="sidebar_agent").set_value("research").run()
+    send(app, "Cari")
+
+    assert session_of(app).messages[0].content == "Cari"
+    assert app.query_params["agent"] == "research"
+    last = service.requests[-1]
+    assert last.url.path == "/research/stream"
+    assert "thread_id" not in json.loads(last.content)
+
+
+def test_model_and_stream_toggle_are_sent_with_message(clients: list[AgentClient]) -> None:
+    service = stream_service()
+    app = start_app(service, clients)
+
+    app.sidebar.selectbox(key="sidebar_model").set_value("gpt-test").run()
+    app.sidebar.toggle(key="sidebar_stream_tokens").set_value(False).run()
+    send(app, "Hai")
+
+    body = service.bodies()[0]
+    assert (body["model"], body["stream_tokens"]) == ("gpt-test", False)
+
+
+def test_new_chat_clears_conversation(clients: list[AgentClient]) -> None:
+    app = start_app(stream_service(), clients)
+    send(app, "Hai")
+
+    app.sidebar.button(key="sidebar_new_chat").click().run()
+
+    assert session_of(app).messages == []
+    assert session_of(app).thread_id is None
+    assert "thread_id" not in app.query_params
+
+
+def test_unknown_agent_in_url_falls_back_to_default(clients: list[AgentClient]) -> None:
+    service = stream_service()
+    app = start_app(service, clients, {"agent": "ghost"})
+    assert "'ghost' is not available" in app.sidebar.warning[0].value
+
+    send(app, "Hai")
+
+    assert service.requests[-1].url.path == "/stream"
+    assert "agent" not in app.query_params
+
+
+def test_info_failure_hides_pickers(clients: list[AgentClient]) -> None:
+    app = start_app(FakeService(lambda request: httpx.Response(200), info_status=503), clients)
+
+    assert "Agent service unavailable" in app.sidebar.caption[0].value
+    assert len(app.sidebar.selectbox) == 0

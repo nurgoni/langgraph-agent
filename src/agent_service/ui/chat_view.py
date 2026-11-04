@@ -57,7 +57,11 @@ class ChatView:
         human_message = ChatMessage(type="human", content=prompt)
         renderer.render(human_message)
         stream = self._client.stream(
-            prompt, thread_id=self._session.thread_id, user_id=self._session.user_id
+            prompt,
+            model=self._session.model,
+            thread_id=self._session.thread_id,
+            user_id=self._session.user_id,
+            stream_tokens=self._session.stream_tokens,
         )
         try:
             with stream as run:
