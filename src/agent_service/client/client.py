@@ -7,13 +7,13 @@ from typing import Final, Self
 import httpx
 from pydantic import BaseModel, JsonValue
 
-from agent_service.client.errors import AgentClientError
 from agent_service.client.requests import (
     AgentReply,
     RequestSpec,
     parse_model,
     path_segment,
     raise_for_status,
+    request_error,
     run_ids,
 )
 from agent_service.client.stream import AsyncStreamRun, StreamRun
@@ -83,6 +83,11 @@ class AgentClient:
             base_url=base_url, headers=headers, timeout=timeout, transport=async_transport
         )
         self._info: ServiceMetadata | None = None
+
+    @property
+    def base_url(self) -> str:
+        """URL service yang dipakai client, misalnya untuk pesan error di UI."""
+        return str(self._http_client.base_url).rstrip("/")
 
     def __enter__(self) -> Self:
         """Pakai client sync dalam blok `with`."""
@@ -309,7 +314,7 @@ class AgentClient:
                 spec.method, spec.path, json=spec.json, params=spec.params
             )
         except httpx.RequestError as error:
-            raise AgentClientError(f"{spec.method} {spec.path} failed: {error}") from error
+            raise request_error(error, f"{spec.method} {spec.path}") from error
         raise_for_status(response)
         return response
 
@@ -325,7 +330,7 @@ class AgentClient:
                 spec.method, spec.path, json=spec.json, params=spec.params
             )
         except httpx.RequestError as error:
-            raise AgentClientError(f"{spec.method} {spec.path} failed: {error}") from error
+            raise request_error(error, f"{spec.method} {spec.path}") from error
         raise_for_status(response)
         return response
 

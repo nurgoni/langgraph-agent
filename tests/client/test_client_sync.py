@@ -4,7 +4,7 @@ from collections.abc import Callable, Iterator
 import httpx
 import pytest
 
-from agent_service.client import AgentClient, AgentClientError
+from agent_service.client import AgentClient, AgentClientError, ServiceUnreachableError
 from agent_service.client.stream import StreamNotStartedError
 from agent_service.schema.headers import THREAD_ID_HEADER, USER_ID_HEADER
 from agent_service.schema.stream import ErrorEvent, MessageEvent, TokenEvent
@@ -145,7 +145,7 @@ def test_non_json_error_body_becomes_text_detail() -> None:
     assert (error_info.value.status_code, error_info.value.detail) == (502, "Bad Gateway")
 
 
-def test_connection_error_has_no_status() -> None:
+def test_connection_error_is_service_unreachable() -> None:
     def refuse(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("connection refused", request=request)
 
@@ -155,6 +155,7 @@ def test_connection_error_has_no_status() -> None:
         client.get_info()
 
     assert error_info.value.status_code is None
+    assert isinstance(error_info.value, ServiceUnreachableError)
 
 
 def test_unexpected_body_raises_client_error() -> None:
@@ -291,3 +292,22 @@ def test_json_error_without_detail_keeps_whole_body() -> None:
         client.get_info()
 
     assert error_info.value.detail == {"error": "boom"}
+
+
+def test_base_url_is_exposed_without_trailing_slash() -> None:
+    client, _ = make_client(lambda request: httpx.Response(200))
+
+    with client:
+        assert client.base_url == BASE_URL
+
+
+def test_read_timeout_is_not_reported_as_unreachable() -> None:
+    def time_out(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("read timed out", request=request)
+
+    client, _ = make_client(time_out)
+
+    with client, pytest.raises(AgentClientError) as error_info:
+        client.get_info()
+
+    assert not isinstance(error_info.value, ServiceUnreachableError)
