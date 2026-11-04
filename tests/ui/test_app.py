@@ -424,3 +424,89 @@ def test_failed_open_shows_toast(clients: list[AgentClient]) -> None:
 
     assert "Could not open the conversation" in app.toast[0].value
     assert session_of(app).thread_id is None
+
+
+def thread_service(respond: Callable[[httpx.Request], httpx.Response]) -> FakeService:
+    service = FakeService(respond)
+    service.threads = [thread("t1", "Judul lama"), thread("t2", "Lain")]
+    return service
+
+
+def test_rename_sends_trimmed_title_and_refreshes_list(clients: list[AgentClient]) -> None:
+    service = thread_service(lambda request: httpx.Response(200, json=thread("t1", "Judul baru")))
+    app = start_app(service, clients, {"user_id": "u-rename"})
+    lists_before = len(service.thread_list_requests)
+
+    app.text_input(key="sidebar_title_t1").set_value("  Judul baru  ")
+    app.button(key="sidebar_rename_t1").click().run()
+
+    [rename] = service.requests
+    assert (rename.method, rename.url.path) == ("PATCH", "/threads/t1")
+    assert json.loads(rename.content) == {"user_id": "u-rename", "title": "Judul baru"}
+    assert app.toast[0].value == "Conversation renamed."
+    assert len(service.thread_list_requests) == lists_before + 1
+
+
+def test_empty_title_is_rejected_without_request(clients: list[AgentClient]) -> None:
+    service = thread_service(lambda request: httpx.Response(500))
+    app = start_app(service, clients, {"user_id": "u-empty"})
+
+    app.text_input(key="sidebar_title_t1").set_value("   ")
+    app.button(key="sidebar_rename_t1").click().run()
+
+    assert service.requests == []
+    assert app.toast[0].value == "Title cannot be empty."
+
+
+def test_failed_rename_shows_error(clients: list[AgentClient]) -> None:
+    service = thread_service(
+        lambda request: httpx.Response(404, json={"detail": "Thread 't1' not found"})
+    )
+    app = start_app(service, clients, {"user_id": "u-rename-fail"})
+
+    app.button(key="sidebar_rename_t1").click().run()
+
+    assert "Could not rename the conversation" in app.toast[0].value
+
+
+def test_delete_active_thread_starts_new_chat(clients: list[AgentClient]) -> None:
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.method == "DELETE":
+            return httpx.Response(204)
+        return httpx.Response(200, json=HISTORY)
+
+    service = thread_service(respond)
+    app = start_app(service, clients, {"user_id": "u-del", "thread_id": "t1"})
+    assert session_of(app).thread_id == "t1"
+
+    app.button(key="sidebar_delete_t1").click().run()
+
+    delete = service.requests[-1]
+    assert (delete.method, delete.url.path) == ("DELETE", "/threads/t1")
+    assert dict(delete.url.params) == {"user_id": "u-del"}
+    assert session_of(app).thread_id is None
+    assert "thread_id" not in app.query_params
+    assert app.toast[0].value == "Conversation deleted."
+
+
+def test_delete_other_thread_keeps_current_chat(clients: list[AgentClient]) -> None:
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.method == "DELETE":
+            return httpx.Response(204)
+        return httpx.Response(200, json=HISTORY)
+
+    service = thread_service(respond)
+    app = start_app(service, clients, {"user_id": "u-del2", "thread_id": "t1"})
+
+    app.button(key="sidebar_delete_t2").click().run()
+
+    assert session_of(app).thread_id == "t1"
+
+
+def test_failed_delete_shows_error(clients: list[AgentClient]) -> None:
+    service = thread_service(lambda request: httpx.Response(503, json={"detail": "down"}))
+    app = start_app(service, clients, {"user_id": "u-del-fail"})
+
+    app.button(key="sidebar_delete_t1").click().run()
+
+    assert "Could not delete the conversation" in app.toast[0].value
