@@ -24,6 +24,8 @@ UNREACHABLE_TEMPLATE: Final = (
     "Cannot reach the agent service at {url}. Start it with "
     "`uv run python -m agent_service.run_service`, or set AGENT_URL to the running service."
 )
+THREAD_NOT_FOUND_TEMPLATE: Final = "Conversation {thread_id} was not found. Starting a new chat."
+HTTP_NOT_FOUND: Final = 404
 
 
 class ChatView:
@@ -41,6 +43,7 @@ class ChatView:
 
     def render(self) -> None:
         """Gambar riwayat, lalu kirim pesan jika user baru saja mengetik."""
+        self._ensure_history()
         history_renderer = MessageRenderer()
         for message in self._session.messages:
             history_renderer.render(message)
@@ -64,6 +67,31 @@ class ChatView:
         except AgentClientError as error:
             logger.warning("Agent request failed: %s", error)
             renderer.render_error(self._error_text(error))
+
+    def _ensure_history(self) -> None:
+        """Muat riwayat thread yang dibuka dari URL, sekali per session.
+
+        Thread yang tidak ditemukan (atau milik user lain) diganti chat baru. Jika service tidak
+        terjangkau, riwayat dicoba lagi pada run berikutnya.
+        """
+        thread_id = self._session.thread_id
+        if self._session.history_loaded or thread_id is None:
+            return
+        try:
+            history = self._client.get_history(thread_id, self._session.user_id)
+        except AgentClientError as error:
+            self._report_history_error(error, thread_id)
+            return
+        self._session.open_thread(thread_id, history.messages)
+
+    def _report_history_error(self, error: AgentClientError, thread_id: str) -> None:
+        """Tampilkan alasan riwayat gagal dimuat. Thread yang tidak ada diganti chat baru."""
+        logger.warning("Loading history for %s failed: %s", thread_id, error)
+        if error.status_code == HTTP_NOT_FOUND:
+            st.warning(THREAD_NOT_FOUND_TEMPLATE.format(thread_id=thread_id))
+            self._session.start_new_thread()
+            return
+        st.error(self._error_text(error))
 
     def _error_text(self, error: AgentClientError) -> str:
         """Pesan error untuk user, dengan petunjuk jika service tidak terjangkau."""

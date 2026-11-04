@@ -51,10 +51,15 @@ def clients() -> Iterator[list[AgentClient]]:
         client.close()
 
 
-def start_app(service: FakeService, clients: list[AgentClient]) -> AppTest:
+def start_app(
+    service: FakeService,
+    clients: list[AgentClient],
+    query_params: dict[str, str] | None = None,
+) -> AppTest:
     client = AgentClient(transport=httpx.MockTransport(service.handle))
     clients.append(client)
-    app = AppTest.from_file(APP_FILE)
+    app = AppTest.from_file(APP_FILE, default_timeout=10)
+    app.query_params.update(query_params or {})
     app.session_state[CLIENT_OVERRIDE_KEY] = client
     app.run()
     assert not app.exception, app.exception
@@ -195,3 +200,70 @@ def test_broken_stream_is_not_reported_as_unreachable(clients: list[AgentClient]
     message = app.error[0].value
     assert "Stream ended before [DONE]" in message
     assert "Cannot reach" not in message
+
+
+HISTORY = {
+    "messages": [{"type": "human", "content": "Lama"}, {"type": "ai", "content": "Jawaban lama"}]
+}
+
+
+def test_ids_are_written_to_url_after_first_message(clients: list[AgentClient]) -> None:
+    service = FakeService(
+        lambda request: httpx.Response(200, text=ANSWER_STREAM, headers=ID_HEADERS)
+    )
+    app = start_app(service, clients)
+    generated_user = session_of(app).user_id
+
+    send(app, "Hai")
+
+    assert app.query_params["thread_id"] == "t1"
+    assert app.query_params["user_id"] == "u1"
+    assert service.bodies()[0]["user_id"] == generated_user
+
+
+def test_user_id_from_url_is_used_for_requests(clients: list[AgentClient]) -> None:
+    service = FakeService(
+        lambda request: httpx.Response(200, text=ANSWER_STREAM, headers=ID_HEADERS)
+    )
+    app = start_app(service, clients, {"user_id": "from-url"})
+
+    send(app, "Hai")
+
+    assert service.bodies()[0]["user_id"] == "from-url"
+
+
+def test_thread_in_url_loads_history_once(clients: list[AgentClient]) -> None:
+    service = FakeService(lambda request: httpx.Response(200, json=HISTORY))
+    app = start_app(service, clients, {"user_id": "u1", "thread_id": "t1", "agent": "chatbot"})
+
+    app.run()
+
+    [history_request] = service.requests
+    assert history_request.url.path == "/chatbot/history"
+    assert json.loads(history_request.content) == {"thread_id": "t1", "user_id": "u1"}
+    assert [m.value for m in app.markdown] == ["Lama", "Jawaban lama"]
+
+
+def test_missing_thread_in_url_starts_new_chat(clients: list[AgentClient]) -> None:
+    service = FakeService(
+        lambda request: httpx.Response(404, json={"detail": "Thread 't1' not found"})
+    )
+
+    app = start_app(service, clients, {"user_id": "u1", "thread_id": "t1"})
+
+    assert "was not found" in app.warning[0].value
+    assert session_of(app).thread_id is None
+    assert "thread_id" not in app.query_params
+
+
+def test_unreachable_service_keeps_thread_and_retries(clients: list[AgentClient]) -> None:
+    def refuse(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=request)
+
+    service = FakeService(refuse)
+    app = start_app(service, clients, {"user_id": "u1", "thread_id": "t1"})
+    app.run()
+
+    assert "Cannot reach the agent service" in app.error[0].value
+    assert session_of(app).thread_id == "t1"
+    assert len(service.requests) == 2
