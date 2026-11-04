@@ -74,3 +74,14 @@ class SseParser:
             return STREAM_EVENT_ADAPTER.validate_json(data)
         except ValidationError as error:
             raise AgentClientError(f"Invalid stream frame: {data[:100]!r}") from error
+
+    def finish(self) -> None:
+        """Tutup parser saat body respons berakhir, termasuk `[DONE]` tanpa baris kosong penutup.
+
+        Raises:
+            AgentClientError: Jika stream berakhir sebelum `[DONE]` (koneksi terputus atau respons
+                terpotong), atau frame terakhir tidak valid.
+        """
+        self.flush()
+        if not self.done:
+            raise AgentClientError("Stream ended before [DONE]")

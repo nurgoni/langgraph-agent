@@ -75,3 +75,19 @@ def test_invalid_frame_raises_client_error() -> None:
 
     with pytest.raises(AgentClientError, match="Invalid stream frame"):
         parser.flush()
+
+
+def test_finish_accepts_done_without_trailing_blank_line() -> None:
+    parser = SseParser()
+    parser.feed_line("data: [DONE]")
+
+    assert parser.finish() is None
+    assert parser.done
+
+
+def test_finish_without_done_raises() -> None:
+    parser = SseParser()
+    feed(parser, 'data: {"type": "token", "content": "a"}', "")
+
+    with pytest.raises(AgentClientError, match="before \[DONE\]"):
+        parser.finish()
