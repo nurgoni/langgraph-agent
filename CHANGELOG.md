@@ -16,6 +16,8 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 - Sidebar UI: chat baru, pemilih agent dan model, toggle streaming, daftar thread dengan aksi
   rename dan hapus. `user_id`, `thread_id`, dan `agent` disimpan di URL sehingga percakapan bisa
   dibuka ulang (F13).
+- Stack Docker Compose (service + UI) dengan FakeModel sebagai default, override `compose.llm.yaml`
+  untuk LLM asli, test e2e bermarker `integration`, dan job CI `e2e` (F14).
 
 ### Fixed
 
