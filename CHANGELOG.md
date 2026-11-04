@@ -11,6 +11,8 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 - `AgentClient` sync dan async: `invoke` (mengembalikan `AgentReply` berisi ID thread/user),
   `stream` (context manager `StreamRun`), history, daftar thread, rename, delete, dan info yang
   diambil lazy. Error HTTP dibungkus `AgentClientError` dengan status dan detail (F11).
+- UI chat Streamlit: token streaming, tool call sebagai status yang bisa di-expand, pertanyaan
+  interrupt sebagai pesan AI, dan error service ditampilkan di chat (F12).
 
 ### Fixed
 

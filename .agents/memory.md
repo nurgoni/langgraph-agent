@@ -13,15 +13,35 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** v0.1.0 (M1: core + service) sudah dirilis dan di-tag. M2 berjalan. F11 selesai di
-  `feature/F11-agent-client`, menunggu push dan PR.
-- **Berikutnya:** F12 (UI chat), lalu F13 (lihat urutan di ROADMAP).
+- **Fase:** v0.1.0 sudah dirilis. M2 berjalan: F11 sudah di `develop`. F12 selesai di
+  `feature/F12-ui-chat`, menunggu push dan PR.
+- **Berikutnya:** F13 (sidebar, riwayat thread, URL state), lalu F14 (lihat urutan di ROADMAP).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Terakhir diperbarui:** 2026-11-04
 
 ## Decision Log
+
+### 2026-11-04: UI chat dari F12
+
+- **Keputusan:**
+  - UI memakai `AgentClient` sync (script Streamlit sinkron). Satu client per konfigurasi lewat
+    `st.cache_resource`.
+  - State percakapan disimpan di dataclass `ChatSession` (`st.session_state["chat_session"]`).
+    `thread_id`/`user_id` diambil dari `StreamRun` setelah giliran pertama, dan untuk sementara hanya
+    berlaku per session browser.
+  - `MessageRenderer` dibuat per pass render. Status tool call dipasangkan lewat `tool_call_id`.
+  - Pesan user disimpan ke session hanya setelah service menerima request.
+  - Teks UI yang tampil ke user ditulis dalam bahasa Inggris.
+- **Pelajaran:**
+  - `AppTest.from_file` dan `streamlit run` mengeksekusi script sebagai `__main__`, jadi
+    `if __name__ == "__main__": main()` aman dan modul tetap bebas side effect saat di-import
+    (doctest).
+  - Path relatif di `AppTest.from_file` di-resolve terhadap file pemanggil. Pakai path absolut
+    dari `module.__file__`.
+  - Untuk test UI, suntikkan `AgentClient` asli dengan `MockTransport` lewat `session_state`,
+    karena `AppTest.from_function` tidak bisa membawa closure.
 
 ### 2026-11-04: Agent client dari F11
 
@@ -364,8 +384,9 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pe
 
 ## TODO Berikutnya
 
-- [ ] User: push `feature/F11-agent-client`, lalu buka PR F11 ke `develop`.
+- [ ] User: push `feature/F12-ui-chat`, lalu buka PR F12 ke `develop`.
 - [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
       (CONTRIBUTING.md § Setup Awal Repo).
-- [ ] F12: UI chat Streamlit (`UiSettings` membaca `AGENT_URL`/`AUTH_SECRET`, memakai
-      `AgentClient`).
+- [ ] F13: sidebar (chat baru, daftar thread + rename/hapus, pemilih agent/model, toggle
+      streaming) dan `thread_id`/`agent_id` di URL. Tentukan apakah `user_id` ikut disimpan di
+      URL.

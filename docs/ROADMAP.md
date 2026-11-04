@@ -27,7 +27,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F18 | Thread rename & delete | M1 | done |
 | F10 | Architecture docs | M1 | done |
 | F11 | Agent client | M2 | done |
-| F12 | UI chat | M2 | todo |
+| F12 | UI chat | M2 | done |
 | F13 | UI sidebar & threads | M2 | todo |
 | F14 | Docker Compose & e2e | M2 | todo |
 | F15 | Research assistant | M3 | todo |
@@ -578,6 +578,17 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
   1. `feat(ui): add UiSettings and streamlit entrypoint`
   2. `feat(ui): add MessageRenderer for human, ai and tool messages`
   3. `feat(ui): add ChatView with token streaming`
+  4. `docs: record F12 ui chat decisions`
+- **Penyesuaian saat implementasi:**
+  - Ditambah `ui/session.py` (`ChatSession`, dataclass bertipe di `st.session_state`) sebagai
+    pengganti key `session_state` yang tersebar.
+  - `thread_id`/`user_id` diambil dari header respons stream setelah giliran pertama, dan baru
+    disimpan di session browser. Penyimpanan di URL dikerjakan di F13 (FR-22).
+  - UI selalu men-stream ke agent default. Toggle streaming dan pemilih agent/model ada di F13.
+  - Test memakai `AppTest` dengan `AgentClient` asli + `httpx.MockTransport` yang disuntikkan lewat
+    `st.session_state[CLIENT_OVERRIDE_KEY]`. Ditambah `tests/ui/test_layering.py`.
+  - Teks yang tampil ke user (placeholder input, label tool) ditulis dalam bahasa Inggris,
+    konsisten dengan pesan error API.
 - **Squash title:** `feat(ui): add streamlit chat view with streaming (F12)`
 
 ### F13: UI sidebar & threads
