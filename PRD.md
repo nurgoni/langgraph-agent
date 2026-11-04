@@ -97,7 +97,8 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
   menyertakan `user_id`. Thread milik user lain diperlakukan sebagai tidak ada (404), sama dengan
   FR-25/26.
 - **FR-9** `GET /{agent_id}/threads?user_id=...` mengembalikan daftar thread milik user (judul,
-  waktu update), dengan paginasi.
+  waktu update), yang terakhir di-update lebih dulu, dibatasi `limit` (1–100, default 20). Judul
+  diambil dari message human pertama, atau `Untitled thread` jika belum ada.
 - **FR-25** `PATCH /{agent_id}/threads/{thread_id}` mengganti judul thread (`{"user_id", "title"}`).
   Judul custom disimpan terpisah dari checkpoint dan menimpa judul otomatis. Hanya pemilik thread
   yang boleh mengganti judul. Thread milik user lain diperlakukan sebagai tidak ada (404).

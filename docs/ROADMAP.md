@@ -23,7 +23,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F06 | Service app | M1 | done |
 | F07 | Invoke & history | M1 | done |
 | F08 | SSE streaming | M1 | todo |
-| F09 | User threads | M1 | todo |
+| F09 | User threads | M1 | done |
 | F18 | Thread rename & delete | M1 | todo |
 | F10 | Architecture docs | M1 | todo |
 | F11 | Agent client | M2 | todo |
@@ -439,11 +439,21 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
 - **Referensi lama:** `service/threads.py` (pola yang baik, konstanta di `:21-32`).
 - **Rencana commit:**
   1. `feat(service): add ThreadRepository listing threads per user`
-  2. `feat(service): add threads endpoint with pagination`
-  3. `test(service): verify threads are isolated per user`
+  2. `feat(service): add threads endpoint with limit validation`
+  3. `docs: record F09 user threads decisions`
+- **Penyesuaian saat implementasi:**
+  - Test isolasi ikut di commit kodenya, jadi tidak ada commit `test(service)` terpisah.
+  - "Paginasi" berarti `limit` saja (sesuai `UserThreadsQuery` dari F04). Tidak ada cursor/offset.
+  - Listing juga difilter per `agent_id`, bukan hanya `user_id`.
+  - Thread tanpa message human berjudul `DEFAULT_THREAD_TITLE` ("Untitled thread"), karena
+    `ThreadSummary.title` wajib berupa string.
+  - `ThreadRepository` dibuat sekali di lifespan (`app.state.thread_repository`). Ukuran halaman
+    dan batas scan menjadi argumen konstruktor supaya paging bisa dites.
+  - Agent tidak dikenal → 404. Agent unavailable tetap bisa didaftar thread-nya (listing tidak
+    butuh graph).
 - **Acceptance criteria:**
-  - [ ] User A tidak bisa melihat thread milik user B.
-  - [ ] `limit` di luar 1–100 menghasilkan 422.
+  - [x] User A tidak bisa melihat thread milik user B.
+  - [x] `limit` di luar 1–100 menghasilkan 422.
 - **Squash title:** `feat(service): add user threads endpoint (F09)`
 
 ### F18: Thread rename & delete

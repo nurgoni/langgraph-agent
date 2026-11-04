@@ -1,0 +1,68 @@
+import pytest
+from httpx import AsyncClient
+
+from agent_service.schema.responses import UserThreads
+
+USER_A = "user-a"
+USER_B = "user-b"
+
+
+async def start_thread(
+    client: AsyncClient, thread_id: str, user_id: str, message: str, agent: str = "chatbot"
+) -> None:
+    body = {"message": message, "thread_id": thread_id, "user_id": user_id}
+    response = await client.post(f"/{agent}/invoke", json=body)
+    assert response.status_code == 200, response.text
+
+
+async def list_threads(client: AsyncClient, path: str, **params: str | int) -> UserThreads:
+    response = await client.get(path, params=params)
+    assert response.status_code == 200, response.text
+    return UserThreads.model_validate(response.json())
+
+
+async def test_user_sees_only_own_threads(client: AsyncClient) -> None:
+    await start_thread(client, "a1", USER_A, "Rencana liburan")
+    await start_thread(client, "b1", USER_B, "Rahasia B")
+
+    threads = await list_threads(client, "/chatbot/threads", user_id=USER_A)
+
+    assert [(t.thread_id, t.title) for t in threads.threads] == [("a1", "Rencana liburan")]
+
+
+async def test_default_agent_route_lists_chatbot_threads(client: AsyncClient) -> None:
+    await start_thread(client, "a1", USER_A, "Halo")
+    await start_thread(client, "a2", USER_A, "Halo tone", agent="tone")
+
+    threads = await list_threads(client, "/threads", user_id=USER_A)
+
+    assert [t.thread_id for t in threads.threads] == ["a1"]
+
+
+async def test_limit_is_applied(client: AsyncClient) -> None:
+    for index in range(3):
+        await start_thread(client, f"t{index}", USER_A, "Halo")
+
+    threads = await list_threads(client, "/chatbot/threads", user_id=USER_A, limit=2)
+
+    assert [t.thread_id for t in threads.threads] == ["t2", "t1"]
+
+
+@pytest.mark.parametrize("limit", [0, 101])
+async def test_limit_out_of_range_is_422(client: AsyncClient, limit: int) -> None:
+    response = await client.get("/chatbot/threads", params={"user_id": USER_A, "limit": limit})
+
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["query", "limit"]
+
+
+async def test_user_id_is_required(client: AsyncClient) -> None:
+    response = await client.get("/chatbot/threads")
+
+    assert response.status_code == 422
+
+
+async def test_unknown_agent_is_404(client: AsyncClient) -> None:
+    response = await client.get("/ghost/threads", params={"user_id": USER_A})
+
+    assert response.status_code == 404
