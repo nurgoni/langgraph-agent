@@ -67,7 +67,7 @@ async def build_run_input(user_input: UserInput, agent: BaseAgent, graph: AgentG
     )
     snapshot = await graph.aget_state(config)
     if not is_new_thread(snapshot):
-        ensure_thread_owner(snapshot, thread_id, user_id, agent.agent_id)
+        ensure_thread_owner(snapshot.metadata, thread_id, user_id, agent.agent_id)
     return RunInput(
         graph_input=_graph_input_for(snapshot, user_input.message),
         config=config,

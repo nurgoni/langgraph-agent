@@ -17,7 +17,11 @@ from agent_service.agents.base import Checkpointer
 from agent_service.schema.requests import TITLE_MAX_LENGTH
 from agent_service.schema.responses import ThreadSummary
 from agent_service.service.converters import MESSAGES_KEY, content_to_text
-from agent_service.service.thread_access import AGENT_ID_METADATA_KEY, USER_ID_METADATA_KEY
+from agent_service.service.thread_access import (
+    AGENT_ID_METADATA_KEY,
+    USER_ID_METADATA_KEY,
+    is_thread_owner,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -125,19 +129,10 @@ class ThreadRepository:
             thread_id = head.config["configurable"]["thread_id"]
             if thread_id in thread_ids:
                 continue
-            if _is_owned_by(head, user_id, agent_id):
+            if is_thread_owner(head.metadata, user_id, agent_id):
                 thread_ids.append(thread_id)
             else:
                 logger.warning("Skipping thread %s: checkpointer ignored owner filter", thread_id)
-
-
-def _is_owned_by(head: CheckpointTuple, user_id: str, agent_id: str) -> bool:
-    """Metadata head cocok dengan user dan agent yang meminta."""
-    metadata = head.metadata
-    return (
-        metadata.get(USER_ID_METADATA_KEY) == user_id
-        and metadata.get(AGENT_ID_METADATA_KEY) == agent_id
-    )
 
 
 def _checkpoint_id(checkpoint: CheckpointTuple) -> str:

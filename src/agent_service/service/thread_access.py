@@ -5,6 +5,7 @@ menyalinnya ke metadata checkpoint. Thread milik user atau agent lain diperlakuk
 ada (404), supaya keberadaannya tidak bocor.
 """
 
+from collections.abc import Mapping
 from typing import Final
 
 from langgraph.types import StateSnapshot
@@ -44,13 +45,28 @@ def is_new_thread(snapshot: StateSnapshot) -> bool:
     return snapshot.metadata is None
 
 
+def is_thread_owner(metadata: Mapping[str, object], user_id: str, agent_id: str) -> bool:
+    """Metadata checkpoint menunjukkan thread dibuat oleh `user_id` lewat `agent_id`.
+
+    >>> is_thread_owner(run_metadata("u1", "chatbot"), "u1", "chatbot")
+    True
+    >>> is_thread_owner(run_metadata("u1", "chatbot"), "u2", "chatbot")
+    False
+    """
+    return (
+        metadata.get(USER_ID_METADATA_KEY) == user_id
+        and metadata.get(AGENT_ID_METADATA_KEY) == agent_id
+    )
+
+
 def ensure_thread_owner(
-    snapshot: StateSnapshot, thread_id: str, user_id: str, agent_id: str
+    metadata: Mapping[str, object] | None, thread_id: str, user_id: str, agent_id: str
 ) -> None:
     """Pastikan thread ada dan dibuat oleh `user_id` lewat `agent_id`.
 
     Args:
-        snapshot: Hasil `graph.aget_state` untuk thread ini.
+        metadata: Metadata checkpoint terakhir thread (dari `aget_state` atau `aget_tuple`),
+            atau `None` jika thread belum punya checkpoint.
         thread_id: ID thread, untuk pesan error.
         user_id: User yang meminta.
         agent_id: Agent di URL request.
@@ -58,10 +74,5 @@ def ensure_thread_owner(
     Raises:
         ThreadNotFoundError: Jika thread belum ada, atau metadata-nya milik user/agent lain.
     """
-    metadata = snapshot.metadata
-    if metadata is None:
-        raise ThreadNotFoundError(thread_id)
-    if metadata.get(USER_ID_METADATA_KEY) != user_id:
-        raise ThreadNotFoundError(thread_id)
-    if metadata.get(AGENT_ID_METADATA_KEY) != agent_id:
+    if metadata is None or not is_thread_owner(metadata, user_id, agent_id):
         raise ThreadNotFoundError(thread_id)
