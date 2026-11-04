@@ -12,6 +12,7 @@ source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "langchain-core" },
     { name = "langchain-openai" },
     { name = "langgraph" },
@@ -23,7 +24,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "pre-commit" },
     { name = "pyrefly" },
     { name = "pytest" },
@@ -36,6 +36,7 @@ dev = [
 requires-dist = [
     { name = "aiosqlite", specifier = "~=0.22" },
     { name = "fastapi", specifier = "~=0.143" },
+    { name = "httpx", specifier = "~=0.28" },
     { name = "langchain-core", specifier = "~=1.6" },
     { name = "langchain-openai", specifier = "~=1.7" },
     { name = "langgraph", specifier = "~=1.2" },
@@ -47,7 +48,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx", specifier = "~=0.28.1" },
     { name = "pre-commit", specifier = "~=4.7.0" },
     { name = "pyrefly", specifier = "~=1.4.0" },
     { name = "pytest", specifier = "~=8.4.2" },
