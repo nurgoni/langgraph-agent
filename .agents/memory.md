@@ -13,9 +13,13 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** M1 berjalan. F00–F07, F09, dan F18 sudah di `develop`. F08 selesai di
-  `feature/F08-sse-streaming`, menunggu push dan PR.
-- **Berikutnya:** F10 (dokumentasi arsitektur), lalu rilis v0.1.0.
+- **Fase:** M1 selesai di branch fitur. F00–F07, F09, dan F18 sudah di `develop`. F08 menunggu PR.
+  F10 adalah **stacked branch** di atas F08.
+- **Setelah F08 di-squash merge:** jalankan
+  `git rebase --onto origin/develop feature/F08-sse-streaming feature/F10-docs-architecture`, lalu
+  push (`--force-with-lease`) dan buka PR F10.
+- **Berikutnya:** rilis v0.1.0 setelah F08 dan F10 ada di `develop` (CONTRIBUTING.md § Release),
+  lalu M2 dimulai dari F11.
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
@@ -36,7 +40,11 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
   `_stream` model (dites dengan `FakeModel`). Perilaku `ChatOpenAI` tanpa `streaming=True` belum
   diverifikasi dengan endpoint asli (butuh network). Cek saat test integrasi atau saat smoke test
   F14.
-- **Pelajaran:** package `langchain` (`create_agent`) tidak terpasang. Graph tool-calling di test
+- **Pelajaran:**
+  - `ruff format --check .` (dipakai CI) juga memformat blok kode Python di file Markdown, tetapi hook
+    pre-commit ruff hanya berjalan untuk file Python. Jalankan `uv run ruff format --check .` setelah
+    mengubah contoh kode di dokumen.
+  - Package `langchain` (`create_agent`) tidak terpasang. Graph tool-calling di test
   memakai `ToolNode` + `tools_condition` dari `langgraph.prebuilt`.
 
 ### 2026-11-04: Rename & delete thread dari F18
@@ -335,7 +343,10 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pe
 
 ## TODO Berikutnya
 
-- [ ] User: push `feature/F08-sse-streaming`, lalu buka PR F08 ke `develop`.
+- [ ] User: push `feature/F08-sse-streaming` dan `feature/F10-docs-architecture`, lalu buka PR F08.
+- [ ] User: setelah F08 di-merge, rebase F10 ke `develop` lalu buka PR F10.
 - [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
       (CONTRIBUTING.md § Setup Awal Repo).
-- [ ] F10: `docs/ARCHITECTURE.md`, lalu rilis v0.1.0.
+- [ ] Rilis v0.1.0: `release/v0.1.0` dari `develop`, bump `version`, pindahkan `[Unreleased]` di
+      CHANGELOG, PR ke `main` dengan merge commit (`--no-ff`), tag `v0.1.0`, back-merge ke
+      `develop`.

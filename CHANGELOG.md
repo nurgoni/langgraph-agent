@@ -33,3 +33,5 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
   dan tampil di listing. Thread milik user lain menjawab 404 (F18).
 - Endpoint `/stream` (SSE): frame `token`, `message`, dan `error`, selalu diakhiri `[DONE]`, dengan
   header ID dan cek kepemilikan yang sama seperti `/invoke` (F08).
+- `docs/ARCHITECTURE.md`: lifespan, alur request, kepemilikan thread, error, persistence, dan cara
+  menambah agent (F10).
