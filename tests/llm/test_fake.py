@@ -1,9 +1,12 @@
 import pytest
-from langchain_core.messages import AIMessage, AIMessageChunk
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 from langchain_core.messages.tool import tool_call
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
+from langgraph.checkpoint.memory import InMemorySaver
 from pydantic import ValidationError
 
+from agent_service.agents.chatbot import ChatbotAgent
 from agent_service.llm.fake import DEFAULT_FAKE_RESPONSE, FakeModel
 
 ADD_CALL = tool_call(name="add", args={"a": 1, "b": 2}, id="call-1")
@@ -75,3 +78,22 @@ async def test_astream_yields_same_tokens_as_stream() -> None:
     tokens = [chunk.content async for chunk in model.astream("hi") if chunk.content]
 
     assert tokens == ["satu ", "dua"]
+
+
+def test_each_call_returns_a_fresh_message() -> None:
+    model = FakeModel(responses=["sama"])
+
+    first, second = model.invoke("a"), model.invoke("b")
+
+    assert first is not second
+    assert first is not model.responses[0]
+
+
+async def test_repeated_response_is_appended_to_thread_history() -> None:
+    graph = ChatbotAgent().build(FakeModel(responses=["sama"]), InMemorySaver())
+    config: RunnableConfig = {"configurable": {"thread_id": "t1"}}
+
+    await graph.ainvoke({"messages": [HumanMessage("a")]}, config)
+    result = await graph.ainvoke({"messages": [HumanMessage("b")]}, config)
+
+    assert [m.content for m in result["messages"]] == ["a", "sama", "b", "sama"]

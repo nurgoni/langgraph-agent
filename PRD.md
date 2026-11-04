@@ -109,7 +109,11 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
   `Authorization: Bearer <AUTH_SECRET>`.
 - **FR-12** Jika thread sedang dalam status `interrupt`, input berikutnya dikirim sebagai
   `Command(resume=...)`.
-- **FR-13** `thread_id` dan `user_id` yang kosong diisi UUID baru dan dikembalikan ke client.
+- **FR-13** `thread_id` dan `user_id` yang kosong diisi UUID baru dan dikembalikan ke client lewat
+  header response `X-Thread-Id` dan `X-User-Id` (`/invoke` dan `/stream`).
+- **FR-28** Thread yang sudah ada hanya bisa dilanjutkan (`/invoke`, `/stream`) dan dibaca
+  (`/history`) oleh user dan agent yang membuatnya. Selain itu → 404. Kepemilikan dicek dari
+  metadata checkpoint (`user_id`, `agent_id`).
 - **FR-14** `model` divalidasi terhadap allowlist `AVAILABLE_MODELS`. Model tidak dikenal → 422.
 - **FR-15** `agent_id` tidak dikenal → 404. Agent unavailable → 503.
 - **FR-27** `agent_config` divalidasi **per agent**. Setiap agent mendeklarasikan

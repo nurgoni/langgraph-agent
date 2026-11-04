@@ -21,7 +21,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F04 | API schema | M1 | done |
 | F05 | Agent registry | M1 | done |
 | F06 | Service app | M1 | done |
-| F07 | Invoke & history | M1 | todo |
+| F07 | Invoke & history | M1 | done |
 | F08 | SSE streaming | M1 | todo |
 | F09 | User threads | M1 | todo |
 | F18 | Thread rename & delete | M1 | todo |
@@ -372,14 +372,32 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
   `service/utils.py:42` (`langchain_to_chat_message`), `:82` (`messages_from_checkpoint`).
 - **Rencana commit:**
   1. `feat(service): add message converters from langchain to api schema`
-  2. `feat(service): add RunInputBuilder with interrupt resume support`
-  3. `feat(service): validate agent_config against agent config schema`
-  4. `feat(service): add invoke endpoint`
-  5. `feat(service): add history endpoint`
+  2. `feat(service): add thread ownership check from checkpoint metadata`
+  3. `feat(service): build run input with config validation and resume`
+  4. `feat(schema): add thread and user id header names`
+  5. `feat(service): add invoke endpoint`
+  6. `fix(llm): return a fresh message from FakeModel on every call`
+  7. `feat(service): add history endpoint`
+  8. `docs: record F07 invoke and history decisions`
+- **Penyesuaian saat implementasi:**
+  - Keputusan user: ID thread/user dikembalikan lewat header `X-Thread-Id`/`X-User-Id`
+    (`schema/headers.py`), bukan field di `ChatMessage`. `/invoke` juga mengecek pemilik thread
+    (FR-28 baru), bukan hanya `/history`.
+  - `RunInputBuilder` ditulis sebagai function `build_run_input` (tanpa state, aturan praktis
+    AGENTS.md). Commit validasi config digabung ke sini.
+  - Config tidak valid dilempar sebagai `RequestValidationError` dengan `loc` diawali
+    `("body", "agent_config")`, sehingga format 422-nya sama dengan error body lain.
+    `InvalidAgentConfigError` tidak dibuat.
+  - Ditambah `service/thread_access.py` (`ThreadNotFoundError` → 404, `ensure_thread_owner`).
+  - Converter: `messages_from_state` menjadi `state_to_chat_messages`, ditambah
+    `final_chat_message` dan `interrupt_to_chat_message`. Fallback `__previous__` (functional API)
+    tidak di-port.
+  - Bug `FakeModel` dari F02 ditemukan lewat test history dan diperbaiki: respons kini disalin di
+    setiap panggilan.
 - **Acceptance criteria:**
-  - [ ] Thread yang sedang interrupt menerima `Command(resume=...)` (dites dengan agent fake).
-  - [ ] `thread_id` kosong diisi otomatis dan dikembalikan.
-  - [ ] `agent_config` yang tidak valid menghasilkan 422 beserta nama field yang salah. Config
+  - [x] Thread yang sedang interrupt menerima `Command(resume=...)` (dites dengan agent fake).
+  - [x] `thread_id` kosong diisi otomatis dan dikembalikan.
+  - [x] `agent_config` yang tidak valid menghasilkan 422 beserta nama field yang salah. Config
         yang valid sampai ke node graph lewat `configurable`.
 - **Squash title:** `feat(service): add invoke and history endpoints (F07)`
 

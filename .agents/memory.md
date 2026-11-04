@@ -13,15 +13,39 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** M1 berjalan. F00–F05 sudah di `develop`. F06 selesai di `feature/F06-service-app`,
-  menunggu push dan PR.
-- **Berikutnya:** F07 (invoke & history), lalu F09 (lihat urutan di ROADMAP).
+- **Fase:** M1 berjalan. F00–F06 sudah di `develop`. F07 selesai di
+  `feature/F07-invoke-history`, menunggu push dan PR.
+- **Berikutnya:** F09 (user threads), lalu F18 (lihat urutan di ROADMAP).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Terakhir diperbarui:** 2026-11-03
 
 ## Decision Log
+
+### 2026-11-03: Invoke & history dari F07
+
+- **Keputusan user:**
+  - ID thread/user dikembalikan lewat header `X-Thread-Id`/`X-User-Id` (`schema/headers.py`).
+    `/stream` (F08) dan client (F11) memakai header yang sama.
+  - Kepemilikan thread juga dicek di `/invoke` (dan nanti `/stream`): thread yang sudah ada milik
+    user/agent lain → 404 (FR-28). Client wajib mengirim `user_id` yang sama untuk melanjutkan
+    thread.
+- **Keputusan desain:**
+  - Setiap run menyimpan `run_metadata(user_id, agent_id)` di `RunnableConfig["metadata"]`.
+    LangGraph menyalinnya ke metadata checkpoint, dan `ensure_thread_owner` membacanya.
+    `snapshot.metadata is None` berarti thread baru. F09/F18 memakai metadata yang sama.
+  - `build_run_input` adalah function. Config agent yang tidak valid → `RequestValidationError`
+    dengan `loc` `body.agent_config.*`.
+  - Route punya dua varian, `/{agent_id}/x` dan `/x` (agent default), yang memanggil satu helper.
+- **Pelajaran:**
+  - Reducer `add_messages` mengisi `id` message secara in-place. Model atau node yang mengembalikan
+    objek message yang sama berulang kali akan **menimpa** message lama. Selalu kembalikan objek
+    baru (`FakeModel` kini memakai `model_copy(deep=True)`).
+  - Pre-commit menyimpan sementara perubahan yang belum di-stage, tapi file untracked tetap
+    dicek pyrefly. Stage semua file yang dibutuhkan oleh file untracked.
+  - Dengan `--import-mode=importlib`, file test tidak bisa saling import. Agent fake bersama
+    disediakan lewat fixture di `tests/service/conftest.py`.
 
 ### 2026-11-03: Service app dari F06
 
@@ -260,7 +284,7 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pe
 
 ## TODO Berikutnya
 
-- [ ] User: push `feature/F06-service-app`, lalu buka PR F06 ke `develop`.
+- [ ] User: push `feature/F07-invoke-history`, lalu buka PR F07 ke `develop`.
 - [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
       (CONTRIBUTING.md § Setup Awal Repo).
-- [ ] F07: invoke & history (`RunInputBuilder`, validasi `agent_config` lewat `parse_config` → 422).
+- [ ] F09: user threads (`/threads`, filter berdasarkan metadata `user_id`/`agent_id`).

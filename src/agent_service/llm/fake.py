@@ -111,10 +111,15 @@ class FakeModel(BaseChatModel):
             yield ChatGenerationChunk(message=self._tool_call_chunk(response))
 
     def _next_response(self) -> AIMessage:
-        """Ambil respons pada giliran ini, lalu majukan indeks secara melingkar."""
+        """Ambil salinan respons pada giliran ini, lalu majukan indeks secara melingkar.
+
+        Salinan dibutuhkan karena reducer `add_messages` LangGraph mengisi `id` message secara
+        in-place. Tanpa salinan, respons yang berulang punya `id` sama dan menimpa jawaban lama
+        di riwayat thread.
+        """
         response = self.responses[self._next_index]
         self._next_index = (self._next_index + 1) % len(self.responses)
-        return response
+        return response.model_copy(deep=True)
 
     @staticmethod
     def _tool_call_chunk(response: AIMessage) -> AIMessageChunk:

@@ -24,3 +24,6 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
   model, error `AgentNotFoundError`/`AgentUnavailableError`, dan agent `chatbot` (F05).
 - Service FastAPI: `create_app` dengan lifespan, bearer auth opsional, pemetaan error domain ke
   404/422/503, endpoint `/health` dan `/info`, serta entrypoint `run_service` (F06).
+- Endpoint `/invoke` dan `/history` (juga varian agent default). ID thread/user dikembalikan lewat
+  header `X-Thread-Id`/`X-User-Id`, thread milik user atau agent lain menjawab 404, dan
+  `agent_config` divalidasi per agent (F07).
