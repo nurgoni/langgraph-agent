@@ -154,6 +154,7 @@ Aturan penulisan kode (prosedur 5 langkah, Class vs Function, checklist Zen) ada
 |---|---|
 | [AGENTS.md](AGENTS.md) | Aturan kode dan workflow untuk coding agent dan kontributor |
 | [PRD.md](PRD.md) | Requirement, kontrak API, scope, milestone |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Lifespan, alur request, kepemilikan thread, cara menambah agent |
 | [.agents/memory.md](.agents/memory.md) | Status, decision log, pelajaran dari kode lama |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Daftar fitur, urutan eksekusi, rencana commit per fitur |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Git lifecycle: branch, commit message, PR, release, hotfix |

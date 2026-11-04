@@ -7,6 +7,7 @@ mulai bekerja.
 - Apa yang dibangun dan kenapa → [PRD.md](PRD.md)
 - Cara menjalankan project → [README.md](README.md)
 - Keputusan, status, dan konteks terakhir → [.agents/memory.md](.agents/memory.md)
+- Cara kerja service (lifespan, alur request, menambah agent) → [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - Daftar fitur dan urutan pengerjaan → [docs/ROADMAP.md](docs/ROADMAP.md)
 - Branch, commit, PR, dan release → [CONTRIBUTING.md](CONTRIBUTING.md)
 
