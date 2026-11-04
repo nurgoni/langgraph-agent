@@ -13,15 +13,31 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** M1 berjalan. F00–F07 dan F09 sudah di `develop`. F18 selesai di
-  `feature/F18-thread-management`, menunggu push dan PR.
-- **Berikutnya:** F08 (SSE streaming), lalu F10, lalu rilis v0.1.0 (lihat urutan di ROADMAP).
+- **Fase:** M1 berjalan. F00–F07, F09, dan F18 sudah di `develop`. F08 selesai di
+  `feature/F08-sse-streaming`, menunggu push dan PR.
+- **Berikutnya:** F10 (dokumentasi arsitektur), lalu rilis v0.1.0.
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Terakhir diperbarui:** 2026-11-04
 
 ## Decision Log
+
+### 2026-11-04: SSE streaming dari F08
+
+- **Keputusan:**
+  - Route `/stream` menjalankan `build_run_input` sebelum membuat `StreamingResponse`, jadi semua
+    error request tetap berupa status HTTP. `StreamService` hanya menangani error di tengah run.
+  - `StreamService` memakai stream mode `updates` (message baru + `__interrupt__`), `messages`
+    (token), dan `custom` (`get_stream_writer`, berupa dict atau message LangChain).
+  - `[DONE]` di-yield setelah `try/except Exception`, **bukan di `finally`**. Yield di dalam
+    `finally` saat client putus memicu `RuntimeError` (async generator mengabaikan `GeneratorExit`).
+- **Status catatan F02:** jalur token streaming LangGraph `stream_mode="messages"` terbukti memakai
+  `_stream` model (dites dengan `FakeModel`). Perilaku `ChatOpenAI` tanpa `streaming=True` belum
+  diverifikasi dengan endpoint asli (butuh network). Cek saat test integrasi atau saat smoke test
+  F14.
+- **Pelajaran:** package `langchain` (`create_agent`) tidak terpasang. Graph tool-calling di test
+  memakai `ToolNode` + `tools_condition` dari `langgraph.prebuilt`.
 
 ### 2026-11-04: Rename & delete thread dari F18
 
@@ -319,7 +335,7 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pe
 
 ## TODO Berikutnya
 
-- [ ] User: push `feature/F18-thread-management`, lalu buka PR F18 ke `develop`.
+- [ ] User: push `feature/F08-sse-streaming`, lalu buka PR F08 ke `develop`.
 - [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
       (CONTRIBUTING.md § Setup Awal Repo).
-- [ ] F08: SSE streaming (`StreamService`, header ID yang sama dengan `/invoke`, cek kepemilikan).
+- [ ] F10: `docs/ARCHITECTURE.md`, lalu rilis v0.1.0.

@@ -31,3 +31,5 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
   dengan `limit` 1–100 (F09).
 - Rename (`PATCH`) dan hapus (`DELETE`) thread. Judul custom disimpan di tabel `thread_metadata`
   dan tampil di listing. Thread milik user lain menjawab 404 (F18).
+- Endpoint `/stream` (SSE): frame `token`, `message`, dan `error`, selalu diakhiri `[DONE]`, dengan
+  header ID dan cek kepemilikan yang sama seperti `/invoke` (F08).

@@ -92,7 +92,10 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
   ditampilkan), agent default (`chatbot`), daftar model, dan model default.
 - **FR-6** `POST /{agent_id}/invoke` menjalankan agent sampai selesai dan mengembalikan
   `ChatMessage` terakhir.
-- **FR-7** `POST /{agent_id}/stream` mengalirkan event SSE (lihat §7.2).
+- **FR-7** `POST /{agent_id}/stream` mengalirkan event SSE (lihat §7.3). Request yang tidak valid
+  (agent/model tidak dikenal, `agent_config` salah, thread milik user lain) dijawab dengan status
+  HTTP biasa sebelum stream dimulai. Error di tengah run menjadi frame `error` dengan pesan
+  generik, lalu `[DONE]`.
 - **FR-8** `POST /{agent_id}/history` mengembalikan riwayat message satu thread. Request wajib
   menyertakan `user_id`. Thread milik user lain diperlakukan sebagai tidak ada (404), sama dengan
   FR-25/26.
@@ -204,7 +207,10 @@ data: {"type": "error",   "content": "pesan error"}
 data: [DONE]
 ```
 
-Stream selalu diakhiri `[DONE]`, termasuk ketika terjadi error.
+Stream selalu diakhiri `[DONE]`, termasuk ketika terjadi error. Urutan per run: frame `token`
+(jika `stream_tokens`), lalu frame `message` untuk setiap message baru dari node (jawaban AI, tool
+call, hasil tool, pertanyaan interrupt, event custom), lalu `[DONE]`. Input human tidak di-echo.
+Node yang LLM-nya diberi tag `skip_stream` tidak menghasilkan frame `token`.
 
 ## 8. Konfigurasi (env var v1)
 
