@@ -27,3 +27,5 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 - Endpoint `/invoke` dan `/history` (juga varian agent default). ID thread/user dikembalikan lewat
   header `X-Thread-Id`/`X-User-Id`, thread milik user atau agent lain menjawab 404, dan
   `agent_config` divalidasi per agent (F07).
+- Endpoint `/threads`: daftar thread milik user per agent, yang terakhir di-update lebih dulu,
+  dengan `limit` 1–100 (F09).

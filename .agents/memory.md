@@ -13,15 +13,34 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** M1 berjalan. F00–F06 sudah di `develop`. F07 selesai di
-  `feature/F07-invoke-history`, menunggu push dan PR.
-- **Berikutnya:** F09 (user threads), lalu F18 (lihat urutan di ROADMAP).
+- **Fase:** M1 berjalan. F00–F07 sudah di `develop`. F09 selesai di
+  `feature/F09-user-threads`, menunggu push dan PR.
+- **Berikutnya:** F18 (rename & delete thread), lalu F08 (lihat urutan di ROADMAP).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
-- **Terakhir diperbarui:** 2026-11-03
+- **Terakhir diperbarui:** 2026-11-04
 
 ## Decision Log
+
+### 2026-11-04: User threads dari F09
+
+- **Keputusan:**
+  - `ThreadRepository(checkpointer)` dibuat sekali di lifespan. Listing membaca head checkpoint
+    (`step == -1`) dengan filter metadata `user_id` + `agent_id`, mengecek ulang pemilik di setiap
+    head, lalu mengurutkan berdasarkan `checkpoint_id` tip (UUID berurutan waktu). Pola dan
+    konstanta (`THREAD_HEAD_STEP`, `MAX_THREAD_HEADS`, `HEAD_PAGE_SIZE`, `MAX_HEAD_ROWS`) dari kode
+    lama.
+  - Paginasi = `limit` saja. Judul fallback `DEFAULT_THREAD_TITLE`.
+  - F18 menambah rename/delete ke `ThreadRepository` (atau `ThreadService` di atasnya).
+- **Pelajaran:**
+  - Sudah diverifikasi di langgraph 1.2/checkpoint 4.3: checkpoint input tiap thread ber-`step -1`
+    dan membawa metadata run. `AsyncSqliteSaver.alist(None, filter=...)` mengurutkan lintas thread
+    berdasarkan `checkpoint_id` menurun.
+  - Test listing memakai `CheckpointerProvider` SQLite asli di `tmp_path`, karena urutan dan filter
+    `InMemorySaver` tidak identik dengan SQLite.
+  - Saat user bilang F sebelumnya sudah di-merge tapi `origin/develop` belum berisi commit-nya,
+    jalankan `git fetch origin` sendiri sebelum membuat branch.
 
 ### 2026-11-03: Invoke & history dari F07
 
@@ -284,7 +303,7 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pe
 
 ## TODO Berikutnya
 
-- [ ] User: push `feature/F07-invoke-history`, lalu buka PR F07 ke `develop`.
+- [ ] User: push `feature/F09-user-threads`, lalu buka PR F09 ke `develop`.
 - [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
       (CONTRIBUTING.md § Setup Awal Repo).
-- [ ] F09: user threads (`/threads`, filter berdasarkan metadata `user_id`/`agent_id`).
+- [ ] F18: rename & delete thread (`thread_metadata` di SQLite yang sama, judul custom di listing).
