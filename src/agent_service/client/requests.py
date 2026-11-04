@@ -7,11 +7,13 @@ from urllib.parse import quote
 import httpx
 from pydantic import BaseModel, JsonValue, ValidationError
 
-from agent_service.client.errors import AgentClientError
+from agent_service.client.errors import AgentClientError, ServiceUnreachableError
 from agent_service.schema.headers import THREAD_ID_HEADER, USER_ID_HEADER
 from agent_service.schema.responses import ChatMessage
 
 DETAIL_KEY: Final = "detail"
+# Error httpx yang berarti koneksi tidak pernah terbentuk, berbeda dari koneksi yang putus.
+CONNECT_ERRORS: Final = (httpx.ConnectError, httpx.ConnectTimeout)
 URL_SAFE_CHARS: Final = ""
 
 
@@ -104,3 +106,19 @@ def run_ids(response: httpx.Response) -> tuple[str, str]:
             status_code=response.status_code,
         )
     return thread_id, user_id
+
+
+def request_error(error: httpx.RequestError, context: str) -> AgentClientError:
+    """Bungkus error httpx. Gagal membuka koneksi menjadi `ServiceUnreachableError`.
+
+    Args:
+        error: Error dari httpx.
+        context: Ringkasan request, misalnya `"POST /chatbot/invoke"`.
+
+    Returns:
+        Error untuk dilempar pemanggil dengan `raise ... from error`.
+    """
+    message = f"{context} failed: {error}"
+    if isinstance(error, CONNECT_ERRORS):
+        return ServiceUnreachableError(message)
+    return AgentClientError(message)

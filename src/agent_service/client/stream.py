@@ -8,7 +8,12 @@ from typing import Self
 import httpx
 
 from agent_service.client.errors import AgentClientError
-from agent_service.client.requests import RequestSpec, raise_for_status, run_ids
+from agent_service.client.requests import (
+    RequestSpec,
+    raise_for_status,
+    request_error,
+    run_ids,
+)
 from agent_service.client.sse import SseParser
 from agent_service.schema.stream import StreamEvent
 
@@ -68,7 +73,7 @@ class StreamRun:
                 response.read()
         except httpx.RequestError as error:
             self._exit_stack.close()
-            raise AgentClientError(f"Stream request failed: {error}") from error
+            raise request_error(error, "Stream request") from error
         self._start(response)
         return self
 
@@ -167,7 +172,7 @@ class AsyncStreamRun:
                 await response.aread()
         except httpx.RequestError as error:
             await self._exit_stack.aclose()
-            raise AgentClientError(f"Stream request failed: {error}") from error
+            raise request_error(error, "Stream request") from error
         await self._start(response)
         return self
 

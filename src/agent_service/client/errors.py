@@ -25,3 +25,11 @@ class AgentClientError(Exception):
         super().__init__(message)
         self.status_code = status_code
         self.detail = detail
+
+
+class ServiceUnreachableError(AgentClientError):
+    """Koneksi ke service gagal dibuka: service belum jalan, URL salah, atau host tidak terjangkau.
+
+    >>> isinstance(ServiceUnreachableError("Connection refused"), AgentClientError)
+    True
+    """

@@ -27,7 +27,7 @@ src/agent_service/
 ├── schema/    Model Pydantic untuk API: request, response, event SSE, nama header
 ├── service/   create_app, lifespan, auth, route, StreamService, ThreadRepository
 ├── client/    AgentClient (sync + async), StreamRun, SseParser
-└── ui/        (M2) Streamlit
+└── ui/        Streamlit: app, UiSettings, ChatSession, ChatView, MessageRenderer
 ```
 
 Panah berarti "boleh import". Import ke arah sebaliknya dilarang.
@@ -222,6 +222,21 @@ oleh `tests/client/test_layering.py`.
 - **Satu `RequestSpec` per operasi.** Spec ini dipakai bersama oleh method sync dan async
   (berawalan `a`).
 
+## UI
+
+`ui/` hanya bergantung pada `client/`, `schema/`, streamlit, dan pydantic. Aturan ini dicek oleh
+`tests/ui/test_layering.py`.
+
+- **`app.py`** dijalankan ulang oleh Streamlit pada setiap interaksi. `UiSettings` membaca
+  `AGENT_URL`/`AUTH_SECRET`. Satu `AgentClient` dibagi bersama semua session lewat
+  `st.cache_resource`.
+- **`ChatSession`** (`st.session_state`) menyimpan `thread_id`, `user_id`, dan message yang sudah
+  tampil. ID diambil dari header respons stream pertama.
+- **`ChatView`** memutar ulang riwayat, lalu men-stream jawaban baru. Pesan user baru disimpan
+  setelah service menerima request.
+- **`MessageRenderer`** punya satu method per tipe message. Jawaban AI, tool call, dan hasil tool
+  berurutan digabung dalam satu blok chat, dengan tool call tampil sebagai `st.status`.
+
 ## Testing
 
 - **Tidak ada network di unit test.** Fixture autouse `block_network` (`tests/conftest.py`)
@@ -232,5 +247,7 @@ oleh `tests/client/test_layering.py`.
   dengan `app.router.lifespan_context(app)`, karena `ASGITransport` melewatinya.
 - **Client dites dua kali:** dengan `httpx.MockTransport`, dan sebagai test kontrak terhadap app
   asli lewat `httpx.ASGITransport` (`tests/client/test_client_contract.py`).
+- **UI dites dengan `streamlit.testing.v1.AppTest`.** Test menyuntikkan `AgentClient` dengan
+  `httpx.MockTransport` lewat `st.session_state[CLIENT_OVERRIDE_KEY]`.
 - **pytest memakai `--import-mode=importlib`.** Akibatnya file test tidak saling import, dan fake
   bersama disediakan lewat fixture.
