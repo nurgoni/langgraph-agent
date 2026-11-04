@@ -14,12 +14,15 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import CheckpointTuple
 
 from agent_service.agents.base import Checkpointer
+from agent_service.memory.thread_metadata import ThreadMetadataRepository
 from agent_service.schema.requests import TITLE_MAX_LENGTH
 from agent_service.schema.responses import ThreadSummary
 from agent_service.service.converters import MESSAGES_KEY, content_to_text
 from agent_service.service.thread_access import (
     AGENT_ID_METADATA_KEY,
     USER_ID_METADATA_KEY,
+    ThreadNotFoundError,
+    ensure_thread_owner,
     is_thread_owner,
 )
 
@@ -43,15 +46,16 @@ DEFAULT_THREAD_TITLE: Final = "Untitled thread"
 
 
 class ThreadRepository:
-    """Membaca ringkasan thread milik user dari checkpointer.
+    """Operasi thread milik user: daftar, rename, dan hapus.
 
-    Dibuat sekali di lifespan. Class karena memegang dependency checkpointer dan batas paging,
-    dan menjadi tempat operasi thread berikutnya (rename/delete di F18).
+    Dibuat sekali di lifespan. Checkpoint menjadi sumber kepemilikan dan isi thread, sedangkan
+    judul custom dibaca dari `ThreadMetadataRepository`.
     """
 
     def __init__(
         self,
         checkpointer: Checkpointer,
+        titles: ThreadMetadataRepository,
         page_size: int = HEAD_PAGE_SIZE,
         max_threads: int = MAX_THREAD_HEADS,
         max_rows: int = MAX_HEAD_ROWS,
@@ -60,11 +64,13 @@ class ThreadRepository:
 
         Args:
             checkpointer: Saver yang sama dengan yang dipakai graph agent.
+            titles: Penyimpanan judul custom thread.
             page_size: Jumlah head per query ke checkpointer.
             max_threads: Batas thread unik yang dipertimbangkan sebelum diurutkan.
             max_rows: Batas total baris head yang dibaca.
         """
         self._checkpointer = checkpointer
+        self._titles = titles
         self._page_size = page_size
         self._max_threads = max_threads
         self._max_rows = max_rows
@@ -91,6 +97,41 @@ class ThreadRepository:
         # checkpoint_id adalah UUID berurutan waktu, jadi ID tip mengurutkan update terakhir.
         ranked.sort(key=lambda item: item[0], reverse=True)
         return [summary for _, summary in ranked[:limit]]
+
+    async def rename(
+        self, thread_id: str, user_id: str, agent_id: str, title: str
+    ) -> ThreadSummary:
+        """Ganti judul thread dengan judul custom (FR-25).
+
+        Args:
+            thread_id: Thread yang di-rename.
+            user_id: User yang meminta, harus pemilik thread.
+            agent_id: Agent di URL, harus agent yang menjalankan thread.
+            title: Judul baru yang sudah divalidasi schema.
+
+        Returns:
+            Ringkasan thread dengan judul baru.
+
+        Raises:
+            ThreadNotFoundError: Thread tidak ada, atau milik user/agent lain (404).
+        """
+        tip = await self._get_owned_tip(thread_id, user_id, agent_id)
+        await self._titles.set_title(thread_id, title)
+        return _summarize(tip, agent_id, custom_title=title)
+
+    async def _get_owned_tip(self, thread_id: str, user_id: str, agent_id: str) -> CheckpointTuple:
+        """Checkpoint terakhir thread, setelah memastikan pemiliknya.
+
+        Raises:
+            ThreadNotFoundError: Thread tidak ada, atau milik user/agent lain.
+        """
+        tip = await self._checkpointer.aget_tuple(
+            RunnableConfig(configurable={"thread_id": thread_id})
+        )
+        if tip is None:
+            raise ThreadNotFoundError(thread_id)
+        ensure_thread_owner(tip.metadata, thread_id, user_id, agent_id)
+        return tip
 
     async def _list_thread_ids(self, user_id: str, agent_id: str) -> list[str]:
         """Kumpulkan ID thread dari head checkpoint, dari thread terbaru dibuat."""
@@ -140,13 +181,16 @@ def _checkpoint_id(checkpoint: CheckpointTuple) -> str:
     return checkpoint.config["configurable"]["checkpoint_id"]
 
 
-def _summarize(tip: CheckpointTuple, agent_id: str) -> ThreadSummary:
-    """Ringkas checkpoint terakhir thread menjadi `ThreadSummary`."""
+def _summarize(
+    tip: CheckpointTuple, agent_id: str, custom_title: str | None = None
+) -> ThreadSummary:
+    """Ringkas checkpoint terakhir thread. Judul custom menimpa judul dari message human."""
     messages = tip.checkpoint["channel_values"].get(MESSAGES_KEY, [])
+    title = thread_title(messages) if custom_title is None else custom_title
     return ThreadSummary(
         thread_id=tip.config["configurable"]["thread_id"],
         agent_id=agent_id,
-        title=thread_title(messages),
+        title=title,
         updated_at=tip.checkpoint["ts"],
     )
 

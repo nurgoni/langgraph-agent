@@ -1,12 +1,12 @@
-"""Endpoint `/threads`: daftar thread milik user untuk satu agent (FR-9)."""
+"""Endpoint `/threads`: daftar, rename, dan hapus thread milik user (FR-9, FR-25, FR-26)."""
 
 from typing import Annotated
 
 from fastapi import APIRouter, Query
 
 from agent_service.agents.registry import AgentRegistry
-from agent_service.schema.requests import UserThreadsQuery
-from agent_service.schema.responses import UserThreads
+from agent_service.schema.requests import ThreadRenameInput, UserThreadsQuery
+from agent_service.schema.responses import ThreadSummary, UserThreads
 from agent_service.service.dependencies import (
     DefaultAgentIdDep,
     RegistryDep,
@@ -64,3 +64,44 @@ async def list_user_threads(
     registry.get_agent(agent_id)
     threads = await repository.list_threads(query.user_id, agent_id, query.limit)
     return UserThreads(threads=threads)
+
+
+@router.patch("/threads/{thread_id}")
+async def rename_thread_default_agent(
+    thread_id: str,
+    rename_input: ThreadRenameInput,
+    registry: RegistryDep,
+    repository: ThreadRepositoryDep,
+    default_agent_id: DefaultAgentIdDep,
+) -> ThreadSummary:
+    """Sama dengan `PATCH /{agent_id}/threads/{thread_id}` untuk agent default."""
+    return await rename_user_thread(default_agent_id, thread_id, rename_input, registry, repository)
+
+
+@router.patch("/{agent_id}/threads/{thread_id}")
+async def rename_thread_agent(
+    agent_id: str,
+    thread_id: str,
+    rename_input: ThreadRenameInput,
+    registry: RegistryDep,
+    repository: ThreadRepositoryDep,
+) -> ThreadSummary:
+    """Ganti judul thread. Hanya pemilik thread yang boleh. Thread milik user lain → 404."""
+    return await rename_user_thread(agent_id, thread_id, rename_input, registry, repository)
+
+
+async def rename_user_thread(
+    agent_id: str,
+    thread_id: str,
+    rename_input: ThreadRenameInput,
+    registry: AgentRegistry,
+    repository: ThreadRepository,
+) -> ThreadSummary:
+    """Rename thread setelah memastikan agent terdaftar.
+
+    Raises:
+        AgentNotFoundError: Agent tidak terdaftar (404).
+        ThreadNotFoundError: Thread tidak ada, atau milik user/agent lain (404).
+    """
+    registry.get_agent(agent_id)
+    return await repository.rename(thread_id, rename_input.user_id, agent_id, rename_input.title)

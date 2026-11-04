@@ -13,6 +13,7 @@ from agent_service.agents.registry import AgentRegistry
 from agent_service.core.settings import Settings
 from agent_service.llm.factory import ModelFactory
 from agent_service.memory.checkpointer import CheckpointerProvider
+from agent_service.memory.thread_metadata import ThreadMetadataRepository
 from agent_service.service.auth import verify_bearer
 from agent_service.service.errors import register_exception_handlers
 from agent_service.service.routes import health, history, info, invoke, threads
@@ -79,7 +80,8 @@ def _build_lifespan(settings: Settings, agents: Sequence[BaseAgent]) -> Lifespan
     """Buat lifespan yang membuka checkpointer, mendaftarkan, dan memuat semua agent.
 
     Urutan: `ModelFactory` → `CheckpointerProvider` → `AgentRegistry.load_all()`. Factory,
-    registry, dan `ThreadRepository` disimpan di `app.state`. Checkpointer ditutup saat shutdown.
+    registry, dan `ThreadRepository` disimpan di `app.state`. Checkpointer dan penyimpanan judul
+    thread ditutup saat shutdown.
     """
 
     @asynccontextmanager
@@ -87,14 +89,17 @@ def _build_lifespan(settings: Settings, agents: Sequence[BaseAgent]) -> Lifespan
         if settings.auth_secret is None:
             logger.warning("AUTH_SECRET is not set: every endpoint is unauthenticated")
         model_factory = ModelFactory(settings)
-        async with CheckpointerProvider(settings.sqlite_db_path) as checkpointer:
+        async with (
+            CheckpointerProvider(settings.sqlite_db_path) as checkpointer,
+            ThreadMetadataRepository(settings.sqlite_db_path) as titles,
+        ):
             registry = AgentRegistry(model_factory, checkpointer)
             for agent in agents:
                 registry.register(agent)
             await registry.load_all()
             app.state.model_factory = model_factory
             app.state.registry = registry
-            app.state.thread_repository = ThreadRepository(checkpointer)
+            app.state.thread_repository = ThreadRepository(checkpointer, titles)
             yield
         logger.info("Service shut down")
 

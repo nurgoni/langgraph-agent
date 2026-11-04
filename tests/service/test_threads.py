@@ -13,8 +13,9 @@ from agent_service.agents.base import AgentGraph
 from agent_service.agents.chatbot import ChatbotAgent
 from agent_service.llm.fake import FakeModel
 from agent_service.memory.checkpointer import CheckpointerProvider
+from agent_service.memory.thread_metadata import ThreadMetadataRepository
 from agent_service.schema.requests import TITLE_MAX_LENGTH
-from agent_service.service.thread_access import run_metadata
+from agent_service.service.thread_access import ThreadNotFoundError, run_metadata
 from agent_service.service.threads import DEFAULT_THREAD_TITLE, ThreadRepository, thread_title
 
 USER_A = "user-a"
@@ -25,6 +26,17 @@ USER_B = "user-b"
 async def saver(tmp_path: Path) -> AsyncIterator[AsyncSqliteSaver]:
     async with CheckpointerProvider(tmp_path / "threads.db") as checkpointer:
         yield checkpointer
+
+
+@pytest.fixture
+async def titles(tmp_path: Path) -> AsyncIterator[ThreadMetadataRepository]:
+    async with ThreadMetadataRepository(tmp_path / "threads.db") as repository:
+        yield repository
+
+
+@pytest.fixture
+def repository(saver: AsyncSqliteSaver, titles: ThreadMetadataRepository) -> ThreadRepository:
+    return ThreadRepository(saver, titles)
 
 
 @pytest.fixture
@@ -42,82 +54,88 @@ async def send(
     await graph.ainvoke({"messages": [HumanMessage(message)]}, config)
 
 
-async def test_threads_are_isolated_per_user(graph: AgentGraph, saver: AsyncSqliteSaver) -> None:
+async def test_threads_are_isolated_per_user(
+    graph: AgentGraph, repository: ThreadRepository
+) -> None:
     await send(graph, "a1", USER_A, "punya A")
     await send(graph, "b1", USER_B, "punya B")
 
-    threads = await ThreadRepository(saver).list_threads(USER_A, "chatbot", limit=10)
+    threads = await repository.list_threads(USER_A, "chatbot", limit=10)
 
     assert [thread.thread_id for thread in threads] == ["a1"]
 
 
-async def test_threads_are_isolated_per_agent(graph: AgentGraph, saver: AsyncSqliteSaver) -> None:
+async def test_threads_are_isolated_per_agent(
+    graph: AgentGraph, repository: ThreadRepository
+) -> None:
     await send(graph, "a1", USER_A, "lewat chatbot")
     await send(graph, "a2", USER_A, "lewat agent lain", agent_id="other")
 
-    threads = await ThreadRepository(saver).list_threads(USER_A, "chatbot", limit=10)
+    threads = await repository.list_threads(USER_A, "chatbot", limit=10)
 
     assert [thread.thread_id for thread in threads] == ["a1"]
 
 
 async def test_most_recently_updated_thread_comes_first(
-    graph: AgentGraph, saver: AsyncSqliteSaver
+    graph: AgentGraph, repository: ThreadRepository
 ) -> None:
     await send(graph, "old", USER_A, "pertama")
     await send(graph, "new", USER_A, "kedua")
     await send(graph, "old", USER_A, "lanjut thread lama")
 
-    threads = await ThreadRepository(saver).list_threads(USER_A, "chatbot", limit=10)
+    threads = await repository.list_threads(USER_A, "chatbot", limit=10)
 
     assert [thread.thread_id for thread in threads] == ["old", "new"]
 
 
 async def test_summary_has_title_agent_and_update_time(
-    graph: AgentGraph, saver: AsyncSqliteSaver
+    graph: AgentGraph, repository: ThreadRepository
 ) -> None:
     await send(graph, "a1", USER_A, "Tolong ringkas dokumen")
     await send(graph, "a1", USER_A, "Pesan kedua")
 
-    [thread] = await ThreadRepository(saver).list_threads(USER_A, "chatbot", limit=10)
+    [thread] = await repository.list_threads(USER_A, "chatbot", limit=10)
 
     assert thread.title == "Tolong ringkas dokumen"
     assert thread.agent_id == "chatbot"
     assert thread.updated_at is not None
 
 
-async def test_limit_caps_result(graph: AgentGraph, saver: AsyncSqliteSaver) -> None:
+async def test_limit_caps_result(graph: AgentGraph, repository: ThreadRepository) -> None:
     for index in range(3):
         await send(graph, f"t{index}", USER_A, "halo")
 
-    threads = await ThreadRepository(saver).list_threads(USER_A, "chatbot", limit=2)
+    threads = await repository.list_threads(USER_A, "chatbot", limit=2)
 
     assert [thread.thread_id for thread in threads] == ["t2", "t1"]
 
 
 async def test_paging_collects_threads_across_pages(
-    graph: AgentGraph, saver: AsyncSqliteSaver
+    graph: AgentGraph, saver: AsyncSqliteSaver, titles: ThreadMetadataRepository
 ) -> None:
     for index in range(5):
         await send(graph, f"t{index}", USER_A, "halo")
 
-    repository = ThreadRepository(saver, page_size=2)
+    repository = ThreadRepository(saver, titles, page_size=2)
     threads = await repository.list_threads(USER_A, "chatbot", limit=10)
 
     assert len(threads) == 5
 
 
-async def test_max_threads_bounds_scan(graph: AgentGraph, saver: AsyncSqliteSaver) -> None:
+async def test_max_threads_bounds_scan(
+    graph: AgentGraph, saver: AsyncSqliteSaver, titles: ThreadMetadataRepository
+) -> None:
     for index in range(4):
         await send(graph, f"t{index}", USER_A, "halo")
 
-    repository = ThreadRepository(saver, page_size=2, max_threads=2)
+    repository = ThreadRepository(saver, titles, page_size=2, max_threads=2)
     threads = await repository.list_threads(USER_A, "chatbot", limit=10)
 
     assert [thread.thread_id for thread in threads] == ["t3", "t2"]
 
 
-async def test_unknown_user_has_no_threads(saver: AsyncSqliteSaver) -> None:
-    assert await ThreadRepository(saver).list_threads("nobody", "chatbot", limit=10) == []
+async def test_unknown_user_has_no_threads(repository: ThreadRepository) -> None:
+    assert await repository.list_threads("nobody", "chatbot", limit=10) == []
 
 
 def test_title_is_truncated() -> None:
@@ -148,14 +166,50 @@ class OwnerFilterIgnoringSaver(AsyncSqliteSaver):
 
 
 async def test_owner_is_rechecked_when_saver_ignores_filter(
-    graph: AgentGraph, saver: AsyncSqliteSaver, caplog: pytest.LogCaptureFixture
+    graph: AgentGraph,
+    saver: AsyncSqliteSaver,
+    titles: ThreadMetadataRepository,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     await send(graph, "a1", USER_A, "punya A")
     await send(graph, "b1", USER_B, "punya B")
     leaky_saver = OwnerFilterIgnoringSaver(saver.conn)
 
     with caplog.at_level(logging.WARNING):
-        threads = await ThreadRepository(leaky_saver).list_threads(USER_A, "chatbot", limit=10)
+        threads = await ThreadRepository(leaky_saver, titles).list_threads(
+            USER_A, "chatbot", limit=10
+        )
 
     assert [thread.thread_id for thread in threads] == ["a1"]
     assert "Skipping thread b1" in caplog.text
+
+
+async def test_rename_returns_summary_with_new_title(
+    graph: AgentGraph, repository: ThreadRepository, titles: ThreadMetadataRepository
+) -> None:
+    await send(graph, "a1", USER_A, "Judul otomatis")
+
+    summary = await repository.rename("a1", USER_A, "chatbot", "Judul baru")
+
+    assert (summary.thread_id, summary.title) == ("a1", "Judul baru")
+    assert await titles.get_titles(["a1"]) == {"a1": "Judul baru"}
+
+
+@pytest.mark.parametrize(
+    ("thread_id", "user_id", "agent_id"),
+    [("a1", USER_B, "chatbot"), ("a1", USER_A, "other"), ("missing", USER_A, "chatbot")],
+)
+async def test_rename_of_unowned_thread_is_not_found(
+    graph: AgentGraph,
+    repository: ThreadRepository,
+    titles: ThreadMetadataRepository,
+    thread_id: str,
+    user_id: str,
+    agent_id: str,
+) -> None:
+    await send(graph, "a1", USER_A, "punya A")
+
+    with pytest.raises(ThreadNotFoundError):
+        await repository.rename(thread_id, user_id, agent_id, "Dibajak")
+
+    assert await titles.get_titles(["a1", "missing"]) == {}
