@@ -6,6 +6,8 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-04
+
 ### Added
 
 - Dokumen fondasi: AGENTS.md, PRD.md, README.md, CONTRIBUTING.md, docs/ROADMAP.md,
@@ -35,3 +37,6 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
   header ID dan cek kepemilikan yang sama seperti `/invoke` (F08).
 - `docs/ARCHITECTURE.md`: lifespan, alur request, kepemilikan thread, error, persistence, dan cara
   menambah agent (F10).
+
+[Unreleased]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/nurgoni/langgraph-boilerplate-agent/releases/tag/v0.1.0
