@@ -25,7 +25,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F08 | SSE streaming | M1 | done |
 | F09 | User threads | M1 | done |
 | F18 | Thread rename & delete | M1 | done |
-| F10 | Architecture docs | M1 | todo |
+| F10 | Architecture docs | M1 | done |
 | F11 | Agent client | M2 | todo |
 | F12 | UI chat | M2 | todo |
 | F13 | UI sidebar & threads | M2 | todo |
@@ -514,6 +514,13 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
 - **Rencana commit:**
   1. `docs: add architecture overview with request flow`
   2. `docs: link architecture doc from readme and agents guide`
+  3. `docs: record F10 and v0.1.0 release steps`
+- **Penyesuaian saat implementasi:**
+  - Dibuat sebagai stacked branch di atas `feature/F08-sse-streaming`, karena dokumen ini
+    menjelaskan `StreamService` dan keduanya mengubah ROADMAP/memory.
+  - Nama di dokumen mengikuti kode sebenarnya (`build_run_input`, `ThreadRepository`,
+    `ThreadMetadataRepository`), bukan nama rencana awal (`RunInputBuilder`).
+  - Ditambah bagian kepemilikan thread, tabel error, persistence, dan testing.
 - **Squash title:** `docs: add architecture documentation (F10)`
 - **Setelah merge:** rilis **v0.1.0**.
 
