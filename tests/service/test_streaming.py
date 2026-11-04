@@ -1,13 +1,42 @@
 import json
+import logging
+from collections.abc import Awaitable, Callable
 
+import pytest
+from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.messages import ChatMessage as LangChainChatMessage
+from langchain_core.tools import tool
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.config import get_stream_writer
+from langgraph.graph import END, START, MessagesState, StateGraph
+from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.types import interrupt
+
+from agent_service.agents.base import AgentGraph
+from agent_service.agents.chatbot import ChatbotAgent
+from agent_service.llm.fake import FakeModel
+from agent_service.schema.requests import UserInput
 from agent_service.schema.responses import ChatMessage
 from agent_service.schema.stream import (
     STREAM_EVENT_ADAPTER,
     ErrorEvent,
     MessageEvent,
+    StreamEvent,
     TokenEvent,
 )
-from agent_service.service.streaming import DONE_FRAME, sse_frame
+from agent_service.service.run_input import build_run_input
+from agent_service.service.streaming import (
+    DONE_FRAME,
+    STREAM_ERROR_DETAIL,
+    StreamService,
+    sse_frame,
+)
+
+
+@tool
+def add(a: int, b: int) -> int:
+    """Jumlahkan dua bilangan."""
+    return a + b
 
 
 def parse_frame(frame: str) -> object:
@@ -38,3 +67,178 @@ def test_error_frame_matches_prd_shape() -> None:
 
 def test_done_frame_is_literal_marker() -> None:
     assert DONE_FRAME == "data: [DONE]\n\n"
+
+
+def build_graph(node: Callable[[MessagesState], Awaitable[MessagesState]]) -> AgentGraph:
+    """Graph satu node `work` di atas `MessagesState`."""
+    # pyrefly tidak mengenali TypedDict sebagai TypedDictLike milik LangGraph.
+    builder = StateGraph(MessagesState)  # pyrefly: ignore[bad-specialization]
+    # Akibat false positive di atas, tipe state builder tidak ter-resolve oleh pyrefly.
+    builder.add_node("work", node)  # pyrefly: ignore[bad-argument-type]
+    builder.add_edge(START, "work")
+    builder.add_edge("work", END)
+    return builder.compile(checkpointer=InMemorySaver())
+
+
+def build_tool_graph(model: FakeModel) -> AgentGraph:
+    """Loop agent → tools → agent sampai model berhenti meminta tool."""
+
+    async def call_model(state: MessagesState) -> MessagesState:
+        return {"messages": [await model.ainvoke(state["messages"])]}
+
+    # pyrefly tidak mengenali TypedDict sebagai TypedDictLike milik LangGraph.
+    builder = StateGraph(MessagesState)  # pyrefly: ignore[bad-specialization]
+    builder.add_node("agent", call_model)
+    builder.add_node("tools", ToolNode([add]))
+    builder.add_edge(START, "agent")
+    builder.add_conditional_edges("agent", tools_condition)
+    builder.add_edge("tools", "agent")
+    return builder.compile(checkpointer=InMemorySaver())
+
+
+async def collect(
+    graph: AgentGraph, agent_id: str = "test", message: str = "Hai", stream_tokens: bool = True
+) -> list[str]:
+    agent = ChatbotAgent(agent_id=agent_id)
+    run = await build_run_input(
+        UserInput(message=message, thread_id="t1", user_id="u1"), agent, graph
+    )
+    return [frame async for frame in StreamService(graph, run, stream_tokens).stream()]
+
+
+def events_of(frames: list[str]) -> list[StreamEvent]:
+    assert frames[-1] == DONE_FRAME
+    events: list[StreamEvent] = []
+    for frame in frames[:-1]:
+        events.append(STREAM_EVENT_ADAPTER.validate_json(frame.removeprefix("data: ")))
+    return events
+
+
+async def test_tokens_then_final_message_then_done() -> None:
+    graph = ChatbotAgent().build(FakeModel(responses=["Halo dunia"]), InMemorySaver())
+
+    events = events_of(await collect(graph, agent_id="chatbot"))
+
+    assert [type(event).__name__ for event in events] == [
+        "TokenEvent",
+        "TokenEvent",
+        "MessageEvent",
+    ]
+    assert [event.content for event in events[:2]] == ["Halo ", "dunia"]
+    final = events[2]
+    assert isinstance(final, MessageEvent)
+    assert (final.content.type, final.content.content) == ("ai", "Halo dunia")
+    assert final.content.run_id
+
+
+async def test_stream_tokens_false_sends_only_messages() -> None:
+    graph = ChatbotAgent().build(FakeModel(responses=["Halo dunia"]), InMemorySaver())
+
+    events = events_of(await collect(graph, agent_id="chatbot", stream_tokens=False))
+
+    assert [type(event).__name__ for event in events] == ["MessageEvent"]
+
+
+async def test_human_input_is_not_echoed() -> None:
+    graph = ChatbotAgent().build(FakeModel(), InMemorySaver())
+
+    events = events_of(await collect(graph, agent_id="chatbot", stream_tokens=False))
+
+    assert all(isinstance(e, MessageEvent) and e.content.type != "human" for e in events)
+
+
+async def test_tool_call_and_tool_result_are_streamed_as_messages() -> None:
+    model = FakeModel(
+        responses=[
+            AIMessage(
+                content="", tool_calls=[{"name": "add", "args": {"a": 1, "b": 2}, "id": "c1"}]
+            ),
+            "Hasilnya 3",
+        ]
+    )
+    graph = build_tool_graph(model)
+
+    events = events_of(await collect(graph, stream_tokens=False))
+
+    messages = [event.content for event in events if isinstance(event, MessageEvent)]
+    assert [(m.type, m.content) for m in messages] == [
+        ("ai", ""),
+        ("tool", "3"),
+        ("ai", "Hasilnya 3"),
+    ]
+    assert messages[0].tool_calls[0].name == "add"
+    assert messages[1].tool_call_id == "c1"
+
+
+async def test_interrupt_is_streamed_as_ai_message() -> None:
+    async def ask(state: MessagesState) -> MessagesState:
+        name = interrupt("Siapa namamu?")
+        return {"messages": [AIMessage(content=f"Halo {name}")]}
+
+    events = events_of(await collect(build_graph(ask)))
+
+    assert len(events) == 1
+    assert isinstance(events[0], MessageEvent)
+    assert events[0].content.content == "Siapa namamu?"
+
+
+async def test_custom_events_become_messages() -> None:
+    async def report(state: MessagesState) -> MessagesState:
+        writer = get_stream_writer()
+        writer({"progress": 50})
+        writer(LangChainChatMessage(role="custom", content=[{"progress": 100}]))
+        writer("not supported")
+        return {"messages": [AIMessage(content="selesai")]}
+
+    events = events_of(await collect(build_graph(report), stream_tokens=False))
+
+    custom = [e.content.custom_data for e in events if isinstance(e, MessageEvent)][:2]
+    assert custom == [{"progress": 50}, {"progress": 100}]
+
+
+async def test_skip_stream_tag_hides_tokens() -> None:
+    model = FakeModel(responses=["rahasia internal"]).with_config(tags=["skip_stream"])
+
+    async def classify(state: MessagesState) -> MessagesState:
+        await model.ainvoke(state["messages"])
+        return {"messages": [AIMessage(content="publik")]}
+
+    events = events_of(await collect(build_graph(classify)))
+
+    assert not any(isinstance(event, TokenEvent) for event in events)
+
+
+async def test_unsupported_message_is_dropped() -> None:
+    async def system(state: MessagesState) -> MessagesState:
+        return {"messages": [SystemMessage("aturan"), AIMessage(content="ok")]}
+
+    events = events_of(await collect(build_graph(system), stream_tokens=False))
+
+    assert [e.content.content for e in events if isinstance(e, MessageEvent)] == ["ok"]
+
+
+async def test_error_mid_stream_sends_error_then_done(caplog: pytest.LogCaptureFixture) -> None:
+    async def explode(state: MessagesState) -> MessagesState:
+        get_stream_writer()({"step": "before"})
+        raise RuntimeError("secret detail")
+
+    with caplog.at_level(logging.ERROR):
+        frames = await collect(build_graph(explode))
+
+    events = events_of(frames)
+    assert isinstance(events[0], MessageEvent)
+    assert events[-1] == ErrorEvent(content=STREAM_ERROR_DETAIL)
+    assert "secret detail" not in "".join(frames)
+    assert "Stream failed" in caplog.text
+
+
+async def test_client_disconnect_closes_without_done() -> None:
+    graph = ChatbotAgent().build(FakeModel(responses=["satu dua tiga"]), InMemorySaver())
+    agent = ChatbotAgent()
+    run = await build_run_input(UserInput(message="Hai"), agent, graph)
+    stream = StreamService(graph, run, stream_tokens=True).stream()
+
+    first = await anext(stream)
+    await stream.aclose()
+
+    assert first != DONE_FRAME
