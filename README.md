@@ -6,7 +6,7 @@ lewat satu API FastAPI, lengkap dengan streaming SSE, Python client, dan UI chat
 Project ini adalah rewrite dari [`agent-service-toolkit/`](agent-service-toolkit/) dengan fokus pada
 kode yang sederhana, eksplisit, dan mudah dites (Zen of Python).
 
-> **Status:** M1 berjalan. Semua endpoint service sudah tersedia, termasuk streaming SSE serta rename dan hapus thread. Lihat [PRD.md](PRD.md) untuk requirement dan
+> **Status:** v0.1.0 (service) sudah dirilis. M2 berjalan: `AgentClient` sudah tersedia, UI Streamlit belum. Lihat [PRD.md](PRD.md) untuk requirement dan
 > [.agents/memory.md](.agents/memory.md) untuk status terkini.
 
 ## Fitur
@@ -102,38 +102,29 @@ curl -N -X POST http://localhost:8080/chatbot/stream \
 ```python
 from agent_service.client import AgentClient
 
-client = AgentClient(base_url="http://localhost:8080", agent_id="research-assistant")
+with AgentClient(base_url="http://localhost:8080", agent_id="chatbot", auth_secret=None) as client:
+    reply = client.invoke("Halo!", user_id="user-1")
+    print(reply.message.content, reply.thread_id)
 
-reply = client.invoke("Berapa 12 * 7?")
-print(reply.content)
+    # Lanjutkan thread yang sama. Event: TokenEvent, MessageEvent, atau ErrorEvent.
+    with client.stream("Lanjut", thread_id=reply.thread_id, user_id="user-1") as run:
+        for event in run:
+            print(event)
 
-for event in client.stream("Cari berita AI terbaru"):
-    print(event)
+    print(client.get_threads("user-1").threads)
 ```
+
+Setiap method punya versi async berawalan `a` (`ainvoke`, `astream` dengan `async with`, dan
+seterusnya). Error HTTP atau koneksi dilempar sebagai `AgentClientError` dengan `status_code`
+dan `detail`.
 
 ## Menambah Agent Baru
 
-1. Buat class di `src/agent_service/agents/` yang mewarisi `BaseAgent`:
-
-   ```python
-   class EchoAgent(BaseAgent):
-       """Agent contoh yang mengulang pesan user."""
-
-       agent_id = "echo"
-       description = "Mengulang pesan terakhir user."
-
-       def build(self, model: BaseChatModel, checkpointer: BaseCheckpointSaver) -> CompiledStateGraph:
-           graph = StateGraph(MessagesState)
-           graph.add_node("echo", echo_node)
-           graph.add_edge(START, "echo")
-           graph.add_edge("echo", END)
-           return graph.compile(checkpointer=checkpointer)
-   ```
-
-2. Daftarkan di `AgentRegistry` (`agents/registry.py`).
-3. Tambahkan test di `tests/agents/`.
-
-Service dan UI otomatis menampilkan agent baru, tidak perlu diubah.
+Langkah lengkap dengan contoh kode ada di
+[docs/ARCHITECTURE.md § Menambah Agent](docs/ARCHITECTURE.md#menambah-agent). Ringkasnya:
+buat subclass `BaseAgent` yang mengimplementasikan `build(model, checkpointer)`, daftarkan di
+`create_default_agents()` (`agents/catalog.py`), lalu tulis test dengan `FakeModel`. Service
+dan UI otomatis menampilkan agent baru.
 
 ## Development
 

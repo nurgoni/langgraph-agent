@@ -26,7 +26,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F09 | User threads | M1 | done |
 | F18 | Thread rename & delete | M1 | done |
 | F10 | Architecture docs | M1 | done |
-| F11 | Agent client | M2 | todo |
+| F11 | Agent client | M2 | done |
 | F12 | UI chat | M2 | todo |
 | F13 | UI sidebar & threads | M2 | todo |
 | F14 | Docker Compose & e2e | M2 | todo |
@@ -540,12 +540,27 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
   - Menangkap `httpx.HTTPStatusError` dan `httpx.RequestError` secara spesifik.
 - **Referensi lama:** `client/client.py` (duplikasi payload di `:111`, `:157`, `:234`, `:291`).
 - **Rencana commit:**
-  1. `feat(client): add SseParser for stream frames`
+  1. `feat(client): add SseParser and AgentClientError`
   2. `feat(client): add sync AgentClient methods`
   3. `feat(client): add async AgentClient methods`
-  4. `test(client): cover http errors with mock transport`
+  4. `fix(llm): enable token streaming for openai-compatible models`
+  5. `docs: record F11 agent client decisions`
+- **Penyesuaian saat implementasi:**
+  - Keputusan user: `invoke` → `AgentReply(message, thread_id, user_id)`, `stream`/`astream` →
+    context manager `StreamRun`/`AsyncStreamRun` dengan `thread_id`/`user_id`. Frame `error`
+    di-yield sebagai `ErrorEvent`.
+  - Tidak ada `_headers`: token bearer dipasang sekali di client httpx. `auth_secret` diberikan
+    eksplisit karena `client/` tidak boleh membaca env/`core/`. Request dibangun sekali sebagai
+    `RequestSpec` (`client/requests.py`) untuk sync dan async.
+  - Ditambah `rename_thread`/`delete_thread` (dibutuhkan F13). `agent_id=None` memakai route agent
+    default.
+  - `httpx` dipindah dari dev ke dependency runtime. Ditambah `tests/client/test_layering.py`.
+  - Selain `MockTransport`, ada test kontrak client vs app asli lewat `httpx.ASGITransport`
+    (in-process, tanpa server).
+  - Smoke test dengan LLM asli menemukan bug F02: `ChatOpenAI` tanpa `streaming=True` hanya
+    mengirim satu chunk ke `/stream`. Diperbaiki di commit `fix(llm)`.
 - **Acceptance criteria:**
-  - [ ] Semua test memakai `httpx.MockTransport` (tanpa server).
+  - [x] Semua test memakai `httpx.MockTransport` atau `ASGITransport` (tanpa server).
 - **Squash title:** `feat(client): add sync and async agent client (F11)`
 
 ### F12: UI chat

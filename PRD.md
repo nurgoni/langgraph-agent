@@ -133,8 +133,11 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
 
 ### Client
 
-- **FR-17** `AgentClient` menyediakan method sync dan async: `invoke`, `stream`, `get_history`,
-  `get_threads`, `get_info`.
+- **FR-17** `AgentClient` menyediakan method sync dan async (berawalan `a`): `invoke`, `stream`,
+  `get_history`, `get_threads`, `rename_thread`, `delete_thread`, `get_info`. `invoke`
+  mengembalikan `AgentReply(message, thread_id, user_id)`. `stream` adalah context manager
+  (`StreamRun`) yang punya `thread_id`/`user_id` dan menghasilkan `StreamEvent`. Frame `error`
+  diteruskan sebagai `ErrorEvent`, bukan exception.
 - **FR-18** Error HTTP dibungkus menjadi `AgentClientError` dengan status code dan pesan.
 - **FR-19** Tidak ada network call di konstruktor `AgentClient`. `/info` diambil secara lazy.
 

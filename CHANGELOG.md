@@ -6,6 +6,17 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 
 ## [Unreleased]
 
+### Added
+
+- `AgentClient` sync dan async: `invoke` (mengembalikan `AgentReply` berisi ID thread/user),
+  `stream` (context manager `StreamRun`), history, daftar thread, rename, delete, dan info yang
+  diambil lazy. Error HTTP dibungkus `AgentClientError` dengan status dan detail (F11).
+
+### Fixed
+
+- Model OpenAI-compatible kini dibuat dengan `streaming=True`, sehingga `/stream` mengirim token
+  satu per satu untuk LLM asli, bukan satu chunk berisi seluruh jawaban (F11).
+
 ## [0.1.0] - 2026-11-04
 
 ### Added
