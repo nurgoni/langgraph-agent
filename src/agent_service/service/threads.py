@@ -84,19 +84,24 @@ class ThreadRepository:
             limit: Jumlah maksimum thread yang dikembalikan.
 
         Returns:
-            Ringkasan thread (judul dari message human pertama, waktu update terakhir).
+            Ringkasan thread. Judulnya judul custom jika thread pernah di-rename, selain itu
+            message human pertama.
         """
-        ranked: list[tuple[str, ThreadSummary]] = []
+        tips: list[CheckpointTuple] = []
         for thread_id in await self._list_thread_ids(user_id, agent_id):
             tip = await self._checkpointer.aget_tuple(
                 RunnableConfig(configurable={"thread_id": thread_id})
             )
-            if tip is None:
-                continue
-            ranked.append((_checkpoint_id(tip), _summarize(tip, agent_id)))
+            if tip is not None:
+                tips.append(tip)
         # checkpoint_id adalah UUID berurutan waktu, jadi ID tip mengurutkan update terakhir.
-        ranked.sort(key=lambda item: item[0], reverse=True)
-        return [summary for _, summary in ranked[:limit]]
+        tips.sort(key=_checkpoint_id, reverse=True)
+        selected = tips[:limit]
+        custom_titles = await self._titles.get_titles(_thread_id(tip) for tip in selected)
+        summaries: list[ThreadSummary] = []
+        for tip in selected:
+            summaries.append(_summarize(tip, agent_id, custom_titles.get(_thread_id(tip))))
+        return summaries
 
     async def rename(
         self, thread_id: str, user_id: str, agent_id: str, title: str
@@ -183,13 +188,18 @@ class ThreadRepository:
         user jika implementasi saver mengabaikan filter.
         """
         for head in heads:
-            thread_id = head.config["configurable"]["thread_id"]
+            thread_id = _thread_id(head)
             if thread_id in thread_ids:
                 continue
             if is_thread_owner(head.metadata, user_id, agent_id):
                 thread_ids.append(thread_id)
             else:
                 logger.warning("Skipping thread %s: checkpointer ignored owner filter", thread_id)
+
+
+def _thread_id(checkpoint: CheckpointTuple) -> str:
+    """ID thread dari config checkpoint."""
+    return checkpoint.config["configurable"]["thread_id"]
 
 
 def _checkpoint_id(checkpoint: CheckpointTuple) -> str:
@@ -204,7 +214,7 @@ def _summarize(
     messages = tip.checkpoint["channel_values"].get(MESSAGES_KEY, [])
     title = thread_title(messages) if custom_title is None else custom_title
     return ThreadSummary(
-        thread_id=tip.config["configurable"]["thread_id"],
+        thread_id=_thread_id(tip),
         agent_id=agent_id,
         title=title,
         updated_at=tip.checkpoint["ts"],

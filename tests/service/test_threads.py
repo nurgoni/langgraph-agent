@@ -242,3 +242,18 @@ async def test_delete_of_other_users_thread_keeps_it(
         await repository.delete("a1", USER_B, "chatbot")
 
     assert await saver.aget_tuple({"configurable": {"thread_id": "a1"}}) is not None
+
+
+async def test_listing_shows_custom_title_and_keeps_order(
+    graph: AgentGraph, repository: ThreadRepository
+) -> None:
+    await send(graph, "old", USER_A, "Judul otomatis lama")
+    await send(graph, "new", USER_A, "Judul otomatis baru")
+
+    await repository.rename("old", USER_A, "chatbot", "Judul custom")
+    threads = await repository.list_threads(USER_A, "chatbot", limit=10)
+
+    assert [(t.thread_id, t.title) for t in threads] == [
+        ("new", "Judul otomatis baru"),
+        ("old", "Judul custom"),
+    ]

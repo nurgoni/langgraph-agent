@@ -160,3 +160,12 @@ async def test_delete_requires_user_id(client: AsyncClient) -> None:
     response = await client.delete("/chatbot/threads/a1")
 
     assert response.status_code == 422
+
+
+async def test_renamed_title_appears_in_listing(client: AsyncClient) -> None:
+    await start_thread(client, "a1", USER_A, "Judul otomatis")
+    await client.patch("/chatbot/threads/a1", json={"user_id": USER_A, "title": "Judul baru"})
+
+    threads = await list_threads(client, "/chatbot/threads", user_id=USER_A)
+
+    assert [t.title for t in threads.threads] == ["Judul baru"]
