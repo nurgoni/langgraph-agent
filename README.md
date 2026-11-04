@@ -6,7 +6,7 @@ lewat satu API FastAPI, lengkap dengan streaming SSE, Python client, dan UI chat
 Project ini adalah rewrite dari [`agent-service-toolkit/`](agent-service-toolkit/) dengan fokus pada
 kode yang sederhana, eksplisit, dan mudah dites (Zen of Python).
 
-> **Status:** v0.1.0 (service) sudah dirilis. M2 berjalan: `AgentClient` dan UI chat Streamlit sudah tersedia. Sidebar (riwayat thread, pemilih agent/model) belum. Lihat [PRD.md](PRD.md) untuk requirement dan
+> **Status:** v0.1.0 (service) sudah dirilis. M2 berjalan: `AgentClient` dan UI Streamlit (chat, riwayat thread, pemilih agent/model) sudah tersedia. Docker Compose (F14) belum. Lihat [PRD.md](PRD.md) untuk requirement dan
 > [.agents/memory.md](.agents/memory.md) untuk status terkini.
 
 ## Fitur
@@ -56,6 +56,9 @@ uv run streamlit run src/agent_service/ui/app.py
 
 UI hanya client: service (langkah 3) harus sudah berjalan di `AGENT_URL`. Jika belum, UI
 menampilkan pesan "Cannot reach the agent service at ..." saat pesan dikirim.
+
+URL UI berisi `user_id`, `thread_id`, dan `agent`. Simpan atau bagikan URL itu untuk membuka ulang
+percakapan. Siapa pun yang memegang URL tersebut bisa membaca thread-nya.
 
 ### Docker Compose
 
