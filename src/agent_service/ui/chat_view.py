@@ -1,6 +1,7 @@
 """Area chat: riwayat, input user, dan jawaban agent yang di-stream (FR-20, FR-24)."""
 
 import logging
+from collections.abc import Callable
 from typing import Final
 
 import streamlit as st
@@ -31,15 +32,23 @@ HTTP_NOT_FOUND: Final = 404
 class ChatView:
     """Menggambar percakapan dan mengirim pesan baru lewat `AgentClient.stream`."""
 
-    def __init__(self, client: AgentClient, session: ChatSession) -> None:
+    def __init__(
+        self,
+        client: AgentClient,
+        session: ChatSession,
+        on_thread_created: Callable[[], None] | None = None,
+    ) -> None:
         """Inisialisasi view.
 
         Args:
             client: Client ke agent service.
             session: State percakapan browser ini.
+            on_thread_created: Dipanggil saat service membuat thread baru, misalnya untuk
+                menyegarkan daftar thread di sidebar.
         """
         self._client = client
         self._session = session
+        self._on_thread_created = on_thread_created
 
     def render(self) -> None:
         """Gambar riwayat, lalu kirim pesan jika user baru saja mengetik."""
@@ -52,7 +61,12 @@ class ChatView:
             self._send(prompt)
 
     def _send(self, prompt: str) -> None:
-        """Tampilkan pesan user, lalu stream jawaban agent ke layar dan ke session."""
+        """Tampilkan pesan user, lalu stream jawaban agent ke layar dan ke session.
+
+        Jika run membuat thread baru dan selesai tanpa error, script diulang supaya sidebar langsung
+        menampilkan thread tersebut. Saat ada error, script tidak diulang agar pesan error tetap
+        terlihat.
+        """
         renderer = MessageRenderer(live=True)
         human_message = ChatMessage(type="human", content=prompt)
         renderer.render(human_message)
@@ -63,14 +77,19 @@ class ChatView:
             user_id=self._session.user_id,
             stream_tokens=self._session.stream_tokens,
         )
+        created_thread = False
+        failed = False
         try:
             with stream as run:
-                self._start_turn(run, human_message)
+                created_thread = self._start_turn(run, human_message)
                 for event in run:
-                    self._handle_event(event, renderer)
+                    failed = self._handle_event(event, renderer) or failed
         except AgentClientError as error:
             logger.warning("Agent request failed: %s", error)
             renderer.render_error(self._error_text(error))
+            failed = True
+        if created_thread:
+            self._announce_new_thread(refresh_page=not failed)
 
     def _ensure_history(self) -> None:
         """Muat riwayat thread yang dibuka dari URL, sekali per session.
@@ -103,13 +122,30 @@ class ChatView:
             return UNREACHABLE_TEMPLATE.format(url=self._client.base_url)
         return SERVICE_ERROR_TEMPLATE.format(error=error)
 
-    def _start_turn(self, run: StreamRun, human_message: ChatMessage) -> None:
-        """Simpan ID run dan pesan user, setelah service menerima request."""
+    def _start_turn(self, run: StreamRun, human_message: ChatMessage) -> bool:
+        """Simpan ID run dan pesan user, setelah service menerima request.
+
+        Returns:
+            `True` jika service membuat thread baru untuk run ini.
+        """
+        is_new_thread = run.thread_id != self._session.thread_id
         self._session.remember_run(run.thread_id, run.user_id)
         self._session.messages.append(human_message)
+        return is_new_thread
 
-    def _handle_event(self, event: StreamEvent, renderer: MessageRenderer) -> None:
-        """Teruskan satu event stream ke renderer, dan simpan message utuh ke session."""
+    def _announce_new_thread(self, refresh_page: bool) -> None:
+        """Beri tahu pemilik callback, lalu ulang script jika diminta."""
+        if self._on_thread_created is not None:
+            self._on_thread_created()
+        if refresh_page:
+            st.rerun()
+
+    def _handle_event(self, event: StreamEvent, renderer: MessageRenderer) -> bool:
+        """Teruskan satu event stream ke renderer, dan simpan message utuh ke session.
+
+        Returns:
+            `True` jika event berupa error dari service.
+        """
         match event:
             case TokenEvent():
                 renderer.append_token(event.content)
@@ -118,3 +154,5 @@ class ChatView:
                 self._session.messages.append(event.content)
             case ErrorEvent():
                 renderer.render_error(event.content)
+                return True
+        return False

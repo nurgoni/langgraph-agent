@@ -8,7 +8,7 @@ from agent_service.client import AgentClient
 from agent_service.ui.chat_view import ChatView
 from agent_service.ui.session import ChatSession
 from agent_service.ui.settings import UiSettings
-from agent_service.ui.sidebar_view import SidebarView
+from agent_service.ui.sidebar_view import SidebarView, clear_thread_list_cache
 
 APP_TITLE: Final = "Agent Service"
 APP_ICON: Final = ":material/smart_toy:"
@@ -47,10 +47,9 @@ def main() -> None:
     client = resolve_client(settings)
     session = ChatSession.current()
     st.title(APP_TITLE)
+    # SidebarView juga menyelaraskan `client.agent_id` dengan agent terpilih.
     SidebarView(client, session).render()
-    # Setelah sidebar, supaya agent dari URL yang tidak dikenal sudah diganti agent default.
-    client.agent_id = session.agent_id
-    ChatView(client, session).render()
+    ChatView(client, session, on_thread_created=clear_thread_list_cache).render()
     session.to_url().write()
 
 

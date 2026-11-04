@@ -11,6 +11,7 @@ from agent_service.client import AgentClient
 from agent_service.schema.headers import THREAD_ID_HEADER, USER_ID_HEADER
 from agent_service.ui.app import APP_TITLE, CLIENT_OVERRIDE_KEY
 from agent_service.ui.session import SESSION_STATE_KEY, ChatSession
+from agent_service.ui.sidebar_view import clear_thread_list_cache
 
 APP_FILE = str(Path(agent_service.ui.app.__file__))
 ID_HEADERS = {THREAD_ID_HEADER: "t1", USER_ID_HEADER: "u1"}
@@ -46,12 +47,17 @@ class FakeService:
         self, respond: Callable[[httpx.Request], httpx.Response], info_status: int = 200
     ) -> None:
         self.requests: list[httpx.Request] = []
+        self.thread_list_requests: list[httpx.Request] = []
+        self.threads: list[dict[str, str]] = []
         self._respond = respond
         self._info_status = info_status
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         if request.url.path == "/info":
             return httpx.Response(self._info_status, json=INFO)
+        if request.method == "GET" and request.url.path.endswith("/threads"):
+            self.thread_list_requests.append(request)
+            return httpx.Response(200, json={"threads": self.threads})
         self.requests.append(request)
         return self._respond(request)
 
@@ -61,6 +67,7 @@ class FakeService:
 
 @pytest.fixture
 def clients() -> Iterator[list[AgentClient]]:
+    clear_thread_list_cache()
     created: list[AgentClient] = []
     yield created
     for client in created:
@@ -354,3 +361,66 @@ def test_info_failure_hides_pickers(clients: list[AgentClient]) -> None:
 
     assert "Agent service unavailable" in app.sidebar.caption[0].value
     assert len(app.sidebar.selectbox) == 0
+
+
+def thread(thread_id: str, title: str) -> dict[str, str]:
+    return {"thread_id": thread_id, "agent_id": "chatbot", "title": title}
+
+
+def test_sidebar_lists_threads_of_user_and_agent(clients: list[AgentClient]) -> None:
+    service = stream_service()
+    service.threads = [thread("t1", "Rencana liburan"), thread("t2", "Resep")]
+
+    app = start_app(service, clients, {"user_id": "u1"})
+
+    labels = [
+        button.label
+        for button in app.sidebar.button
+        if (button.key or "").startswith("sidebar_open_")
+    ]
+    assert labels == ["Rencana liburan", "Resep"]
+    params = dict(service.thread_list_requests[0].url.params)
+    assert params == {"user_id": "u1", "limit": "20"}
+
+
+def test_empty_thread_list_shows_hint(clients: list[AgentClient]) -> None:
+    app = start_app(stream_service(), clients)
+
+    assert "No conversations yet." in [caption.value for caption in app.sidebar.caption]
+
+
+def test_clicking_thread_opens_its_history(clients: list[AgentClient]) -> None:
+    service = FakeService(lambda request: httpx.Response(200, json=HISTORY))
+    service.threads = [thread("t9", "Lama")]
+    app = start_app(service, clients, {"user_id": "u1"})
+
+    app.sidebar.button(key="sidebar_open_t9").click().run()
+
+    assert session_of(app).thread_id == "t9"
+    assert [m.value for m in app.markdown] == ["Lama", "Jawaban lama"]
+    assert app.query_params["thread_id"] == "t9"
+    assert app.sidebar.button(key="sidebar_open_t9").proto.type == "primary"
+
+
+def test_thread_list_is_cached_until_new_thread(clients: list[AgentClient]) -> None:
+    service = stream_service()
+    app = start_app(service, clients, {"user_id": "u-cache"})
+    app.run()
+    assert len(service.thread_list_requests) == 1
+
+    send(app, "Hai")
+
+    assert len(service.thread_list_requests) == 2
+
+
+def test_failed_open_shows_toast(clients: list[AgentClient]) -> None:
+    service = FakeService(
+        lambda request: httpx.Response(404, json={"detail": "Thread 't9' not found"})
+    )
+    service.threads = [thread("t9", "Hilang")]
+    app = start_app(service, clients, {"user_id": "u-toast"})
+
+    app.sidebar.button(key="sidebar_open_t9").click().run()
+
+    assert "Could not open the conversation" in app.toast[0].value
+    assert session_of(app).thread_id is None
