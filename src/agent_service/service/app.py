@@ -15,7 +15,8 @@ from agent_service.llm.factory import ModelFactory
 from agent_service.memory.checkpointer import CheckpointerProvider
 from agent_service.service.auth import verify_bearer
 from agent_service.service.errors import register_exception_handlers
-from agent_service.service.routes import health, history, info, invoke
+from agent_service.service.routes import health, history, info, invoke, threads
+from agent_service.service.threads import ThreadRepository
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,7 @@ def create_app(
     app.include_router(info.router, dependencies=protected)
     app.include_router(invoke.router, dependencies=protected)
     app.include_router(history.router, dependencies=protected)
+    app.include_router(threads.router, dependencies=protected)
     app.state.settings = resolved_settings
     app.state.default_agent_id = default_agent_id
     return app
@@ -76,8 +78,8 @@ def create_app(
 def _build_lifespan(settings: Settings, agents: Sequence[BaseAgent]) -> Lifespan:
     """Buat lifespan yang membuka checkpointer, mendaftarkan, dan memuat semua agent.
 
-    Urutan: `ModelFactory` → `CheckpointerProvider` → `AgentRegistry.load_all()`. Factory dan
-    registry disimpan di `app.state`, dan checkpointer ditutup saat shutdown.
+    Urutan: `ModelFactory` → `CheckpointerProvider` → `AgentRegistry.load_all()`. Factory,
+    registry, dan `ThreadRepository` disimpan di `app.state`. Checkpointer ditutup saat shutdown.
     """
 
     @asynccontextmanager
@@ -92,6 +94,7 @@ def _build_lifespan(settings: Settings, agents: Sequence[BaseAgent]) -> Lifespan
             await registry.load_all()
             app.state.model_factory = model_factory
             app.state.registry = registry
+            app.state.thread_repository = ThreadRepository(checkpointer)
             yield
         logger.info("Service shut down")
 

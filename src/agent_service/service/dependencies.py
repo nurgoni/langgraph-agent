@@ -13,6 +13,7 @@ from fastapi import Depends, Request
 from agent_service.agents.registry import AgentRegistry
 from agent_service.core.settings import Settings
 from agent_service.llm.factory import ModelFactory
+from agent_service.service.threads import ThreadRepository
 
 
 def get_settings(request: Request) -> Settings:
@@ -30,6 +31,11 @@ def get_model_factory(request: Request) -> ModelFactory:
     return request.app.state.model_factory
 
 
+def get_thread_repository(request: Request) -> ThreadRepository:
+    """Ambil `ThreadRepository` yang dibuat di lifespan."""
+    return request.app.state.thread_repository
+
+
 def get_default_agent_id(request: Request) -> str:
     """Ambil ID agent default milik app."""
     return request.app.state.default_agent_id
@@ -38,4 +44,5 @@ def get_default_agent_id(request: Request) -> str:
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 RegistryDep = Annotated[AgentRegistry, Depends(get_registry)]
 ModelFactoryDep = Annotated[ModelFactory, Depends(get_model_factory)]
+ThreadRepositoryDep = Annotated[ThreadRepository, Depends(get_thread_repository)]
 DefaultAgentIdDep = Annotated[str, Depends(get_default_agent_id)]
