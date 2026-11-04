@@ -119,6 +119,22 @@ class ThreadRepository:
         await self._titles.set_title(thread_id, title)
         return _summarize(tip, agent_id, custom_title=title)
 
+    async def delete(self, thread_id: str, user_id: str, agent_id: str) -> None:
+        """Hapus semua checkpoint thread beserta judul custom-nya (FR-26).
+
+        Args:
+            thread_id: Thread yang dihapus.
+            user_id: User yang meminta, harus pemilik thread.
+            agent_id: Agent di URL, harus agent yang menjalankan thread.
+
+        Raises:
+            ThreadNotFoundError: Thread tidak ada, atau milik user/agent lain (404).
+        """
+        await self._get_owned_tip(thread_id, user_id, agent_id)
+        await self._checkpointer.adelete_thread(thread_id)
+        await self._titles.delete(thread_id)
+        logger.info("Deleted thread %s for agent %s", thread_id, agent_id)
+
     async def _get_owned_tip(self, thread_id: str, user_id: str, agent_id: str) -> CheckpointTuple:
         """Checkpoint terakhir thread, setelah memastikan pemiliknya.
 

@@ -213,3 +213,32 @@ async def test_rename_of_unowned_thread_is_not_found(
         await repository.rename(thread_id, user_id, agent_id, "Dibajak")
 
     assert await titles.get_titles(["a1", "missing"]) == {}
+
+
+async def test_delete_removes_checkpoints_and_title(
+    graph: AgentGraph,
+    saver: AsyncSqliteSaver,
+    repository: ThreadRepository,
+    titles: ThreadMetadataRepository,
+) -> None:
+    await send(graph, "a1", USER_A, "hapus aku")
+    await send(graph, "a2", USER_A, "biarkan")
+    await repository.rename("a1", USER_A, "chatbot", "Judul")
+
+    await repository.delete("a1", USER_A, "chatbot")
+
+    assert await saver.aget_tuple({"configurable": {"thread_id": "a1"}}) is None
+    assert await titles.get_titles(["a1"]) == {}
+    remaining = await repository.list_threads(USER_A, "chatbot", limit=10)
+    assert [thread.thread_id for thread in remaining] == ["a2"]
+
+
+async def test_delete_of_other_users_thread_keeps_it(
+    graph: AgentGraph, saver: AsyncSqliteSaver, repository: ThreadRepository
+) -> None:
+    await send(graph, "a1", USER_A, "punya A")
+
+    with pytest.raises(ThreadNotFoundError):
+        await repository.delete("a1", USER_B, "chatbot")
+
+    assert await saver.aget_tuple({"configurable": {"thread_id": "a1"}}) is not None

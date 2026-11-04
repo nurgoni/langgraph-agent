@@ -113,3 +113,50 @@ async def test_rename_on_unknown_agent_is_404(client: AsyncClient) -> None:
     response = await client.patch("/ghost/threads/a1", json={"user_id": USER_A, "title": "X"})
 
     assert response.status_code == 404
+
+
+async def test_delete_removes_thread_everywhere(client: AsyncClient) -> None:
+    await start_thread(client, "a1", USER_A, "hapus aku")
+
+    response = await client.delete("/chatbot/threads/a1", params={"user_id": USER_A})
+
+    assert response.status_code == 204
+    assert response.content == b""
+    history = await client.post("/chatbot/history", json={"thread_id": "a1", "user_id": USER_A})
+    assert history.status_code == 404
+    threads = await list_threads(client, "/chatbot/threads", user_id=USER_A)
+    assert threads.threads == []
+
+
+async def test_delete_on_default_agent_route(client: AsyncClient) -> None:
+    await start_thread(client, "a1", USER_A, "Halo")
+
+    response = await client.delete("/threads/a1", params={"user_id": USER_A})
+
+    assert response.status_code == 204
+
+
+async def test_delete_of_other_users_thread_is_404(client: AsyncClient) -> None:
+    await start_thread(client, "a1", USER_A, "punya A")
+
+    response = await client.delete("/chatbot/threads/a1", params={"user_id": USER_B})
+    history = await client.post("/chatbot/history", json={"thread_id": "a1", "user_id": USER_A})
+
+    assert response.status_code == 404
+    assert history.status_code == 200
+
+
+async def test_deleted_thread_id_can_start_fresh(client: AsyncClient) -> None:
+    await start_thread(client, "a1", USER_A, "lama")
+    await client.delete("/chatbot/threads/a1", params={"user_id": USER_A})
+
+    await start_thread(client, "a1", USER_A, "baru")
+    history = await client.post("/chatbot/history", json={"thread_id": "a1", "user_id": USER_A})
+
+    assert [m["content"] for m in history.json()["messages"]][0] == "baru"
+
+
+async def test_delete_requires_user_id(client: AsyncClient) -> None:
+    response = await client.delete("/chatbot/threads/a1")
+
+    assert response.status_code == 422
