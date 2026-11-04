@@ -16,7 +16,7 @@ from agent_service.memory.checkpointer import CheckpointerProvider
 from agent_service.memory.thread_metadata import ThreadMetadataRepository
 from agent_service.service.auth import verify_bearer
 from agent_service.service.errors import register_exception_handlers
-from agent_service.service.routes import health, history, info, invoke, threads
+from agent_service.service.routes import health, history, info, invoke, stream, threads
 from agent_service.service.threads import ThreadRepository
 
 logger = logging.getLogger(__name__)
@@ -69,6 +69,7 @@ def create_app(
     protected = [Depends(verify_bearer)]
     app.include_router(info.router, dependencies=protected)
     app.include_router(invoke.router, dependencies=protected)
+    app.include_router(stream.router, dependencies=protected)
     app.include_router(history.router, dependencies=protected)
     app.include_router(threads.router, dependencies=protected)
     app.state.settings = resolved_settings

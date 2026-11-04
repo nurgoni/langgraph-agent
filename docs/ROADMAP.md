@@ -22,7 +22,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F05 | Agent registry | M1 | done |
 | F06 | Service app | M1 | done |
 | F07 | Invoke & history | M1 | done |
-| F08 | SSE streaming | M1 | todo |
+| F08 | SSE streaming | M1 | done |
 | F09 | User threads | M1 | done |
 | F18 | Thread rename & delete | M1 | done |
 | F10 | Architecture docs | M1 | todo |
@@ -417,14 +417,26 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
 - **Referensi lama:** `service/service.py:243-353`. Ini contoh yang **tidak boleh** ditiru (nesting
   6+, deteksi berbasis string di `:282`).
 - **Rencana commit:**
-  1. `feat(service): add SseFormatter for token, message and error frames`
+  1. `feat(service): add sse frame formatting for stream events`
   2. `feat(service): add StreamService handling updates and message chunks`
   3. `feat(service): add stream endpoint`
-  4. `test(service): ensure done frame is sent on agent error`
+  4. `docs: record F08 streaming decisions`
+- **Penyesuaian saat implementasi:**
+  - `SseFormatter` ditulis sebagai function `sse_frame` + konstanta `DONE_FRAME` (transformasi
+    murni). `StreamService` dibuat per request, karena graph/run/opsi token dipakai bersama oleh
+    beberapa handler.
+  - `StreamService(graph, run, stream_tokens).stream()`, bukan `stream(run_input)`. Validasi
+    (`build_run_input`) terjadi di route sebelum response dimulai, jadi request salah tetap 404/422
+    JSON.
+  - `[DONE]` di-yield setelah blok `try/except`, bukan di `finally`, supaya client yang putus tidak
+    memicu `RuntimeError` saat `GeneratorExit`.
+  - Echo human dibuang berdasarkan tipe (`HumanMessage`), bukan pencocokan isi seperti kode lama.
+  - `subgraphs=True` dan penanganan supervisor belum ada (F17).
+  - Test error di tengah stream ikut di commit `StreamService`.
 - **Acceptance criteria:**
-  - [ ] Urutan frame sesuai PRD §7.3.
-  - [ ] Nesting ≤ 2 di semua method.
-  - [ ] Ada test untuk error di tengah stream.
+  - [x] Urutan frame sesuai PRD §7.3.
+  - [x] Nesting ≤ 2 di semua method.
+  - [x] Ada test untuk error di tengah stream.
 - **Squash title:** `feat(service): add sse streaming endpoint (F08)`
 
 ### F09: User threads
