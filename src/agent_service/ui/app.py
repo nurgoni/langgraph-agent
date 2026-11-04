@@ -5,6 +5,8 @@ from typing import Final
 import streamlit as st
 
 from agent_service.client import AgentClient
+from agent_service.ui.chat_view import ChatView
+from agent_service.ui.session import ChatSession
 from agent_service.ui.settings import UiSettings
 
 APP_TITLE: Final = "Agent Service"
@@ -39,8 +41,9 @@ def main() -> None:
     """
     st.set_page_config(page_title=APP_TITLE, page_icon=APP_ICON)
     settings = UiSettings()
-    resolve_client(settings)
+    client = resolve_client(settings)
     st.title(APP_TITLE)
+    ChatView(client, ChatSession.current()).render()
 
 
 if __name__ == "__main__":
