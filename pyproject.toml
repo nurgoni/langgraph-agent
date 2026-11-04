@@ -1,6 +1,6 @@
 [project]
 name = "agent-service"
-version = "0.0.0"
+version = "0.1.0"
 description = "LangGraph agent service with FastAPI streaming, a Python client and a Streamlit UI"
 readme = "README.md"
 authors = [{ name = "nurgoni" }]

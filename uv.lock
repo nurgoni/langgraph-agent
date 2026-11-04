@@ -7,7 +7,7 @@ exclude-newer = "2026-10-18T00:00:00Z"
 
 [[package]]
 name = "agent-service"
-version = "0.0.0"
+version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
