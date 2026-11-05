@@ -6,6 +6,8 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-05
+
 ### Added
 
 - `AgentClient` sync dan async: `invoke` (mengembalikan `AgentReply` berisi ID thread/user),
@@ -23,6 +25,8 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 
 - Model OpenAI-compatible kini dibuat dengan `streaming=True`, sehingga `/stream` mengirim token
   satu per satu untuk LLM asli, bukan satu chunk berisi seluruh jawaban (F11).
+- UI menampilkan URL service dan perintah untuk menjalankannya saat service tidak terjangkau,
+  bukan error socket mentah. Client membedakannya lewat `ServiceUnreachableError` (F12).
 
 ## [0.1.0] - 2026-11-04
 
@@ -56,5 +60,6 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 - `docs/ARCHITECTURE.md`: lifespan, alur request, kepemilikan thread, error, persistence, dan cara
   menambah agent (F10).
 
-[Unreleased]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/nurgoni/langgraph-boilerplate-agent/releases/tag/v0.1.0
