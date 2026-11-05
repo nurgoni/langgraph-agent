@@ -153,6 +153,10 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
   v1 yang belum punya auth per user.
 - **FR-23** Menampilkan handoff sub-agent (supervisor) secara bertingkat.
 - **FR-24** Saat agent meminta input (interrupt), pertanyaannya ditampilkan sebagai pesan AI biasa.
+- **FR-29** Jika model mengirim reasoning (token pemikiran), service meneruskannya sebagai frame SSE
+  `reasoning` sebelum token jawaban, dan UI menampilkannya di blok "Thinking" yang bisa
+  dibuka-tutup, supaya jeda saat model berpikir tidak terlihat seperti idle. Model tanpa
+  reasoning tidak terpengaruh.
 
 ## 6. Non-Functional Requirements
 
@@ -206,6 +210,7 @@ itu, isinya harus lolos `config_schema` milik agent tujuan (FR-27).
 Setiap frame berupa `data: <json>\n\n`:
 
 ```text
+data: {"type": "reasoning", "content": "Pertama, ..."}   (FR-29, mulai F19)
 data: {"type": "token",   "content": "Hal"}
 data: {"type": "message", "content": { ...ChatMessage... }}
 data: {"type": "error",   "content": "pesan error"}
@@ -253,7 +258,7 @@ Rincian fitur per milestone, urutan eksekusi, dan rencana commit ada di
 |---|---|---|
 | **M1: Core + Service** | `Settings`, `ModelFactory`, `CheckpointerProvider`, `BaseAgent`, `AgentRegistry`, agent `chatbot`, semua endpoint FR-5–FR-16 | Test endpoint hijau dengan FakeModel |
 | **M2: Client + UI** | `AgentClient`, Streamlit app FR-20–FR-24 | Chat end-to-end via Docker Compose |
-| **M3: Agent tambahan** | `research-assistant`, `interrupt-agent`, `supervisor` | Test per agent + streaming subgraph |
+| **M3: Agent tambahan** | Reasoning terlihat (FR-29), `research-assistant`, `interrupt-agent`, `supervisor` | Test per agent + streaming subgraph + frame `reasoning` |
 
 ## 11. Open Questions
 
@@ -265,3 +270,5 @@ Rincian fitur per milestone, urutan eksekusi, dan rencana commit ada di
    **Terjawab (2026-11-01):** ya, lihat FR-27.
 4. ~~Nama package final: `agent_service` atau yang lain?~~ **Terjawab (2026-11-01):**
    `agent_service`.
+5. Apakah reasoning model (FR-29) disimpan di riwayat thread dan ditampilkan lagi saat
+   thread dibuka ulang, atau hanya tampil selama stream berlangsung? Diputuskan di awal F19.

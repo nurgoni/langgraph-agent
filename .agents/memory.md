@@ -13,15 +13,30 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** v0.1.0 sudah dirilis. M2: F11–F13 sudah di `develop`. F14 selesai di
-  `feature/F14-compose-e2e`, menunggu push dan PR. Setelah merge: rilis v0.2.0.
-- **Berikutnya:** rilis v0.2.0, lalu M3 dimulai dari F15 (research assistant).
+- **Fase:** M2 selesai di `develop`. `release/v0.2.0` sudah disiapkan, menunggu push, PR ke `main`,
+  tag, dan back-merge. Rencana F19 (reasoning display) ada di `docs/f19-reasoning-plan`.
+- **Berikutnya:** F19 sebagai fitur pertama M3, lalu F15, F16, F17, dan rilis v0.3.0.
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Terakhir diperbarui:** 2026-11-04
 
 ## Decision Log
+
+### 2026-11-05: Reasoning model tidak terlihat → fitur F19 (M3)
+
+- **Temuan:** keluhan user "respons lama, terlihat idle" pada `chatbot` dengan `qwen3.5:9b`.
+  `chatbot` tidak punya langkah reasoning sendiri, dan UI tidak punya tampilan reasoning. Model
+  keluarga Qwen3 berpikir dulu dan (lewat endpoint OpenAI-compatible) mengirim pemikiran di field
+  non-standar. `ChatOpenAI` secara eksplisit tidak mengekstrak field non-standar seperti
+  `reasoning_content` (peringatan di docstring `langchain-openai`), jadi tidak ada frame selama model
+  berpikir. Nama field di Ollama belum diukur karena Ollama mati saat dicek.
+- **Keputusan user:** rilis v0.2.0 dulu, lalu tambahkan "reasoning terlihat" sebagai fitur M3
+  (F19, FR-29), dikerjakan pertama di M3.
+- **Arah desain:** tetap satu jalur OpenAI-compatible (subclass `ChatOpenAI`), event SSE baru
+  `reasoning`, dan blok "Thinking" di UI. Penyimpanan reasoning di riwayat masih open question.
+- **Pelajaran:** `uv lock` bisa time out saat index paket tidak terjangkau. Untuk perubahan yang
+  hanya menyentuh versi project, `uv lock --offline` cukup (resolusi dari cache).
 
 ### 2026-11-04: Docker Compose & e2e dari F14
 
@@ -420,13 +435,17 @@ melakukan port.
 
 ## Pertanyaan Terbuka
 
-Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pertanyaan terbuka.
+Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions).
+
+- Apakah reasoning model (FR-29) disimpan di riwayat thread, atau hanya tampil selama stream?
+  Tanyakan ke user di awal F19.
 
 ## TODO Berikutnya
 
-- [ ] User: push `feature/F14-compose-e2e`, lalu buka PR F14 ke `develop`. Cek job CI `e2e`
-      (pertama kali berjalan di GitHub Actions).
+- [ ] User: push `release/v0.2.0`, PR ke `main` dengan merge commit (`--no-ff`), tag `v0.2.0`,
+      back-merge `main` ke `develop` (CONTRIBUTING.md § Release).
+- [ ] User: push `docs/f19-reasoning-plan`, lalu PR ke `develop` (squash).
 - [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
       (CONTRIBUTING.md § Setup Awal Repo).
-- [ ] Rilis v0.2.0: `release/v0.2.0` dari `develop`, bump `version`, pindahkan `[Unreleased]`,
-      PR ke `main` (`--no-ff`), tag `v0.2.0`, back-merge ke `develop`.
+- [ ] F19: nyalakan Ollama, ukur field reasoning di stream mentah, tanyakan open question
+      penyimpanan reasoning, lalu implementasi.

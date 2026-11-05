@@ -30,6 +30,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F12 | UI chat | M2 | done |
 | F13 | UI sidebar & threads | M2 | done |
 | F14 | Docker Compose & e2e | M2 | done |
+| F19 | Reasoning display | M3 | todo |
 | F15 | Research assistant | M3 | todo |
 | F16 | Interrupt agent | M3 | todo |
 | F17 | Supervisor agent | M3 | todo |
@@ -41,7 +42,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | M0: Bootstrap | F00 | – | Repo, tooling, dan CI siap |
 | M1: Core + Service | F01–F10, F18 | `v0.1.0` | API lengkap dengan `chatbot`, dites dengan FakeModel |
 | M2: Client + UI | F11–F14 | `v0.2.0` | Chat end-to-end via Docker Compose |
-| M3: Agent tambahan | F15–F17 | `v0.3.0` | Tool calling, human-in-the-loop, multi-agent |
+| M3: Agent tambahan | F19, F15–F17 | `v0.3.0` | Reasoning terlihat, tool calling, human-in-the-loop, multi-agent |
 
 ## Dependency Graph
 
@@ -52,11 +53,12 @@ F00 ─► F04 ─────────────────────�
                                     F06 ─► F09 ─► F18
 F04 ─► F11 ─► F12 ─► F13 ─► F14          (F13 juga butuh F18)
 F05 ─► F15 ─► F17                        (F17 juga butuh F08, F12)
+F08 ─► F19 ◄─ F12                        (F19 juga butuh F02, F11)
 ```
 
 **Urutan eksekusi yang disarankan (satu developer):**
 F00 → F01 → F04 → F02 → F03 → F05 → F06 → F07 → F09 → F18 → F08 → F10 → *rilis v0.1.0* → F11 → F12 →
-F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
+F13 → F14 → *rilis v0.2.0* → F19 → F15 → F16 → F17 → *rilis v0.3.0*
 
 **Bisa dikerjakan paralel (lebih dari satu developer):**
 - F02 ∥ F03 ∥ F04
@@ -82,7 +84,8 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
 | FR-11 | F06 | | FR-23 | F17 |
 | FR-12 | F07, F16 | | FR-24 | F12, F16 |
 | FR-25 | F18, F13 | | FR-27 | F04, F05, F06, F07 |
-| FR-26 | F18, F13 | | | |
+| FR-26 | F18, F13 | | FR-28 | F07, F08, F18 |
+| FR-29 | F19 | | | |
 
 ## Loop Eksekusi per Fitur
 
@@ -652,6 +655,48 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
 ---
 
 ## M3: Agent Tambahan → v0.3.0
+
+### F19: Reasoning display
+
+- **Branch:** `feature/F19-reasoning-display`
+- **FR:** FR-29
+- **Latar belakang:** model reasoning (misalnya Qwen3 lewat Ollama) menulis token pemikiran di field
+  stream terpisah, bukan `content`. `ChatOpenAI` membuang field non-standar itu, sehingga selama
+  model berpikir `/stream` tidak mengirim frame apa pun dan UI tampak idle.
+- **Langkah 1 (klarifikasi, sebelum menulis kode):**
+  - Ukur stream mentah endpoint yang dipakai: nama field reasoning (`reasoning` atau
+    `reasoning_content`) dan waktunya sebelum `content` dimulai. Script probe pernah dibuat untuk
+    ini, berupa `httpx.stream` ke `{LLM_BASE_URL}/chat/completions` dengan mencatat field per delta.
+  - Putuskan bersama user: apakah reasoning disimpan di riwayat dan tampil saat thread dibuka ulang
+    (PRD §11 no. 5).
+- **File:** `llm/reasoning.py` (subclass `ChatOpenAI` yang menyalin field reasoning ke
+  `additional_kwargs`), `llm/factory.py`, `llm/fake.py` (reasoning bisa di-script),
+  `schema/stream.py` (`ReasoningEvent`), `schema/responses.py` (`ChatMessage.reasoning`, jika
+  disimpan), `service/streaming.py`, `service/converters.py`, `ui/message_renderer.py`, `tests/`.
+- **Catatan desain:**
+  - Tetap satu jalur OpenAI-compatible (scope v1). Bukan menambah provider baru seperti
+    `langchain-ollama`.
+  - Event SSE baru `{"type": "reasoning", "content": "..."}` dikirim sebelum token jawaban. Ini
+    perubahan kontrak: service dan client (yang memakai `STREAM_EVENT_ADAPTER` yang sama) dirilis
+    bersama. Client versi lama akan menolak frame ini.
+  - `stream_tokens=False` juga mematikan frame `reasoning`.
+  - UI menampilkan reasoning di blok "Thinking" (`st.status`/expander) yang terbuka selama model
+    berpikir, lalu tertutup saat jawaban mulai mengalir.
+  - Model tanpa reasoning (dan `FakeModel` default) tidak berubah perilakunya.
+- **Rencana commit:**
+  1. `feat(llm): keep reasoning from openai-compatible streams`
+  2. `feat(schema): add reasoning stream event`
+  3. `feat(service): stream reasoning before answer tokens`
+  4. `feat(ui): show reasoning in a collapsible thinking block`
+  5. `docs: record F19 reasoning decisions`
+- **Acceptance criteria:**
+  - [ ] Dengan `FakeModel` yang di-script berisi reasoning, `/stream` mengirim frame `reasoning`
+        sebelum `token`, dan UI menampilkan blok "Thinking" sebelum jawaban.
+  - [ ] Smoke test dengan model reasoning asli: frame `reasoning` muncul selama jeda yang
+        sebelumnya kosong.
+  - [ ] Model tanpa reasoning menghasilkan urutan frame yang sama seperti sebelum F19.
+  - [ ] Test kontrak client vs service mencakup frame `reasoning`.
+- **Squash title:** `feat(llm): stream and display model reasoning (F19)`
 
 ### F15: Research assistant
 
