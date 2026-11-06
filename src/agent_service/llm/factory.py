@@ -133,6 +133,9 @@ class ModelFactory:
             temperature=DEFAULT_TEMPERATURE,
             timeout=LLM_TIMEOUT_SECONDS,
             max_retries=LLM_MAX_RETRIES,
+            # Tanpa ini, stream_mode="messages" LangGraph hanya menerima satu chunk berisi seluruh
+            # jawaban, sehingga /stream tidak mengirim token satu per satu.
+            streaming=True,
         )
 
 

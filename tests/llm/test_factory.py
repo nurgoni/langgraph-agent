@@ -59,6 +59,7 @@ def test_openai_compatible_model_uses_settings_and_constants(llm_settings: Setti
     assert model.temperature == DEFAULT_TEMPERATURE
     assert model.request_timeout == LLM_TIMEOUT_SECONDS
     assert model.max_retries == LLM_MAX_RETRIES
+    assert model.streaming is True
 
 
 def test_model_outside_allowlist_is_rejected(llm_settings: Settings) -> None:

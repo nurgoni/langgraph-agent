@@ -6,6 +6,28 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-05
+
+### Added
+
+- `AgentClient` sync dan async: `invoke` (mengembalikan `AgentReply` berisi ID thread/user),
+  `stream` (context manager `StreamRun`), history, daftar thread, rename, delete, dan info yang
+  diambil lazy. Error HTTP dibungkus `AgentClientError` dengan status dan detail (F11).
+- UI chat Streamlit: token streaming, tool call sebagai status yang bisa di-expand, pertanyaan
+  interrupt sebagai pesan AI, dan error service ditampilkan di chat (F12).
+- Sidebar UI: chat baru, pemilih agent dan model, toggle streaming, daftar thread dengan aksi
+  rename dan hapus. `user_id`, `thread_id`, dan `agent` disimpan di URL sehingga percakapan bisa
+  dibuka ulang (F13).
+- Stack Docker Compose (service + UI) dengan FakeModel sebagai default, override `compose.llm.yaml`
+  untuk LLM asli, test e2e bermarker `integration`, dan job CI `e2e` (F14).
+
+### Fixed
+
+- Model OpenAI-compatible kini dibuat dengan `streaming=True`, sehingga `/stream` mengirim token
+  satu per satu untuk LLM asli, bukan satu chunk berisi seluruh jawaban (F11).
+- UI menampilkan URL service dan perintah untuk menjalankannya saat service tidak terjangkau,
+  bukan error socket mentah. Client membedakannya lewat `ServiceUnreachableError` (F12).
+
 ## [0.1.0] - 2026-11-04
 
 ### Added
@@ -38,5 +60,6 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 - `docs/ARCHITECTURE.md`: lifespan, alur request, kepemilikan thread, error, persistence, dan cara
   menambah agent (F10).
 
-[Unreleased]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/nurgoni/langgraph-boilerplate-agent/releases/tag/v0.1.0

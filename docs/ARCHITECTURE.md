@@ -26,8 +26,8 @@ src/agent_service/
 ├── memory/    CheckpointerProvider, ThreadMetadataRepository (SQLite)
 ├── schema/    Model Pydantic untuk API: request, response, event SSE, nama header
 ├── service/   create_app, lifespan, auth, route, StreamService, ThreadRepository
-├── client/    (M2) AgentClient
-└── ui/        (M2) Streamlit
+├── client/    AgentClient (sync + async), StreamRun, SseParser
+└── ui/        Streamlit: app, UiSettings, UrlState, ChatSession, SidebarView, ChatView, MessageRenderer
 ```
 
 Panah berarti "boleh import". Import ke arah sebaliknya dilarang.
@@ -207,6 +207,49 @@ lock privat milik saver. Penghapusan thread memanggil `adelete_thread` lalu meng
    test endpoint, tambahkan agent lewat `create_app(settings, agents=[...])` seperti di
    `tests/service/conftest.py`.
 
+## Client
+
+`AgentClient` (`client/`) hanya bergantung pada `schema/`, httpx, dan pydantic. Aturan ini dicek
+oleh `tests/client/test_layering.py`.
+
+- **Tidak ada request di konstruktor.** `get_info()` diambil saat pertama dipakai lalu di-cache.
+- **`invoke`** mengembalikan `AgentReply`, berisi message beserta ID thread/user dari header
+  respons.
+- **`stream`** mengembalikan `StreamRun`. Request dikirim saat masuk `with`, sehingga error
+  404/422 dilempar di situ sebagai `AgentClientError`. Event berupa model `StreamEvent` yang sama
+  dengan milik service. Frame `error` diteruskan sebagai `ErrorEvent`, dan stream yang berakhir
+  tanpa `[DONE]` dianggap error.
+- **Satu `RequestSpec` per operasi.** Spec ini dipakai bersama oleh method sync dan async
+  (berawalan `a`).
+
+## UI
+
+`ui/` hanya bergantung pada `client/`, `schema/`, streamlit, dan pydantic. Aturan ini dicek oleh
+`tests/ui/test_layering.py`.
+
+- **`app.py`** dijalankan ulang oleh Streamlit pada setiap interaksi. `UiSettings` membaca
+  `AGENT_URL`/`AUTH_SECRET`. Setiap session browser punya `AgentClient` sendiri, karena
+  `agent_id`-nya mengikuti pilihan agent session tersebut.
+- **`UrlState`** menyimpan `user_id`, `thread_id`, dan `agent` di query param. `ChatSession` dibangun
+  dari URL saat session dimulai, lalu ditulis kembali ke URL di akhir setiap run.
+- **`ChatSession`** (`st.session_state`) menyimpan user, thread, agent, model, opsi token, dan message
+  yang sudah tampil. Thread dari URL dimuat riwayatnya sekali.
+- **`SidebarView`** berisi tombol chat baru, pemilih agent dan model dari `/info`, toggle streaming,
+  dan daftar thread (`st.cache_data` dengan `THREAD_LIST_CACHE_TTL_SECONDS`) beserta aksi rename dan
+  hapus. Pilihan disimpan lewat callback widget sebelum script diulang.
+- **`ChatView`** memutar ulang riwayat, lalu men-stream jawaban baru. Pesan user baru disimpan
+  setelah service menerima request.
+- **`MessageRenderer`** punya satu method per tipe message. Jawaban AI, tool call, dan hasil tool
+  berurutan digabung dalam satu blok chat, dengan tool call tampil sebagai `st.status`.
+
+## Deployment
+
+`docker/Dockerfile` punya dua target dari base yang sama: `service`
+(`python -m agent_service.run_service`, SQLite di volume `/data`) dan `ui` (`streamlit run`).
+`compose.yaml` menjalankan keduanya. Service memakai FakeModel secara default, dan UI menunggu
+healthcheck service, lalu menghubunginya di `http://agent-service:8080`. `compose.llm.yaml`
+menimpa konfigurasi model dengan LLM asli.
+
 ## Testing
 
 - **Tidak ada network di unit test.** Fixture autouse `block_network` (`tests/conftest.py`)
@@ -215,5 +258,12 @@ lock privat milik saver. Penghapusan thread memanggil `adelete_thread` lalu meng
   setiap panggilan mengembalikan salinan message baru.
 - **Test endpoint memakai `httpx.AsyncClient` + `ASGITransport`.** Lifespan dijalankan manual
   dengan `app.router.lifespan_context(app)`, karena `ASGITransport` melewatinya.
+- **Client dites dua kali:** dengan `httpx.MockTransport`, dan sebagai test kontrak terhadap app
+  asli lewat `httpx.ASGITransport` (`tests/client/test_client_contract.py`).
+- **UI dites dengan `streamlit.testing.v1.AppTest`.** Test menyuntikkan `AgentClient` dengan
+  `httpx.MockTransport` lewat `st.session_state[CLIENT_OVERRIDE_KEY]`.
+- **Test e2e bermarker `integration`** (`tests/integration/`) menjalankan stack Compose sungguhan.
+  Test ini dilewati `pytest` default, dan dijalankan dengan `pytest -m integration` serta job CI
+  `e2e`.
 - **pytest memakai `--import-mode=importlib`.** Akibatnya file test tidak saling import, dan fake
   bersama disediakan lewat fixture.

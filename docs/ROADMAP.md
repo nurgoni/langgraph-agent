@@ -26,10 +26,10 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F09 | User threads | M1 | done |
 | F18 | Thread rename & delete | M1 | done |
 | F10 | Architecture docs | M1 | done |
-| F11 | Agent client | M2 | todo |
-| F12 | UI chat | M2 | todo |
-| F13 | UI sidebar & threads | M2 | todo |
-| F14 | Docker Compose & e2e | M2 | todo |
+| F11 | Agent client | M2 | done |
+| F12 | UI chat | M2 | done |
+| F13 | UI sidebar & threads | M2 | done |
+| F14 | Docker Compose & e2e | M2 | done |
 | F15 | Research assistant | M3 | todo |
 | F16 | Interrupt agent | M3 | todo |
 | F17 | Supervisor agent | M3 | todo |
@@ -540,12 +540,27 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
   - Menangkap `httpx.HTTPStatusError` dan `httpx.RequestError` secara spesifik.
 - **Referensi lama:** `client/client.py` (duplikasi payload di `:111`, `:157`, `:234`, `:291`).
 - **Rencana commit:**
-  1. `feat(client): add SseParser for stream frames`
+  1. `feat(client): add SseParser and AgentClientError`
   2. `feat(client): add sync AgentClient methods`
   3. `feat(client): add async AgentClient methods`
-  4. `test(client): cover http errors with mock transport`
+  4. `fix(llm): enable token streaming for openai-compatible models`
+  5. `docs: record F11 agent client decisions`
+- **Penyesuaian saat implementasi:**
+  - Keputusan user: `invoke` → `AgentReply(message, thread_id, user_id)`, `stream`/`astream` →
+    context manager `StreamRun`/`AsyncStreamRun` dengan `thread_id`/`user_id`. Frame `error`
+    di-yield sebagai `ErrorEvent`.
+  - Tidak ada `_headers`: token bearer dipasang sekali di client httpx. `auth_secret` diberikan
+    eksplisit karena `client/` tidak boleh membaca env/`core/`. Request dibangun sekali sebagai
+    `RequestSpec` (`client/requests.py`) untuk sync dan async.
+  - Ditambah `rename_thread`/`delete_thread` (dibutuhkan F13). `agent_id=None` memakai route agent
+    default.
+  - `httpx` dipindah dari dev ke dependency runtime. Ditambah `tests/client/test_layering.py`.
+  - Selain `MockTransport`, ada test kontrak client vs app asli lewat `httpx.ASGITransport`
+    (in-process, tanpa server).
+  - Smoke test dengan LLM asli menemukan bug F02: `ChatOpenAI` tanpa `streaming=True` hanya
+    mengirim satu chunk ke `/stream`. Diperbaiki di commit `fix(llm)`.
 - **Acceptance criteria:**
-  - [ ] Semua test memakai `httpx.MockTransport` (tanpa server).
+  - [x] Semua test memakai `httpx.MockTransport` atau `ASGITransport` (tanpa server).
 - **Squash title:** `feat(client): add sync and async agent client (F11)`
 
 ### F12: UI chat
@@ -563,6 +578,17 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
   1. `feat(ui): add UiSettings and streamlit entrypoint`
   2. `feat(ui): add MessageRenderer for human, ai and tool messages`
   3. `feat(ui): add ChatView with token streaming`
+  4. `docs: record F12 ui chat decisions`
+- **Penyesuaian saat implementasi:**
+  - Ditambah `ui/session.py` (`ChatSession`, dataclass bertipe di `st.session_state`) sebagai
+    pengganti key `session_state` yang tersebar.
+  - `thread_id`/`user_id` diambil dari header respons stream setelah giliran pertama, dan baru
+    disimpan di session browser. Penyimpanan di URL dikerjakan di F13 (FR-22).
+  - UI selalu men-stream ke agent default. Toggle streaming dan pemilih agent/model ada di F13.
+  - Test memakai `AppTest` dengan `AgentClient` asli + `httpx.MockTransport` yang disuntikkan lewat
+    `st.session_state[CLIENT_OVERRIDE_KEY]`. Ditambah `tests/ui/test_layering.py`.
+  - Teks yang tampil ke user (placeholder input, label tool) ditulis dalam bahasa Inggris,
+    konsisten dengan pesan error API.
 - **Squash title:** `feat(ui): add streamlit chat view with streaming (F12)`
 
 ### F13: UI sidebar & threads
@@ -575,27 +601,51 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
 - **Referensi lama:** `streamlit_app.py` (sidebar, query param, `@st.cache_data(ttl=600)` di
   `:56`).
 - **Rencana commit:**
-  1. `feat(ui): add UrlState for thread and agent query params`
+  1. `feat(ui): add UrlState for user, thread and agent query params`
   2. `feat(ui): add SidebarView with agent and model pickers`
   3. `feat(ui): list previous threads in sidebar`
   4. `feat(ui): add rename and delete actions for threads`
+  5. `docs: record F13 sidebar decisions`
+- **Penyesuaian saat implementasi:**
+  - Keputusan user: `user_id` ikut disimpan di URL (FR-22 direvisi), karena thread hanya bisa dibuka
+    oleh pemiliknya.
+  - `AgentClient` dibuat per session browser (bukan `st.cache_resource`), karena `agent_id` client
+    mengikuti pilihan agent masing-masing browser.
+  - Toggle streaming dipetakan ke `stream_tokens=False`, bukan beralih ke `invoke`, supaya tool call
+    tetap tampil.
+  - Mengganti agent memulai thread baru. Agent di URL yang tidak dikenal diganti agent default.
+    Thread di URL yang tidak ada (404) diganti chat baru.
+  - Thread baru langsung muncul di sidebar lewat `st.rerun()` setelah run tanpa error.
+  - `THREAD_LIST_CACHE_TTL_SECONDS = 300`, dan cache dihapus setiap kali UI mengubah daftar thread.
 - **Squash title:** `feat(ui): add sidebar with thread history and pickers (F13)`
 
 ### F14: Docker Compose & e2e
 
 - **Branch:** `feature/F14-compose-e2e`
-- **File:** `docker/Dockerfile.service`, `docker/Dockerfile.app`, `compose.yaml`,
-  `tests/integration/test_compose_e2e.py` (marker `integration`), update README.
+- **File:** `docker/Dockerfile` (target `service` dan `ui`), `.dockerignore`, `compose.yaml`,
+  `compose.llm.yaml`, `tests/integration/test_compose_e2e.py` (marker `integration`), job CI `e2e`,
+  update README.
 - **Catatan desain:** Compose memakai `USE_FAKE_MODEL=true` secara default supaya e2e berjalan
   tanpa API key. Healthcheck memanggil `/health`.
 - **Referensi lama:** `docker/Dockerfile.service`, `docker/Dockerfile.app`, `compose.yaml`.
 - **Rencana commit:**
-  1. `build(docker): add service and app dockerfiles`
+  1. `build(docker): add service and ui image targets`
   2. `build(docker): add compose with healthcheck and fake model default`
   3. `test(service): add compose end-to-end smoke test`
   4. `docs: document docker compose usage`
+- **Penyesuaian saat implementasi:**
+  - Satu Dockerfile multi-target, bukan dua file. Layer dependency dibangun dan di-cache sekali.
+  - Kedua image memasang dependency yang sama (sekitar 1 GB, layer dipakai bersama), karena
+    `pyproject.toml` belum memisahkan dependency service dan UI. Pemisahan lewat extras dicatat
+    sebagai optimasi nanti.
+  - Konfigurasi service ditulis eksplisit di `compose.yaml` (bukan `env_file: .env`), karena
+    `LLM_BASE_URL` di `.env` developer bisa mengarah ke `localhost`. Ditambah `compose.llm.yaml`
+    untuk LLM asli (`DOCKER_LLM_BASE_URL`, `host.docker.internal`).
+  - Container berjalan non-root, SQLite di volume `/data`, dan healthcheck memakai Python.
+  - Test e2e menjalankan UI asli dengan `AppTest` di dalam container UI. Ditambah job CI `e2e`.
 - **Acceptance criteria:**
-  - [ ] `docker compose up` berjalan, lalu chat di `:8501` mendapat balasan dari FakeModel.
+  - [x] `docker compose up` berjalan, lalu chat di UI mendapat balasan dari FakeModel (diverifikasi
+        lewat `AppTest` di container UI; klik di browser tidak diotomasi).
 - **Squash title:** `build(docker): add compose stack and e2e smoke test (F14)`
 - **Setelah merge:** rilis **v0.2.0**.
 

@@ -13,19 +13,100 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** M1 selesai di branch fitur. F00–F07, F09, dan F18 sudah di `develop`. F08 menunggu PR.
-  F10 adalah **stacked branch** di atas F08.
-- **Setelah F08 di-squash merge:** jalankan
-  `git rebase --onto origin/develop feature/F08-sse-streaming feature/F10-docs-architecture`, lalu
-  push (`--force-with-lease`) dan buka PR F10.
-- **Berikutnya:** rilis v0.1.0 setelah F08 dan F10 ada di `develop` (CONTRIBUTING.md § Release),
-  lalu M2 dimulai dari F11.
+- **Fase:** v0.1.0 sudah dirilis. M2: F11–F13 sudah di `develop`. F14 selesai di
+  `feature/F14-compose-e2e`, menunggu push dan PR. Setelah merge: rilis v0.2.0.
+- **Berikutnya:** rilis v0.2.0, lalu M3 dimulai dari F15 (research assistant).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Terakhir diperbarui:** 2026-11-04
 
 ## Decision Log
+
+### 2026-11-04: Docker Compose & e2e dari F14
+
+- **Keputusan:**
+  - Satu `docker/Dockerfile` dengan target `service` dan `ui` (base yang sama, uv 0.12.18, `uv sync
+    --frozen --no-dev --no-editable`), user non-root, SQLite di `/data`, healthcheck Python.
+  - `compose.yaml` menulis konfigurasi service secara eksplisit (FakeModel). Hanya `AUTH_SECRET`,
+    `LOG_LEVEL`, `SERVICE_PORT`, dan `UI_PORT` yang diambil dari shell atau `.env`.
+    `compose.llm.yaml` untuk LLM asli, dengan `DOCKER_LLM_BASE_URL` (interpolasi bertingkat
+    `${A:-${B:?}}` didukung Compose v5).
+  - Test e2e (`-m integration`) memakai project `agent-service-e2e` dan port acak, dan selalu
+    `down -v`. UI diuji dengan `AppTest` di dalam container UI. Job CI `e2e` berjalan setelah job
+    `check`.
+- **Verifikasi:** streaming token dengan LLM asli lewat `compose.llm.yaml` menghasilkan 7 frame
+  token (qwen3.5:9b di host lewat `host.docker.internal`). TODO dari F08/F11 selesai.
+- **Utang:** image sekitar 1 GB karena dependency service dan UI belum dipisah (extras). Opsi
+  perbaikan: optional-dependencies `service`/`ui`, dengan `uv sync --all-extras` untuk dev dan CI.
+
+### 2026-11-04: Sidebar & URL state dari F13
+
+- **Keputusan user:** `user_id` disimpan di query param URL bersama `thread_id` dan `agent`
+  (FR-22 direvisi). Pemegang URL bisa membaca thread tersebut.
+- **Keputusan desain:**
+  - `AgentClient` per session browser (`st.session_state["agent_client"]`), menggantikan
+    `st.cache_resource` dari F12. Supersedes catatan F12 "satu client per konfigurasi".
+  - `ChatSession.from_url()` saat session dimulai, dan `session.to_url().write()` di akhir run.
+    `user_id` dibuat UI (UUID) jika tidak ada di URL.
+  - Aksi sidebar memakai callback `on_click`/`on_change`, bukan `if st.button(): ... st.rerun()`.
+  - `ChatView` memanggil `on_thread_created` (menghapus cache daftar thread) dan `st.rerun()`
+    setelah thread baru, hanya jika run tanpa error.
+  - Toggle streaming = `stream_tokens`. Ganti agent = thread baru.
+- **Pelajaran:**
+  - `AppTest.query_params` bisa diisi sebelum `run()` dan ikut memantulkan perubahan URL dari
+    script.
+  - Di `AppTest`, `button.type` adalah tipe elemen. Jenis tombol (`primary`/`secondary`) dibaca dari
+    `button.proto.type`.
+  - Cache `st.cache_data` bersifat global per proses. Test yang memakai daftar thread perlu memanggil
+    `clear_thread_list_cache()` di fixture.
+  - Elemen di sidebar dirender sebelum `ChatView` mengirim pesan, jadi perubahan dari pesan baru
+    butuh `st.rerun()` agar langsung terlihat di sidebar.
+
+### 2026-11-04: UI chat dari F12
+
+- **Keputusan:**
+  - UI memakai `AgentClient` sync (script Streamlit sinkron). Satu client per konfigurasi lewat
+    `st.cache_resource`.
+  - State percakapan disimpan di dataclass `ChatSession` (`st.session_state["chat_session"]`).
+    `thread_id`/`user_id` diambil dari `StreamRun` setelah giliran pertama, dan untuk sementara hanya
+    berlaku per session browser.
+  - `MessageRenderer` dibuat per pass render. Status tool call dipasangkan lewat `tool_call_id`.
+  - Pesan user disimpan ke session hanya setelah service menerima request.
+  - Teks UI yang tampil ke user ditulis dalam bahasa Inggris.
+- **Pelajaran:**
+  - `AppTest.from_file` dan `streamlit run` mengeksekusi script sebagai `__main__`, jadi
+    `if __name__ == "__main__": main()` aman dan modul tetap bebas side effect saat di-import
+    (doctest).
+  - Path relatif di `AppTest.from_file` di-resolve terhadap file pemanggil. Pakai path absolut
+    dari `module.__file__`.
+  - Untuk test UI, suntikkan `AgentClient` asli dengan `MockTransport` lewat `session_state`,
+    karena `AppTest.from_function` tidak bisa membawa closure.
+
+### 2026-11-04: Agent client dari F11
+
+- **Keputusan user:** `invoke` → `AgentReply(message, thread_id, user_id)`. `stream`/`astream` →
+  context manager `StreamRun`/`AsyncStreamRun` dengan `thread_id`/`user_id`. Frame `error`
+  di-yield sebagai `ErrorEvent`, sedangkan `AgentClientError` hanya untuk HTTP, koneksi, respons
+  rusak, atau stream tanpa `[DONE]`.
+- **Keputusan desain:**
+  - `client/` hanya meng-import `schema/`, httpx, pydantic, dan stdlib (ditegakkan oleh test
+    layering). `auth_secret` dan `base_url` diberikan pemanggil. UI (F12) membacanya dari
+    `UiSettings`.
+  - Request disusun sebagai `RequestSpec` (`client/requests.py`) dan dipakai bersama oleh sync dan
+    async. Body selalu dibangun dari schema request, sehingga validasi terjadi di sisi client.
+  - `agent_id=None` memakai route agent default. ID di path di-escape (`path_segment`).
+- **Supersedes (F02, "`ChatOpenAI` tidak diberi `streaming=True`"):** smoke test dengan LLM asli
+  membuktikan bahwa tanpa `streaming=True`, `stream_mode="messages"` hanya menerima satu chunk.
+  `ModelFactory` kini memakai `streaming=True`.
+- **Pelajaran:**
+  - `.env` developer bisa berisi LLM asli (`DEFAULT_MODEL` model asli). Env `USE_FAKE_MODEL=true`
+    tidak mengganti model default dari `.env`. Untuk smoke test tanpa LLM, set juga
+    `DEFAULT_MODEL=fake`.
+  - Smoke test terhadap LLM asli adalah satu-satunya cara menangkap perilaku streaming provider.
+    `FakeModel` selalu men-stream.
+  - Heredoc bash yang panjang dan berisi banyak backtick kadang gagal di-parse oleh tool shell.
+    Tulis script edit ke file scratchpad, lalu jalankan.
 
 ### 2026-11-04: SSE streaming dari F08
 
@@ -343,10 +424,9 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pe
 
 ## TODO Berikutnya
 
-- [ ] User: push `feature/F08-sse-streaming` dan `feature/F10-docs-architecture`, lalu buka PR F08.
-- [ ] User: setelah F08 di-merge, rebase F10 ke `develop` lalu buka PR F10.
+- [ ] User: push `feature/F14-compose-e2e`, lalu buka PR F14 ke `develop`. Cek job CI `e2e`
+      (pertama kali berjalan di GitHub Actions).
 - [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
       (CONTRIBUTING.md § Setup Awal Repo).
-- [ ] Rilis v0.1.0: `release/v0.1.0` dari `develop`, bump `version`, pindahkan `[Unreleased]` di
-      CHANGELOG, PR ke `main` dengan merge commit (`--no-ff`), tag `v0.1.0`, back-merge ke
-      `develop`.
+- [ ] Rilis v0.2.0: `release/v0.2.0` dari `develop`, bump `version`, pindahkan `[Unreleased]`,
+      PR ke `main` (`--no-ff`), tag `v0.2.0`, back-merge ke `develop`.
