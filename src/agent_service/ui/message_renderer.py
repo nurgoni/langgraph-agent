@@ -18,6 +18,7 @@ TOOL_OUTPUT_HEADING: Final = "Output"
 STREAMING_CURSOR: Final = "▌"
 THINKING_LIVE_LABEL: Final = ":material/psychology: Thinking…"
 THINKING_DONE_LABEL: Final = ":material/psychology: Thinking"
+EXPERT_LABEL_TEMPLATE: Final = ":material/support_agent: {agent}"
 
 type StatusState = Literal["running", "complete", "error"]
 
@@ -27,8 +28,9 @@ class MessageRenderer:
 
     Class karena menyimpan state selama satu pass render: blok chat aktif (message AI, tool call,
     dan hasil tool berurutan digabung dalam satu blok), placeholder token yang sedang di-stream,
-    dan status tool call yang menunggu hasilnya, serta blok "Thinking" yang sedang terisi.
-    Buat instance baru untuk setiap pass render.
+    status tool call yang menunggu hasilnya, blok "Thinking" yang sedang terisi, dan kontainer
+    sub-agent aktif (message dengan `agent` dirender bertingkat di dalamnya, FR-23). Buat instance
+    baru untuk setiap pass render.
     """
 
     def __init__(self, live: bool = False) -> None:
@@ -50,6 +52,8 @@ class MessageRenderer:
         self._reasoning_text = ""
         # Reasoning message AI berikutnya sudah tampil live, jadi tidak digambar ulang darinya.
         self._reasoning_streamed = False
+        self._expert_name: str | None = None
+        self._expert_container: DeltaGenerator | None = None
         self._handlers: dict[MessageType, Callable[[ChatMessage], None]] = {
             "human": self._render_human,
             "ai": self._render_ai,
@@ -97,7 +101,7 @@ class MessageRenderer:
 
     def _render_ai(self, message: ChatMessage) -> None:
         """Reasoning, jawaban AI (menggantikan token yang di-stream), dan tool call-nya."""
-        block = self._block_for(AI_ROLE)
+        block = self._target_for(message)
         self._finish_reasoning()
         if message.reasoning and not self._reasoning_streamed:
             self._render_saved_reasoning(block, message.reasoning)
@@ -113,11 +117,10 @@ class MessageRenderer:
 
     def _render_tool_result(self, message: ChatMessage) -> None:
         """Isi status tool call yang cocok dengan `tool_call_id`, atau buat status baru."""
+        target = self._target_for(message)
         status = self._pending_tools.pop(message.tool_call_id or "", None)
         if status is None:
-            status = self._block_for(AI_ROLE).status(
-                TOOL_LABEL_TEMPLATE.format(name="result"), state="complete"
-            )
+            status = target.status(TOOL_LABEL_TEMPLATE.format(name="result"), state="complete")
         status.markdown(f"**{TOOL_OUTPUT_HEADING}**")
         status.code(message.content)
         status.update(state="complete")
@@ -149,11 +152,30 @@ class MessageRenderer:
         if tool_call.id is not None:
             self._pending_tools[tool_call.id] = status
 
+    def _target_for(self, message: ChatMessage) -> DeltaGenerator:
+        """Tempat menggambar message AI/tool: blok AI, atau kontainer expert jika ada `agent`.
+
+        Message expert yang berurutan berbagi satu kontainer berbingkai berjudul nama expert.
+        Message tanpa `agent` menutup kontainer itu dan kembali ke blok AI.
+        """
+        block = self._block_for(AI_ROLE)
+        if message.agent is None:
+            self._expert_name = None
+            self._expert_container = None
+            return block
+        if self._expert_container is None or self._expert_name != message.agent:
+            self._expert_container = block.container(border=True)
+            self._expert_container.caption(EXPERT_LABEL_TEMPLATE.format(agent=message.agent))
+            self._expert_name = message.agent
+        return self._expert_container
+
     def _block_for(self, role: MessageType) -> DeltaGenerator:
         """Blok chat untuk `role`, memakai ulang blok aktif jika perannya sama."""
         if self._block is None or self._block_role != role:
             self._block = st.chat_message(role)
             self._block_role = role
+            self._expert_name = None
+            self._expert_container = None
         return self._block
 
 

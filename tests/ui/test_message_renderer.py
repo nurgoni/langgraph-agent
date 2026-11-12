@@ -191,3 +191,66 @@ renderer.render_error("Internal server error")
 
     assert app.status[0].state == "complete"
     assert app.error[0].value == "Internal server error"
+
+
+SUPERVISOR_RUN = """
+renderer = MessageRenderer()
+renderer.render(ChatMessage(type="human", content="12 * 7?"))
+renderer.render(
+    ChatMessage(
+        type="ai",
+        content="",
+        tool_calls=[ToolCall(name="ask_math_expert", args={"task": "12 * 7"}, id="s1")],
+    )
+)
+renderer.render(
+    ChatMessage(
+        type="ai",
+        content="",
+        agent="math_expert",
+        tool_calls=[ToolCall(name="calculator", args={"expression": "12 * 7"}, id="m1")],
+    )
+)
+renderer.render(ChatMessage(type="tool", content="84", tool_call_id="m1", agent="math_expert"))
+renderer.render(ChatMessage(type="ai", content="Hasilnya 84", agent="math_expert"))
+renderer.render(ChatMessage(type="tool", content="Hasilnya 84", tool_call_id="s1"))
+renderer.render(ChatMessage(type="ai", content="Jawabannya 84."))
+"""
+
+
+def test_expert_messages_render_inside_labeled_container() -> None:
+    app = run_script(SUPERVISOR_RUN)
+
+    ai_block = app.chat_message[1]
+    children = list(ai_block.children.values())
+    [expert_block] = [child for child in children if type(child).__name__ == "Block"]
+    assert [c.value for c in expert_block.caption] == [":material/support_agent: math_expert"]
+    assert [s.label for s in expert_block.status] == [":material/build: Tool: calculator"]
+    assert [m.value for m in expert_block.markdown if m.value == "Hasilnya 84"] == ["Hasilnya 84"]
+    assert app.markdown[-1].value == "Jawabannya 84."
+
+
+def test_delegation_status_stays_in_main_block_and_completes() -> None:
+    app = run_script(SUPERVISOR_RUN)
+
+    delegation = next(s for s in app.status if "ask_math_expert" in s.label)
+    calculator = next(s for s in app.status if "calculator" in s.label)
+    assert delegation.state == "complete"
+    assert calculator.state == "complete"
+    assert [c.value for c in delegation.code][-1] == "Hasilnya 84"
+
+
+def test_different_experts_get_separate_containers() -> None:
+    app = run_script(
+        """
+renderer = MessageRenderer()
+renderer.render(ChatMessage(type="ai", content="cari", agent="research_expert"))
+renderer.render(ChatMessage(type="ai", content="hitung", agent="math_expert"))
+"""
+    )
+
+    captions = [c.value for c in app.caption]
+    assert captions == [
+        ":material/support_agent: research_expert",
+        ":material/support_agent: math_expert",
+    ]
