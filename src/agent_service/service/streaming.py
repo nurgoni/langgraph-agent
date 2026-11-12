@@ -8,11 +8,13 @@ from langchain_core.messages import AIMessageChunk, BaseMessage, HumanMessage
 from langgraph.types import Interrupt, StreamMode
 
 from agent_service.agents.base import AgentGraph
+from agent_service.llm.reasoning import message_reasoning
 from agent_service.schema.responses import ChatMessage
 from agent_service.schema.stream import (
     STREAM_DONE_MARKER,
     ErrorEvent,
     MessageEvent,
+    ReasoningEvent,
     StreamEvent,
     TokenEvent,
 )
@@ -118,8 +120,10 @@ class StreamService:
         return events
 
     def _handle_message_chunk(self, payload: object) -> list[StreamEvent]:
-        """Token LLM dari `(chunk, metadata)`, kecuali token dimatikan, node bertag `skip_stream`,
-        atau chunk kosong.
+        """Reasoning dan token LLM dari `(chunk, metadata)` (FR-29).
+
+        Tidak ada event jika token dimatikan, node bertag `skip_stream`, atau chunk kosong.
+        Reasoning dikirim lebih dulu karena model memikirkannya sebelum menjawab.
         """
         if not self._stream_tokens or not isinstance(payload, tuple):
             return []
@@ -128,10 +132,14 @@ class StreamService:
             return []
         if SKIP_STREAM_TAG in (metadata.get("tags") or []):
             return []
+        events: list[StreamEvent] = []
+        reasoning = message_reasoning(chunk)
+        if reasoning:
+            events.append(ReasoningEvent(content=reasoning))
         text = content_to_text(chunk.content)
-        if not text:
-            return []
-        return [TokenEvent(content=text)]
+        if text:
+            events.append(TokenEvent(content=text))
+        return events
 
     def _handle_custom(self, payload: object) -> list[StreamEvent]:
         """Event dari `get_stream_writer()`: message LangChain, atau dict sebagai message custom."""

@@ -5,15 +5,34 @@ from pathlib import Path
 
 import httpx
 import pytest
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import AIMessage
 
+from agent_service.agents.base import AgentGraph, Checkpointer
+from agent_service.agents.chatbot import ChatbotAgent
 from agent_service.client import AgentClient, AgentClientError
 from agent_service.core.settings import Settings
-from agent_service.llm.fake import DEFAULT_FAKE_RESPONSE
-from agent_service.schema.stream import MessageEvent, TokenEvent
+from agent_service.llm.fake import DEFAULT_FAKE_RESPONSE, FakeModel
+from agent_service.schema.stream import MessageEvent, ReasoningEvent, TokenEvent
 from agent_service.service.app import create_app
 
 SECRET = "s3cret"
 OWNER = "user-a"
+
+
+THINKING_REPLY = AIMessage(
+    content="Merah dan biru", additional_kwargs={"reasoning_content": "Pilih dua warna"}
+)
+
+
+class ThinkingAgent(ChatbotAgent):
+    """Chatbot dengan model reasoning tiruan, untuk kontrak frame `reasoning` (FR-29)."""
+
+    def __init__(self) -> None:
+        super().__init__(agent_id="thinking", description="Reasons before answering")
+
+    def build(self, model: BaseChatModel, checkpointer: Checkpointer) -> AgentGraph:
+        return super().build(FakeModel(responses=[THINKING_REPLY]), checkpointer)
 
 
 @pytest.fixture
@@ -24,7 +43,7 @@ async def client(tmp_path: Path) -> AsyncIterator[AgentClient]:
         sqlite_db_path=tmp_path / "contract.db",
         auth_secret=SECRET,
     )
-    app = create_app(settings)
+    app = create_app(settings, agents=[ChatbotAgent(), ThinkingAgent()])
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
         async with AgentClient(
@@ -93,3 +112,18 @@ async def test_missing_token_is_401(tmp_path: Path) -> None:
                 await client.aget_info()
 
     assert error_info.value.status_code == 401
+
+
+async def test_reasoning_reaches_client_and_history(client: AgentClient) -> None:
+    client.agent_id = "thinking"
+
+    async with client.astream("Dua warna?", user_id=OWNER) as run:
+        events = [event async for event in run]
+        thread_id = run.thread_id
+    history = await client.aget_history(thread_id, OWNER)
+
+    reasoning = "".join(e.content for e in events if isinstance(e, ReasoningEvent))
+    first_token = next(i for i, e in enumerate(events) if isinstance(e, TokenEvent))
+    assert reasoning == "Pilih dua warna"
+    assert all(isinstance(e, ReasoningEvent) for e in events[:first_token])
+    assert history.messages[-1].reasoning == "Pilih dua warna"
