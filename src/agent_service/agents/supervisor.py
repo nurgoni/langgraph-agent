@@ -6,6 +6,8 @@ menjalankan graph expert dengan model yang sama dari request (FR-4), lalu:
 - menandai setiap message buatan expert dengan `additional_kwargs[SUBAGENT_KWARG]`, supaya riwayat
   bisa dirender bertingkat (FR-23) tanpa menebak dari nama node atau tool;
 - menjalankan expert dengan tag `SUBAGENT_TAG`, supaya token expert tidak dialirkan ke chat utama;
+- mengirim setiap langkah expert ke stream begitu selesai (`get_stream_writer`), supaya chat
+  tidak diam selama expert bekerja;
 - mengembalikan jawaban akhir expert ke supervisor sebagai `ToolMessage`.
 
 Supervisor hanya melihat message tanpa tanda sub-agent, jadi urutan tool call dan hasilnya tetap
@@ -15,10 +17,12 @@ valid untuk API OpenAI-compatible.
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final
+from uuid import uuid4
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.messages.tool import ToolCall
+from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.managed import RemainingSteps
 
@@ -46,6 +50,7 @@ TASK_ARG: Final = "task"
 UNKNOWN_EXPERT_TEMPLATE: Final = "There is no expert behind the tool {name!r}."
 EMPTY_ANSWER_TEXT: Final = "The expert returned no answer."
 ERROR_STATUS: Final = "error"
+MESSAGES_KEY: Final = "messages"
 
 SUPERVISOR_PROMPT: Final = """\
 You coordinate a team of experts. Delegate work with the ask_* tools: give each expert one clear,
@@ -125,9 +130,29 @@ def subagent_name(message: BaseMessage) -> str | None:
 
 
 def mark_subagent_message(message: BaseMessage, expert_name: str) -> BaseMessage:
-    """Salinan `message` yang ditandai sebagai buatan `expert_name`."""
+    """Salinan `message` yang ditandai sebagai buatan `expert_name`, selalu dengan `id`.
+
+    `id` dibutuhkan supaya message yang sudah dikirim lebih awal (lewat stream writer) bisa
+    dikenali saat muncul lagi di update node `delegate`.
+    """
     additional_kwargs = {**message.additional_kwargs, SUBAGENT_KWARG: expert_name}
-    return message.model_copy(update={"additional_kwargs": additional_kwargs})
+    return message.model_copy(
+        update={"additional_kwargs": additional_kwargs, "id": message.id or str(uuid4())}
+    )
+
+
+def update_messages(update: Mapping[str, object]) -> list[BaseMessage]:
+    """Message baru dari satu item `stream_mode="updates"` (`{node: update}`).
+
+    >>> update = {"agent": {"messages": [AIMessage(content="Hai")]}, "tools": None}
+    >>> [message.content for message in update_messages(update)]
+    ['Hai']
+    """
+    messages: list[BaseMessage] = []
+    for node_update in update.values():
+        if isinstance(node_update, Mapping):
+            messages.extend(node_update.get(MESSAGES_KEY, []))
+    return messages
 
 
 def route_supervisor(state: SupervisorState) -> str:
@@ -230,8 +255,15 @@ async def run_expert(
     expert, graph = entry
     task = HumanMessage(content=str(call["args"].get(TASK_ARG, "")))
     tagged_graph = graph.with_config(tags=[SUBAGENT_TAG], run_name=expert.name)
-    result = await tagged_graph.ainvoke({"messages": [task]})
-    expert_messages = [mark_subagent_message(m, expert.name) for m in result["messages"][1:]]
+    # Setiap langkah expert langsung dikirim ke stream (mode `custom`), supaya chat tidak diam
+    # selama expert bekerja. Di luar streaming, writer ini tidak melakukan apa-apa.
+    write_to_stream = get_stream_writer()
+    expert_messages: list[BaseMessage] = []
+    async for update in tagged_graph.astream({"messages": [task]}, stream_mode="updates"):
+        for message in update_messages(update):
+            marked = mark_subagent_message(message, expert.name)
+            expert_messages.append(marked)
+            write_to_stream(marked)
     final = expert_messages[-1] if expert_messages else None
     answer = str(final.content) if isinstance(final, AIMessage) and final.content else ""
     summary = ToolMessage(

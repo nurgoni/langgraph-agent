@@ -78,6 +78,9 @@ class StreamService:
         self._run = run
         self._stream_tokens = stream_tokens
         self._run_id = str(run.run_id)
+        # Message expert dikirim lebih awal lewat mode `custom`, lalu muncul lagi di update node
+        # `delegate`. ID yang sudah terkirim dicatat supaya tidak dikirim dua kali.
+        self._sent_message_ids: set[str] = set()
 
     async def stream(self) -> AsyncGenerator[str]:
         """Jalankan graph dan hasilkan frame SSE, selalu diakhiri `[DONE]`.
@@ -164,11 +167,17 @@ class StreamService:
         return events
 
     def _message_events(self, messages: Iterable[BaseMessage]) -> list[StreamEvent]:
-        """Message LangChain sebagai frame `message`. Message human (echo input) dilewati."""
+        """Message LangChain sebagai frame `message`.
+
+        Message human (echo input) dan message yang sudah pernah dikirim (berdasarkan `id`)
+        dilewati.
+        """
         events: list[StreamEvent] = []
         for message in messages:
-            if isinstance(message, HumanMessage):
+            if isinstance(message, HumanMessage) or message.id in self._sent_message_ids:
                 continue
+            if message.id is not None:
+                self._sent_message_ids.add(message.id)
             try:
                 chat_message = langchain_to_chat_message(message)
             except UnsupportedMessageError:

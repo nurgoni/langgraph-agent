@@ -3,7 +3,7 @@ import logging
 from collections.abc import Awaitable, Callable
 
 import pytest
-from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.messages import ChatMessage as LangChainChatMessage
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import InMemorySaver
@@ -324,6 +324,63 @@ async def test_supervisor_streams_expert_messages_marked_and_no_expert_tokens() 
         ("ai", "math_expert", "Expert says two"),
         ("tool", None, "Expert says two"),
         ("ai", None, "Supervisor says two"),
+    ]
+
+
+async def test_expert_steps_stream_before_delegation_finishes() -> None:
+    model = FakeModel(
+        responses=[
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "ask_math_expert", "args": {"task": "1 + 1"}, "id": "s1"}],
+            ),
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "calculator", "args": {"expression": "1 + 1"}, "id": "c1"}],
+            ),
+            "Expert says two",
+            "Supervisor says two",
+        ]
+    )
+    graph = create_supervisor_agent(NoSearch()).build(model, InMemorySaver())
+    custom_messages = []
+    async for mode, payload in graph.astream(
+        {"messages": [HumanMessage("1 + 1?")]},
+        {"configurable": {"thread_id": "t1"}},
+        stream_mode=["custom", "updates"],
+    ):
+        if mode == "custom":
+            custom_messages.append(payload)
+        elif "delegate" in payload:
+            break
+
+    assert [type(m).__name__ for m in custom_messages] == ["AIMessage", "ToolMessage", "AIMessage"]
+
+
+async def test_expert_messages_are_not_sent_twice() -> None:
+    model = FakeModel(
+        responses=[
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "ask_math_expert", "args": {"task": "1 + 1"}, "id": "s1"}],
+            ),
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "calculator", "args": {"expression": "1 + 1"}, "id": "c1"}],
+            ),
+            "Expert says two",
+            "Supervisor says two",
+        ]
+    )
+    graph = create_supervisor_agent(NoSearch()).build(model, InMemorySaver())
+
+    events = events_of(await collect(graph, agent_id="supervisor", stream_tokens=False))
+
+    expert = [e.content for e in events if isinstance(e, MessageEvent) and e.content.agent]
+    assert [(m.type, m.content) for m in expert] == [
+        ("ai", ""),
+        ("tool", "2"),
+        ("ai", "Expert says two"),
     ]
 
 
