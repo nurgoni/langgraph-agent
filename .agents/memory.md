@@ -13,15 +13,34 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** v0.2.0 sudah dirilis. M3 berjalan: F19 sudah di `develop`. F15 selesai di
-  `feature/F15-research-assistant`, menunggu push dan PR.
-- **Berikutnya:** F16 (interrupt agent), lalu F17 dan rilis v0.3.0.
+- **Fase:** v0.2.0 sudah dirilis. M3 berjalan: F19 dan F15 sudah di `develop`. F16 selesai di
+  `feature/F16-interrupt-agent`, menunggu push dan PR.
+- **Berikutnya:** F17 (supervisor agent), lalu rilis v0.3.0.
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Terakhir diperbarui:** 2026-11-12
 
 ## Decision Log
+
+### 2026-11-12: Interrupt agent dari F16
+
+- **Keputusan:**
+  - Contoh zodiak dari kode lama dipertahankan, dengan graph tanpa rekursi:
+    `route_start → extract_birthdate → route_after_extract → ask_birthdate (interrupt) →
+    extract_birthdate`, atau `respond`. Router dan `ask_birthdate` adalah function murni, sedangkan
+    node yang butuh model berupa closure di `build()`.
+  - Ekstraksi: `with_structured_output(BirthdateExtraction, method="function_calling")` +
+    `with_config(tags=["skip_stream"])`. Mode `function_calling` dipilih karena bekerja dengan
+    `FakeModel` (tool call yang di-script) dan dengan Ollama.
+  - Validasi di kode: `parse_iso_date`, tanggal masa depan ditolak (`FUTURE_DATE_QUESTION`), dan
+    `zodiac_sign` deterministik.
+  - Tanggal lahir disimpan di state thread (`InterruptState.birthdate`, ISO string). Tidak ada Store.
+- **Pelajaran:**
+  - Node yang mengembalikan update parsial diberi return type `dict[str, ...]`, bukan TypedDict
+    state (yang mewajibkan `messages`), supaya tidak perlu `# pyrefly: ignore`.
+  - Hasil `with_structured_output` tidak masuk ke riwayat karena node tidak mengembalikannya
+    sebagai message.
 
 ### 2026-11-12: Research assistant dari F15
 
@@ -485,9 +504,10 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pe
 
 ## TODO Berikutnya
 
-- [ ] User: push `feature/F15-research-assistant`, lalu buka PR F15 ke `develop`.
+- [ ] User: push `feature/F16-interrupt-agent`, lalu buka PR F16 ke `develop`.
 - [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
       (CONTRIBUTING.md § Setup Awal Repo).
 - [ ] Usulkan ke user: batas token jawaban (misalnya `LLM_MAX_TOKENS`), karena model reasoning
       bisa berpikir sangat lama.
-- [ ] F16: interrupt agent (`interrupt()` + resume, tanpa rekursi dan tanpa mutasi state).
+- [ ] F17: supervisor agent (sub-agent memakai model dari request, tag `subagent` eksplisit untuk
+      streaming, render bertingkat di UI).
