@@ -6,6 +6,8 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-12
+
 ### Added
 
 - Reasoning model terlihat: field reasoning dari provider OpenAI-compatible (`reasoning`/
@@ -20,9 +22,9 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 - Agent `supervisor`: mendelegasikan tugas ke `math_expert` dan `research_expert`, dengan model
   dari request. Message expert ditandai `ChatMessage.agent`, dikirim bertahap selama expert
   bekerja, dan dirender bertingkat di UI (F17).
-- Tool `web_search` memakai Firecrawl Search API, menggantikan DuckDuckGo yang tidak stabil. Key
-  dibaca dari env baru `FIRECRAWL_API_KEY`. Tanpa key, tool menjawab "not configured" dan agent
-  tetap berjalan (F20).
+- Tool `web_search` berbasis Firecrawl Search API (dipakai `research-assistant` dan
+  `research_expert`). Key dibaca dari env baru `FIRECRAWL_API_KEY`. Tanpa key, tool menjawab
+  "not configured" dan agent tetap berjalan (F20).
 
 ## [0.2.0] - 2026-11-05
 
@@ -78,6 +80,7 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 - `docs/ARCHITECTURE.md`: lifespan, alur request, kepemilikan thread, error, persistence, dan cara
   menambah agent (F10).
 
-[Unreleased]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/nurgoni/langgraph-boilerplate-agent/releases/tag/v0.1.0

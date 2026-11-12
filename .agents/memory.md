@@ -13,9 +13,10 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** M3: F19, F15, F16, F17 sudah di `develop`. F20 (Firecrawl web search) selesai di
-  `feature/F20-firecrawl-web-search`, menunggu push dan PR. Setelah merge: rilis v0.3.0.
-- **Berikutnya:** rilis v0.3.0.
+- **Fase:** M3 selesai (F19, F15, F16, F17, F20 di `develop`). `release/v0.3.0` disiapkan,
+  menunggu push, PR ke `main` (`--no-ff`), tag `v0.3.0`, dan back-merge ke `develop`.
+- **Berikutnya:** belum ada milestone setelah M3. Tanyakan ke user (kandidat: batas token
+  jawaban `LLM_MAX_TOKENS`, pemisahan dependency image Docker).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
@@ -553,10 +554,9 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pe
 - [ ] User: hentikan service/UI yang sedang berjalan, lalu `uv sync` untuk membuang `ddgs`/`lxml`
       dari `.venv` (`lxml-6.1.3.dist-info` setengah terhapus memicu 51 DeprecationWarning di test
       UI).
-- [ ] User: push `feature/F20-firecrawl-web-search`, lalu buka PR F20 ke `develop`.
 - [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
       (CONTRIBUTING.md § Setup Awal Repo).
 - [ ] Usulkan ke user: batas token jawaban (misalnya `LLM_MAX_TOKENS`), karena model reasoning
       bisa berpikir sangat lama.
-- [ ] Rilis v0.3.0: `release/v0.3.0` dari `develop`, bump `version`, pindahkan `[Unreleased]`,
-      PR ke `main` (`--no-ff`), tag `v0.3.0`, back-merge ke `develop`.
+- [ ] User: push `release/v0.3.0`, PR ke `main` (merge commit `--no-ff`), tag annotated `v0.3.0`,
+      lalu back-merge `main` → `develop`.
