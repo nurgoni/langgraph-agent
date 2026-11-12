@@ -237,6 +237,7 @@ Node yang LLM-nya diberi tag `skip_stream` tidak menghasilkan frame `token`.
 | `USE_FAKE_MODEL` | `false` | Pakai FakeModel (dev/test) |
 | `SQLITE_DB_PATH` | `checkpoints.db` | Lokasi DB checkpointer |
 | `AUTH_SECRET` | – | Bearer token. Kosong = tanpa auth |
+| `FIRECRAWL_API_KEY` | – | Key Firecrawl untuk tool `web_search`. Kosong = tool menjawab "not configured", agent tetap berjalan |
 | `HOST` / `PORT` | `0.0.0.0` / `8080` | Bind address service |
 | `LOG_LEVEL` | `INFO` | Level logging |
 | `AGENT_URL` | `http://localhost:8080` | Dipakai UI/client |
@@ -269,7 +270,8 @@ Rincian fitur per milestone, urutan eksekusi, dan rencana commit ada di
 1. ~~Apakah `/threads` perlu fitur hapus/rename thread di v1?~~ **Terjawab (2026-11-01):** ya,
    lihat FR-25 dan FR-26.
 2. ~~Web search memakai DuckDuckGo (tanpa key) atau provider lain?~~ **Terjawab (2026-11-01):**
-   DuckDuckGo.
+   DuckDuckGo. **Diganti (2026-11-12):** Firecrawl Search API (`FIRECRAWL_API_KEY`), karena
+   DuckDuckGo tidak stabil (F20).
 3. ~~Perlukah `agent_config` divalidasi dengan schema per agent (Pydantic model milik agent)?~~
    **Terjawab (2026-11-01):** ya, lihat FR-27.
 4. ~~Nama package final: `agent_service` atau yang lain?~~ **Terjawab (2026-11-01):**

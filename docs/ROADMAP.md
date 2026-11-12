@@ -34,6 +34,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F15 | Research assistant | M3 | done |
 | F16 | Interrupt agent | M3 | done |
 | F17 | Supervisor agent | M3 | done |
+| F20 | Firecrawl web search | M3 | done |
 
 ## Milestone & Rilis
 
@@ -42,7 +43,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | M0: Bootstrap | F00 | – | Repo, tooling, dan CI siap |
 | M1: Core + Service | F01–F10, F18 | `v0.1.0` | API lengkap dengan `chatbot`, dites dengan FakeModel |
 | M2: Client + UI | F11–F14 | `v0.2.0` | Chat end-to-end via Docker Compose |
-| M3: Agent tambahan | F19, F15–F17 | `v0.3.0` | Reasoning terlihat, tool calling, human-in-the-loop, multi-agent |
+| M3: Agent tambahan | F19, F15–F17, F20 | `v0.3.0` | Reasoning terlihat, tool calling, human-in-the-loop, multi-agent |
 
 ## Dependency Graph
 
@@ -58,7 +59,7 @@ F08 ─► F19 ◄─ F12                        (F19 juga butuh F02, F11)
 
 **Urutan eksekusi yang disarankan (satu developer):**
 F00 → F01 → F04 → F02 → F03 → F05 → F06 → F07 → F09 → F18 → F08 → F10 → *rilis v0.1.0* → F11 → F12 →
-F13 → F14 → *rilis v0.2.0* → F19 → F15 → F16 → F17 → *rilis v0.3.0*
+F13 → F14 → *rilis v0.2.0* → F19 → F15 → F16 → F17 → F20 → *rilis v0.3.0*
 
 **Bisa dikerjakan paralel (lebih dari satu developer):**
 - F02 ∥ F03 ∥ F04
@@ -806,4 +807,36 @@ F13 → F14 → *rilis v0.2.0* → F19 → F15 → F16 → F17 → *rilis v0.3.0
   - Smoke test qwen3.5:9b + DuckDuckGo: research_expert → 1991, math_expert → `2026 - 1991 = 35`,
     dengan langkah expert tiba bertahap.
 - **Squash title:** `feat(agents): add supervisor agent with nested streaming (F17)`
+- **Setelah merge:** F20, lalu rilis **v0.3.0**.
+
+### F20: Firecrawl web search
+
+- **Branch:** `feature/F20-firecrawl-web-search`
+- **Latar belakang:** saat smoke test F17, DuckDuckGo gagal beberapa kali berturut-turut. User memilih
+  Firecrawl (akun free tier dengan API key).
+- **File:** `core/settings.py` (`firecrawl_api_key`), `agents/tools/web_search.py`
+  (`SearchBackend` async, `FirecrawlSearch`, `UnconfiguredSearch`, `create_search_backend`),
+  `agents/research.py`, `agents/supervisor.py`, `agents/catalog.py`, `service/app.py`
+  (`build_search_backend`), `compose.yaml`, `.env.example`, `tests/`.
+- **Catatan desain:**
+  - REST API langsung (`POST https://api.firecrawl.dev/v2/search`, `{query, limit}`, bearer key)
+    dengan `httpx.AsyncClient` yang dipakai ulang. Tidak ada SDK tambahan, dan tidak perlu thread.
+    Hanya hasil web (`data.web[]`: `url`, `title`, `description`), tanpa scraping, supaya hemat
+    kredit.
+  - Keputusan user: tanpa key, agent tetap berjalan. `UnconfiguredSearch` membuat tool menjawab
+    "not configured", dan startup mencatat warning.
+  - Key mengalir `Settings` → `create_app` → katalog agent → tool. `agents/` tidak membaca env.
+  - `ddgs` dihapus dari dependency.
+- **Rencana commit:**
+  1. `feat(core): add FIRECRAWL_API_KEY setting`
+  2. `feat(agents): replace duckduckgo web search with firecrawl`
+  3. `feat(service): pass firecrawl search backend from settings to agents`
+  4. `docs: switch web search docs to firecrawl`
+- **Acceptance criteria:**
+  - [x] Request ke Firecrawl (URL, header, body) dan parsing respons dites dengan `MockTransport`.
+  - [x] Error 401/402/429/500, koneksi gagal, dan JSON rusak menjadi pesan error untuk model.
+  - [x] Tanpa key: service start, warning tercatat, dan agent menjawab tanpa pencarian (smoke test
+        dengan qwen3.5:9b).
+  - [ ] Smoke test dengan key Firecrawl asli (menunggu user mengisi `FIRECRAWL_API_KEY`).
+- **Squash title:** `feat(agents): switch web search to firecrawl (F20)`
 - **Setelah merge:** rilis **v0.3.0**.
