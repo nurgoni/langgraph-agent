@@ -55,7 +55,10 @@ MESSAGES_KEY: Final = "messages"
 SUPERVISOR_PROMPT: Final = """\
 You coordinate a team of experts. Delegate work with the ask_* tools: give each expert one clear,
 self-contained task that includes every detail it needs, because experts cannot see this
-conversation. Do not search the web or do arithmetic yourself. When you have what you need,
+conversation. If a task needs another expert's result (for example, a calculation on a fact that
+must be looked up first), delegate the first task, wait for its answer, then delegate the next
+one with that result included. Do not search the web or do arithmetic yourself. When you have
+what you need,
 combine the experts' answers into one final reply in the same language as the user."""
 
 MATH_EXPERT_PROMPT: Final = """\
