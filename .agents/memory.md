@@ -13,15 +13,38 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** M2 selesai di `develop`. `release/v0.2.0` sudah disiapkan, menunggu push, PR ke `main`,
-  tag, dan back-merge. Rencana F19 (reasoning display) ada di `docs/f19-reasoning-plan`.
-- **Berikutnya:** F19 sebagai fitur pertama M3, lalu F15, F16, F17, dan rilis v0.3.0.
+- **Fase:** v0.2.0 sudah dirilis. M3 berjalan: F19 selesai di `feature/F19-reasoning-display`,
+  menunggu push dan PR.
+- **Berikutnya:** F15 (research assistant), lalu F16, F17, dan rilis v0.3.0.
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
-- **Terakhir diperbarui:** 2026-11-04
+- **Terakhir diperbarui:** 2026-11-12
 
 ## Decision Log
+
+### 2026-11-12: Reasoning display dari F19
+
+- **Hasil ukur (langkah 1):** Ollama `qwen3.5:9b` mengirim pemikiran di delta field `reasoning`
+  (±200–1900 chunk). Saat model hangat, reasoning pertama datang di detik ~3 dan `content` di
+  detik ~10. Cold start menambah ±12 detik untuk memuat model.
+- **Keputusan user:** reasoning disimpan di riwayat (open question 5 terjawab).
+- **Keputusan desain:**
+  - `ReasoningChatOpenAI` (`llm/reasoning.py`) override `_convert_chunk_to_generation_chunk` dan
+    `_create_chat_result`. Field `reasoning` dan `reasoning_content` disimpan ke
+    `additional_kwargs["reasoning_content"]` (`REASONING_KWARG`). String per chunk digabung
+    LangChain, sehingga checkpoint menyimpan reasoning lengkap.
+  - `ReasoningEvent` di schema. `StreamService` mengirim reasoning sebelum token dari chunk yang
+    sama, dan `stream_tokens=False`/`skip_stream` ikut mematikannya. `ChatMessage.reasoning` diisi
+    converter.
+  - UI: `MessageRenderer.append_reasoning()` membuka status "Thinking…". Token pertama atau
+    message AI menutupnya. Riwayat menampilkan status tertutup, dan `_reasoning_streamed` mencegah
+    reasoning digambar dua kali.
+  - Test `ReasoningChatOpenAI` memakai `http_client`/`http_async_client` dengan `MockTransport`
+    (respons SSE format Ollama), tanpa network.
+- **Temuan:** satu smoke test UI time out setelah 300 detik karena model berpikir terlalu lama.
+  Ulangan prompt yang sama selesai dalam 51 detik (10.510 karakter reasoning). Rendering UI tidak
+  bermasalah (1000 frame dirender dalam 0,2 detik). Belum ada batas token jawaban.
 
 ### 2026-11-05: Reasoning model tidak terlihat → fitur F19 (M3)
 
@@ -435,17 +458,14 @@ melakukan port.
 
 ## Pertanyaan Terbuka
 
-Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions).
-
-- Apakah reasoning model (FR-29) disimpan di riwayat thread, atau hanya tampil selama stream?
-  Tanyakan ke user di awal F19.
+Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pertanyaan terbuka.
 
 ## TODO Berikutnya
 
-- [ ] User: push `release/v0.2.0`, PR ke `main` dengan merge commit (`--no-ff`), tag `v0.2.0`,
-      back-merge `main` ke `develop` (CONTRIBUTING.md § Release).
-- [ ] User: push `docs/f19-reasoning-plan`, lalu PR ke `develop` (squash).
+- [ ] User: push `feature/F19-reasoning-display`, lalu buka PR F19 ke `develop`. Cek job CI
+      `e2e` (image dibangun ulang dengan kode F19).
 - [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
       (CONTRIBUTING.md § Setup Awal Repo).
-- [ ] F19: nyalakan Ollama, ukur field reasoning di stream mentah, tanyakan open question
-      penyimpanan reasoning, lalu implementasi.
+- [ ] Usulkan ke user: batas token jawaban (misalnya `LLM_MAX_TOKENS`), karena model reasoning
+      bisa berpikir sangat lama.
+- [ ] F15: research assistant (`ToolCallingAgent`, web search DuckDuckGo, calculator).

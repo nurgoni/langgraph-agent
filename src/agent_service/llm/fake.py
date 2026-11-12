@@ -14,6 +14,8 @@ from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
 from pydantic import Field, PrivateAttr, field_validator
 
+from agent_service.llm.reasoning import REASONING_KWARG, message_reasoning
+
 DEFAULT_FAKE_RESPONSE: Final = "This is a response from the fake model."
 FAKE_LLM_TYPE: Final = "agent-service-fake"
 # Satu token = satu kata beserta whitespace sesudahnya, supaya gabungan token sama persis
@@ -30,7 +32,8 @@ class FakeModel(BaseChatModel):
     """Chat model yang membalas dengan daftar respons yang sudah ditentukan, berurutan.
 
     Setelah respons terakhir, urutan kembali ke awal. Respons boleh berisi `tool_calls`
-    untuk menguji agent yang memanggil tool. `tool_calls` tetap utuh saat streaming.
+    untuk menguji agent yang memanggil tool. `tool_calls` tetap utuh saat streaming. Reasoning
+    di `additional_kwargs[REASONING_KWARG]` di-stream lebih dulu, seperti model reasoning.
 
     >>> model = FakeModel(responses=["Halo dunia"])
     >>> model.invoke("hi").content
@@ -100,8 +103,9 @@ class FakeModel(BaseChatModel):
         run_manager: CallbackManagerForLLMRun | None = None,
         **kwargs: Any,  # Any: API induk
     ) -> Iterator[ChatGenerationChunk]:
-        """Pecah respons berikutnya menjadi token teks, lalu satu chunk berisi tool call."""
+        """Pecah respons berikutnya: reasoning per kata, token teks, lalu chunk tool call."""
         response = self._next_response()
+        yield from self._reasoning_chunks(response, run_manager)
         for token in TOKEN_PATTERN.findall(response.text):
             chunk = ChatGenerationChunk(message=AIMessageChunk(content=token, id=response.id))
             if run_manager is not None:
@@ -109,6 +113,20 @@ class FakeModel(BaseChatModel):
             yield chunk
         if response.tool_calls:
             yield ChatGenerationChunk(message=self._tool_call_chunk(response))
+
+    @staticmethod
+    def _reasoning_chunks(
+        response: AIMessage, run_manager: CallbackManagerForLLMRun | None
+    ) -> Iterator[ChatGenerationChunk]:
+        """Reasoning di `additional_kwargs` di-stream per kata, seperti model reasoning asli."""
+        for piece in TOKEN_PATTERN.findall(message_reasoning(response)):
+            message = AIMessageChunk(
+                content="", id=response.id, additional_kwargs={REASONING_KWARG: piece}
+            )
+            chunk = ChatGenerationChunk(message=message)
+            if run_manager is not None:
+                run_manager.on_llm_new_token("", chunk=chunk)
+            yield chunk
 
     def _next_response(self) -> AIMessage:
         """Ambil salinan respons pada giliran ini, lalu majukan indeks secara melingkar.

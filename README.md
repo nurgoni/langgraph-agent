@@ -13,6 +13,8 @@ kode yang sederhana, eksplisit, dan mudah dites (Zen of Python).
 
 - **Multi-agent registry**: pilih agent lewat URL `/{agent_id}/...`.
 - **Streaming SSE**: token dan message (termasuk tool call dan sub-agent) dikirim secara real-time.
+- **Reasoning terlihat**: pemikiran model reasoning (misalnya Qwen3 lewat Ollama) di-stream
+  sebelum jawaban dan tampil di blok "Thinking" UI.
 - **Percakapan persisten**: riwayat thread disimpan di SQLite via LangGraph checkpointer.
 - **Human-in-the-loop**: agent bisa berhenti (`interrupt`) dan melanjutkan dengan input user.
 - **Python client**: `AgentClient` sync dan async.

@@ -155,8 +155,9 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
 - **FR-24** Saat agent meminta input (interrupt), pertanyaannya ditampilkan sebagai pesan AI biasa.
 - **FR-29** Jika model mengirim reasoning (token pemikiran), service meneruskannya sebagai frame SSE
   `reasoning` sebelum token jawaban, dan UI menampilkannya di blok "Thinking" yang bisa
-  dibuka-tutup, supaya jeda saat model berpikir tidak terlihat seperti idle. Model tanpa
-  reasoning tidak terpengaruh.
+  dibuka-tutup, supaya jeda saat model berpikir tidak terlihat seperti idle. Reasoning disimpan
+  di riwayat (`ChatMessage.reasoning`) dan tampil tertutup saat thread dibuka ulang.
+  `stream_tokens=false` juga mematikan frame `reasoning`. Model tanpa reasoning tidak terpengaruh.
 
 ## 6. Non-Functional Requirements
 
@@ -194,7 +195,7 @@ Varian tanpa `{agent_id}` (`/invoke`, `/stream`, dan seterusnya) memakai agent d
 UserInput       { message: str, model?: str, thread_id?: str, user_id?: str, agent_config?: dict }
 StreamInput     UserInput + { stream_tokens: bool = true }
 ChatMessage     { type: "human"|"ai"|"tool"|"custom", content: str, tool_calls: list,
-                  tool_call_id?: str, run_id?: str, custom_data?: dict }
+                  tool_call_id?: str, run_id?: str, reasoning?: str, custom_data?: dict }
 ChatHistoryInput { thread_id: str, user_id: str }
 ChatHistory     { messages: list[ChatMessage] }
 ThreadSummary   { thread_id: str, agent_id: str, title: str, updated_at?: datetime }
@@ -270,5 +271,7 @@ Rincian fitur per milestone, urutan eksekusi, dan rencana commit ada di
    **Terjawab (2026-11-01):** ya, lihat FR-27.
 4. ~~Nama package final: `agent_service` atau yang lain?~~ **Terjawab (2026-11-01):**
    `agent_service`.
-5. Apakah reasoning model (FR-29) disimpan di riwayat thread dan ditampilkan lagi saat
-   thread dibuka ulang, atau hanya tampil selama stream berlangsung? Diputuskan di awal F19.
+5. ~~Apakah reasoning model (FR-29) disimpan di riwayat thread dan ditampilkan lagi saat
+   thread dibuka ulang, atau hanya tampil selama stream berlangsung?~~ **Terjawab (2026-11-12):**
+   disimpan. `ChatMessage.reasoning` dikembalikan oleh `/invoke` dan `/history`, dan UI
+   menampilkannya tertutup saat thread dibuka ulang. Reasoning tidak dikirim balik ke model.

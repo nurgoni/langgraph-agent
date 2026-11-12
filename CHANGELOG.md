@@ -6,6 +6,13 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 
 ## [Unreleased]
 
+### Added
+
+- Reasoning model terlihat: field reasoning dari provider OpenAI-compatible (`reasoning`/
+  `reasoning_content`) diteruskan sebagai frame SSE `reasoning` sebelum token jawaban, disimpan
+  di `ChatMessage.reasoning`, dan ditampilkan di blok "Thinking" UI yang bisa dibuka-tutup
+  (F19).
+
 ## [0.2.0] - 2026-11-05
 
 ### Added

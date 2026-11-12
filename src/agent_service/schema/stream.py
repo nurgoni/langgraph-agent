@@ -16,6 +16,13 @@ from agent_service.schema.responses import ChatMessage
 STREAM_DONE_MARKER: Final = "[DONE]"
 
 
+class ReasoningEvent(BaseModel):
+    """Potongan pemikiran model sebelum jawaban (FR-29), dikirim saat `stream_tokens=True`."""
+
+    type: Literal["reasoning"] = "reasoning"
+    content: str
+
+
 class TokenEvent(BaseModel):
     """Potongan teks dari LLM, dikirim saat `stream_tokens=True`."""
 
@@ -37,7 +44,9 @@ class ErrorEvent(BaseModel):
     content: str
 
 
-StreamEvent = Annotated[TokenEvent | MessageEvent | ErrorEvent, Field(discriminator="type")]
+StreamEvent = Annotated[
+    ReasoningEvent | TokenEvent | MessageEvent | ErrorEvent, Field(discriminator="type")
+]
 
 # Stateless dan tanpa I/O, jadi aman dibuat sekali saat import dan dipakai ulang oleh client.
 STREAM_EVENT_ADAPTER: Final[TypeAdapter[StreamEvent]] = TypeAdapter(StreamEvent)

@@ -21,6 +21,7 @@ from agent_service.schema.stream import (
     STREAM_EVENT_ADAPTER,
     ErrorEvent,
     MessageEvent,
+    ReasoningEvent,
     StreamEvent,
     TokenEvent,
 )
@@ -242,3 +243,53 @@ async def test_client_disconnect_closes_without_done() -> None:
     await stream.aclose()
 
     assert first != DONE_FRAME
+
+
+REASONED_ANSWER = AIMessage(
+    content="Merah dan biru", additional_kwargs={"reasoning_content": "Pilih dua warna"}
+)
+
+
+async def test_reasoning_frames_come_before_answer_tokens() -> None:
+    graph = ChatbotAgent().build(FakeModel(responses=[REASONED_ANSWER]), InMemorySaver())
+
+    events = events_of(await collect(graph, agent_id="chatbot"))
+
+    kinds = [type(event).__name__ for event in events]
+    first_token = kinds.index("TokenEvent")
+    assert set(kinds[:first_token]) == {"ReasoningEvent"}
+    reasoning = "".join(e.content for e in events if isinstance(e, ReasoningEvent))
+    assert reasoning == "Pilih dua warna"
+    final = events[-1]
+    assert isinstance(final, MessageEvent)
+    assert final.content.reasoning == "Pilih dua warna"
+
+
+async def test_stream_tokens_false_also_hides_reasoning_frames() -> None:
+    graph = ChatbotAgent().build(FakeModel(responses=[REASONED_ANSWER]), InMemorySaver())
+
+    events = events_of(await collect(graph, agent_id="chatbot", stream_tokens=False))
+
+    [final] = events
+    assert isinstance(final, MessageEvent)
+    assert final.content.reasoning == "Pilih dua warna"
+
+
+async def test_skip_stream_tag_hides_reasoning() -> None:
+    model = FakeModel(responses=[REASONED_ANSWER]).with_config(tags=["skip_stream"])
+
+    async def classify(state: MessagesState) -> MessagesState:
+        await model.ainvoke(state["messages"])
+        return {"messages": [AIMessage(content="publik")]}
+
+    events = events_of(await collect(build_graph(classify)))
+
+    assert not any(isinstance(event, ReasoningEvent) for event in events)
+
+
+async def test_model_without_reasoning_sends_no_reasoning_frames() -> None:
+    graph = ChatbotAgent().build(FakeModel(responses=["Halo dunia"]), InMemorySaver())
+
+    events = events_of(await collect(graph, agent_id="chatbot"))
+
+    assert not any(isinstance(event, ReasoningEvent) for event in events)

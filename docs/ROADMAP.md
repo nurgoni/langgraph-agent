@@ -30,7 +30,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F12 | UI chat | M2 | done |
 | F13 | UI sidebar & threads | M2 | done |
 | F14 | Docker Compose & e2e | M2 | done |
-| F19 | Reasoning display | M3 | todo |
+| F19 | Reasoning display | M3 | done |
 | F15 | Research assistant | M3 | todo |
 | F16 | Interrupt agent | M3 | todo |
 | F17 | Supervisor agent | M3 | todo |
@@ -690,12 +690,24 @@ F13 → F14 → *rilis v0.2.0* → F19 → F15 → F16 → F17 → *rilis v0.3.0
   4. `feat(ui): show reasoning in a collapsible thinking block`
   5. `docs: record F19 reasoning decisions`
 - **Acceptance criteria:**
-  - [ ] Dengan `FakeModel` yang di-script berisi reasoning, `/stream` mengirim frame `reasoning`
+  - [x] Dengan `FakeModel` yang di-script berisi reasoning, `/stream` mengirim frame `reasoning`
         sebelum `token`, dan UI menampilkan blok "Thinking" sebelum jawaban.
-  - [ ] Smoke test dengan model reasoning asli: frame `reasoning` muncul selama jeda yang
-        sebelumnya kosong.
-  - [ ] Model tanpa reasoning menghasilkan urutan frame yang sama seperti sebelum F19.
-  - [ ] Test kontrak client vs service mencakup frame `reasoning`.
+  - [x] Smoke test dengan model reasoning asli: frame `reasoning` muncul selama jeda yang
+        sebelumnya kosong (qwen3.5:9b: reasoning pertama di detik 3,7, token pertama di detik 9,8).
+  - [x] Model tanpa reasoning menghasilkan urutan frame yang sama seperti sebelum F19.
+  - [x] Test kontrak client vs service mencakup frame `reasoning`.
+- **Penyesuaian saat implementasi:**
+  - Hasil ukur langkah 1: Ollama mengirim field `reasoning` (vLLM/DeepSeek memakai
+    `reasoning_content`). Keduanya diterima, lalu disimpan sebagai
+    `additional_kwargs["reasoning_content"]`.
+  - Keputusan user (open question 5): reasoning disimpan di riwayat. `ChatMessage.reasoning`
+    diisi di `/invoke`, `/history`, dan frame `message` akhir, lalu UI menampilkannya tertutup saat
+    thread dibuka ulang.
+  - Tidak ada perubahan kode di client. `SseParser` sudah menerima event baru lewat
+    `STREAM_EVENT_ADAPTER`.
+  - `skip_stream` juga menyembunyikan reasoning.
+  - Temuan: model reasoning bisa berpikir sangat lama (sekali lebih dari 300 detik untuk prompt
+    singkat), karena belum ada batas token jawaban. Dicatat sebagai kandidat fitur berikutnya.
 - **Squash title:** `feat(llm): stream and display model reasoning (F19)`
 
 ### F15: Research assistant

@@ -13,6 +13,7 @@ from langchain_core.messages import ChatMessage as LangChainChatMessage
 from langgraph.types import Interrupt
 
 from agent_service.agents.base import BaseAgent
+from agent_service.llm.reasoning import message_reasoning
 from agent_service.schema.responses import AgentInfo, ChatMessage, ToolCall
 
 CUSTOM_MESSAGE_ROLE: Final = "custom"
@@ -144,7 +145,7 @@ def state_to_chat_messages(state: Mapping[str, Any]) -> list[ChatMessage]:  # An
 
 
 def _ai_to_chat_message(message: AIMessage) -> ChatMessage:
-    """Ubah `AIMessage`, termasuk tool call dan metadata provider."""
+    """Ubah `AIMessage`, termasuk tool call, metadata provider, dan reasoning model."""
     tool_calls: list[ToolCall] = []
     for tool_call in message.tool_calls:
         tool_calls.append(
@@ -155,6 +156,7 @@ def _ai_to_chat_message(message: AIMessage) -> ChatMessage:
         content=content_to_text(message.content),
         tool_calls=tool_calls,
         response_metadata=message.response_metadata,
+        reasoning=message_reasoning(message) or None,
     )
 
 

@@ -122,3 +122,72 @@ renderer.render_error("Internal server error")
 
     assert app.status[0].state == "error"
     assert app.error[0].value == "Internal server error"
+
+
+def test_live_reasoning_opens_thinking_block() -> None:
+    app = run_script(
+        """
+renderer = MessageRenderer(live=True)
+renderer.append_reasoning("Pilih ")
+renderer.append_reasoning("dua warna")
+"""
+    )
+
+    [status] = app.status
+    assert "Thinking…" in status.label
+    assert status.state == "running"
+    assert status.markdown[0].value == "Pilih dua warna"
+
+
+def test_first_token_closes_thinking_block_above_answer() -> None:
+    app = run_script(
+        """
+renderer = MessageRenderer(live=True)
+renderer.append_reasoning("Pilih dua warna")
+renderer.append_token("Merah ")
+renderer.render(ChatMessage(type="ai", content="Merah dan biru", reasoning="Pilih dua warna"))
+"""
+    )
+
+    assert len(app.chat_message) == 1
+    [status] = app.status
+    assert status.label.endswith("Thinking")
+    assert (status.state, status.proto.expanded) == ("complete", False)
+    assert app.markdown[-1].value == "Merah dan biru"
+
+
+def test_saved_reasoning_shows_collapsed_in_history() -> None:
+    app = run_script(
+        """
+renderer = MessageRenderer()
+renderer.render(ChatMessage(type="human", content="Dua warna?"))
+renderer.render(ChatMessage(type="ai", content="Merah dan biru", reasoning="Pilih dua warna"))
+"""
+    )
+
+    [status] = app.status
+    assert (status.state, status.proto.expanded) == ("complete", False)
+    assert status.markdown[0].value == "Pilih dua warna"
+
+
+def test_ai_message_without_reasoning_has_no_thinking_block() -> None:
+    app = run_script(
+        """
+MessageRenderer().render(ChatMessage(type="ai", content="Halo"))
+"""
+    )
+
+    assert len(app.status) == 0
+
+
+def test_error_closes_thinking_block() -> None:
+    app = run_script(
+        """
+renderer = MessageRenderer(live=True)
+renderer.append_reasoning("Hmm")
+renderer.render_error("Internal server error")
+"""
+    )
+
+    assert app.status[0].state == "complete"
+    assert app.error[0].value == "Internal server error"

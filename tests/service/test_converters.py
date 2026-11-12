@@ -134,3 +134,13 @@ def test_state_messages_keep_order() -> None:
     state = {"messages": [HumanMessage("a"), AIMessage("b"), HumanMessage("c")]}
 
     assert [m.content for m in state_to_chat_messages(state)] == ["a", "b", "c"]
+
+
+def test_ai_message_reasoning_is_converted() -> None:
+    message = AIMessage(content="Hai", additional_kwargs={"reasoning_content": "Sapa balik"})
+
+    assert langchain_to_chat_message(message).reasoning == "Sapa balik"
+
+
+def test_ai_message_without_reasoning_has_none() -> None:
+    assert langchain_to_chat_message(AIMessage(content="Hai")).reasoning is None
