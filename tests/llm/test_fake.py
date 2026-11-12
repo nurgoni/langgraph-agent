@@ -97,3 +97,34 @@ async def test_repeated_response_is_appended_to_thread_history() -> None:
     result = await graph.ainvoke({"messages": [HumanMessage("b")]}, config)
 
     assert [m.content for m in result["messages"]] == ["a", "sama", "b", "sama"]
+
+
+REASONED = AIMessage(
+    content="Merah, biru", additional_kwargs={"reasoning_content": "Pilih tiga warna"}
+)
+
+
+def test_stream_sends_reasoning_before_answer_tokens() -> None:
+    chunks = list(FakeModel(responses=[REASONED]).stream("warna"))
+
+    reasoning = [c.additional_kwargs.get("reasoning_content", "") for c in chunks]
+    contents = [c.content for c in chunks]
+    first_answer = next(i for i, content in enumerate(contents) if content)
+    assert "".join(reasoning) == "Pilih tiga warna"
+    assert all(not text for text in reasoning[first_answer:])
+    assert "".join(str(content) for content in contents) == "Merah, biru"
+
+
+def test_merged_stream_keeps_full_reasoning() -> None:
+    merged: AIMessageChunk | None = None
+    for chunk in FakeModel(responses=[REASONED]).stream("warna"):
+        merged = chunk if merged is None else merged + chunk
+
+    assert merged is not None
+    assert merged.additional_kwargs["reasoning_content"] == "Pilih tiga warna"
+
+
+def test_invoke_returns_reasoning_untouched() -> None:
+    message = FakeModel(responses=[REASONED]).invoke("warna")
+
+    assert message.additional_kwargs == {"reasoning_content": "Pilih tiga warna"}

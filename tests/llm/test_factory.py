@@ -12,6 +12,7 @@ from agent_service.llm.factory import (
     UnknownModelError,
 )
 from agent_service.llm.fake import FakeModel
+from agent_service.llm.reasoning import ReasoningChatOpenAI
 
 BASE_URL = "http://llm.test/v1"
 API_KEY = "sk-test"
@@ -60,6 +61,7 @@ def test_openai_compatible_model_uses_settings_and_constants(llm_settings: Setti
     assert model.request_timeout == LLM_TIMEOUT_SECONDS
     assert model.max_retries == LLM_MAX_RETRIES
     assert model.streaming is True
+    assert isinstance(model, ReasoningChatOpenAI)
 
 
 def test_model_outside_allowlist_is_rejected(llm_settings: Settings) -> None:

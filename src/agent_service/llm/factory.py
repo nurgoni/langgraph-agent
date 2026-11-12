@@ -3,11 +3,11 @@
 from typing import Final
 
 from langchain_core.language_models import BaseChatModel
-from langchain_openai import ChatOpenAI
 
 from agent_service.core.constants import FAKE_MODEL_NAME
 from agent_service.core.settings import Settings
 from agent_service.llm.fake import FakeModel
+from agent_service.llm.reasoning import ReasoningChatOpenAI
 
 LLM_TIMEOUT_SECONDS: Final = 60.0
 LLM_MAX_RETRIES: Final = 3
@@ -113,8 +113,8 @@ class ModelFactory:
             return FakeModel()
         return self._build_openai_compatible(model_name)
 
-    def _build_openai_compatible(self, model_name: str) -> ChatOpenAI:
-        """Buat `ChatOpenAI` dengan base URL dan API key dari `Settings`.
+    def _build_openai_compatible(self, model_name: str) -> ReasoningChatOpenAI:
+        """Buat `ReasoningChatOpenAI` (reasoning provider ikut terbawa) dari `Settings`.
 
         Raises:
             ModelNotConfiguredError: Jika base URL atau API key kosong.
@@ -126,7 +126,7 @@ class ModelFactory:
             raise ModelNotConfiguredError(
                 f"Model {model_name!r} needs LLM_BASE_URL and LLM_API_KEY to be set"
             )
-        return ChatOpenAI(
+        return ReasoningChatOpenAI(
             model=model_name,
             base_url=base_url,
             api_key=api_key,
