@@ -126,3 +126,14 @@ def test_reads_values_from_env_file(tmp_path: Path) -> None:
 
     assert settings.use_fake_model is True
     assert settings.port == 9000
+
+
+def test_firecrawl_api_key_is_optional_and_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert Settings(_env_file=None, use_fake_model=True).firecrawl_api_key is None
+
+    monkeypatch.setenv("FIRECRAWL_API_KEY", "fc-test")
+    settings = Settings(_env_file=None, use_fake_model=True)
+
+    assert settings.firecrawl_api_key is not None
+    assert settings.firecrawl_api_key.get_secret_value() == "fc-test"
+    assert "fc-test" not in repr(settings)

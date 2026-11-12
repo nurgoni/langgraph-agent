@@ -96,6 +96,7 @@ menunjuk ke container itu sendiri.
 | `USE_FAKE_MODEL` | tidak | `true` untuk dev/test tanpa LLM |
 | `SQLITE_DB_PATH` | tidak | Default `checkpoints.db` |
 | `AUTH_SECRET` | tidak | Jika diset, semua request butuh `Authorization: Bearer ...` |
+| `FIRECRAWL_API_KEY` | tidak | Key [Firecrawl](https://firecrawl.dev) untuk tool `web_search` (research-assistant, supervisor). Kosong = tanpa pencarian web |
 | `AGENT_URL` | tidak | URL service untuk UI/client, default `http://localhost:8080` |
 
 \* Tidak wajib jika `USE_FAKE_MODEL=true`. Daftar lengkap ada di [PRD.md §8](PRD.md#8-konfigurasi-env-var-v1).

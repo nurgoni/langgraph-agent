@@ -13,8 +13,8 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** M3 selesai di branch fitur. F19, F15, F16 sudah di `develop`. F17 selesai di
-  `feature/F17-supervisor-agent`, menunggu push dan PR. Setelah merge: rilis v0.3.0.
+- **Fase:** M3: F19, F15, F16, F17 sudah di `develop`. F20 (Firecrawl web search) selesai di
+  `feature/F20-firecrawl-web-search`, menunggu push dan PR. Setelah merge: rilis v0.3.0.
 - **Berikutnya:** rilis v0.3.0.
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
@@ -22,6 +22,27 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 - **Terakhir diperbarui:** 2026-11-12
 
 ## Decision Log
+
+### 2026-11-12: Web search pindah ke Firecrawl (F20)
+
+- **Supersedes:** "2026-11-01: Package `agent_service`, web search DuckDuckGo" (bagian web search)
+  dan detail `ddgs`/`DuckDuckGoSearch` di entri F15.
+- **Keputusan user:** web search memakai Firecrawl (free tier, API key). Tanpa key, agent tetap
+  berjalan, dan tool menjawab "not configured".
+- **Keputusan desain:**
+  - `SearchBackend` sekarang async: `search(query, max_results) -> list[SearchResult]`.
+    `FirecrawlSearch` memanggil `POST https://api.firecrawl.dev/v2/search` lewat satu
+    `httpx.AsyncClient` (bearer key, body `{query, limit}`, hasil di `data.web[]`, tanpa scraping).
+  - Semua kegagalan menjadi `SearchError`, yang diubah tool menjadi `ToolException`.
+  - `FIRECRAWL_API_KEY` dibaca `Settings`. `create_app` → `build_search_backend(settings)` →
+    `create_default_agents(search_backend)`.
+  - `ddgs` dihapus (`uv remove ddgs --no-sync`, karena `.venv` dikunci proses yang berjalan).
+- **Pelajaran:**
+  - Di Windows, `uv remove`/`uv sync` gagal (`Access is denied`) jika service/UI yang meng-import
+    package itu masih berjalan, dan bisa meninggalkan `dist-info` setengah terhapus. Pakai
+    `--no-sync`, lalu `uv sync` setelah proses dihentikan.
+  - Dokumentasi Firecrawl tidak mencantumkan arti 401/402/429. Semua status non-2xx diperlakukan
+    sama (`SearchError` dengan cuplikan body).
 
 ### 2026-11-12: Supervisor agent dari F17
 
@@ -527,7 +548,12 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pe
 
 ## TODO Berikutnya
 
-- [ ] User: push `feature/F17-supervisor-agent`, lalu buka PR F17 ke `develop`.
+- [ ] User: isi `FIRECRAWL_API_KEY` di `.env`, lalu minta agent menjalankan smoke test Firecrawl
+      asli.
+- [ ] User: hentikan service/UI yang sedang berjalan, lalu `uv sync` untuk membuang `ddgs`/`lxml`
+      dari `.venv` (`lxml-6.1.3.dist-info` setengah terhapus memicu 51 DeprecationWarning di test
+      UI).
+- [ ] User: push `feature/F20-firecrawl-web-search`, lalu buka PR F20 ke `develop`.
 - [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
       (CONTRIBUTING.md § Setup Awal Repo).
 - [ ] Usulkan ke user: batas token jawaban (misalnya `LLM_MAX_TOKENS`), karena model reasoning

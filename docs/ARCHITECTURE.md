@@ -186,7 +186,14 @@ ke model sampai model menjawab tanpa tool call.
   lewat factory yang menerima dependency tersebut, supaya test bisa memakai tiruan tanpa network.
 
 `research-assistant` (`agents/research.py`) adalah `ToolCallingAgent` dengan `web_search`
-(DuckDuckGo, dijalankan di thread terpisah karena library-nya sinkron) dan `calculator` (numexpr).
+(Firecrawl Search API) dan `calculator` (numexpr).
+
+Tool `web_search` memakai `SearchBackend` async yang di-inject. `create_app` membuatnya dari
+`FIRECRAWL_API_KEY` (`build_search_backend`): `FirecrawlSearch` (satu `httpx.AsyncClient`,
+`POST /v2/search`, hanya hasil web tanpa scraping) jika key ada, atau `UnconfiguredSearch` jika
+kosong. Pada kasus kedua, tool menjawab "not configured" dan agent tetap berjalan. Error
+pencarian (koneksi, 401/402/429, respons rusak) menjadi `SearchError` → `ToolException`, lalu
+dikembalikan ke model.
 
 ## Human-in-the-loop
 

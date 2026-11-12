@@ -33,7 +33,11 @@ from agent_service.agents.tool_calling import (
     ToolCallingAgent,
 )
 from agent_service.agents.tools.calculator import calculator
-from agent_service.agents.tools.web_search import SearchBackend, create_web_search_tool
+from agent_service.agents.tools.web_search import (
+    SearchBackend,
+    UnconfiguredSearch,
+    create_web_search_tool,
+)
 
 SUPERVISOR_AGENT_ID: Final = "supervisor"
 SUPERVISOR_DESCRIPTION: Final = (
@@ -281,7 +285,7 @@ def create_supervisor_agent(search_backend: SearchBackend | None = None) -> Supe
     Function, bukan class: factory konfigurasi tanpa state sendiri.
 
     Args:
-        search_backend: Mesin pencari untuk research expert. Default: DuckDuckGo.
+        search_backend: Mesin pencari untuk research expert. Default: `UnconfiguredSearch`.
 
     Returns:
         Agent `supervisor` yang siap didaftarkan.
@@ -300,7 +304,7 @@ def create_supervisor_agent(search_backend: SearchBackend | None = None) -> Supe
         agent=ToolCallingAgent(
             "research_expert",
             "Research expert",
-            [create_web_search_tool(search_backend)],
+            [create_web_search_tool(search_backend or UnconfiguredSearch())],
             RESEARCH_EXPERT_PROMPT,
         ),
     )

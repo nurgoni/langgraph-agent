@@ -4,12 +4,18 @@ from pathlib import Path
 import pytest
 from fastapi import FastAPI
 from langchain_core.language_models import BaseChatModel
+from pydantic import SecretStr
 
 from agent_service.agents.base import AgentGraph, Checkpointer
 from agent_service.agents.chatbot import ChatbotAgent
 from agent_service.agents.registry import AgentRegistry
+from agent_service.agents.tools.web_search import FirecrawlSearch, UnconfiguredSearch
 from agent_service.core.settings import Settings
-from agent_service.service.app import DefaultAgentNotRegisteredError, create_app
+from agent_service.service.app import (
+    DefaultAgentNotRegisteredError,
+    build_search_backend,
+    create_app,
+)
 
 
 class BrokenAgent(ChatbotAgent):
@@ -51,3 +57,20 @@ async def test_missing_auth_secret_logs_warning(
             pass
 
     assert "AUTH_SECRET is not set" in caplog.text
+
+
+def test_search_backend_follows_firecrawl_key(settings: Settings) -> None:
+    configured = settings.model_copy(update={"firecrawl_api_key": SecretStr("fc-test")})
+
+    assert isinstance(build_search_backend(settings), UnconfiguredSearch)
+    assert isinstance(build_search_backend(configured), FirecrawlSearch)
+
+
+async def test_default_agents_include_research_agents(settings: Settings) -> None:
+    app = create_app(settings)
+
+    async with app.router.lifespan_context(app):
+        agent_ids = {agent.agent_id for agent in app.state.registry.list_agents()}
+        available = {a for a in agent_ids if app.state.registry.is_available(a)}
+
+    assert {"research-assistant", "supervisor"} <= available
