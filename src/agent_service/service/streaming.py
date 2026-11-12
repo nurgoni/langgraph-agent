@@ -8,6 +8,7 @@ from langchain_core.messages import AIMessageChunk, BaseMessage, HumanMessage
 from langgraph.types import Interrupt, StreamMode
 
 from agent_service.agents.base import AgentGraph
+from agent_service.agents.supervisor import SUBAGENT_TAG
 from agent_service.llm.reasoning import message_reasoning
 from agent_service.schema.responses import ChatMessage
 from agent_service.schema.stream import (
@@ -122,7 +123,8 @@ class StreamService:
     def _handle_message_chunk(self, payload: object) -> list[StreamEvent]:
         """Reasoning dan token LLM dari `(chunk, metadata)` (FR-29).
 
-        Tidak ada event jika token dimatikan, node bertag `skip_stream`, atau chunk kosong.
+        Tidak ada event jika token dimatikan, run bertag `skip_stream` atau `subagent`, atau chunk
+        kosong.
         Reasoning dikirim lebih dulu karena model memikirkannya sebelum menjawab.
         """
         if not self._stream_tokens or not isinstance(payload, tuple):
@@ -130,7 +132,9 @@ class StreamService:
         chunk, metadata = payload
         if not isinstance(chunk, AIMessageChunk):
             return []
-        if SKIP_STREAM_TAG in (metadata.get("tags") or []):
+        tags = metadata.get("tags") or []
+        # Token expert tidak masuk ke chat utama. Message utuhnya tetap dikirim lewat `updates`.
+        if SKIP_STREAM_TAG in tags or SUBAGENT_TAG in tags:
             return []
         events: list[StreamEvent] = []
         reasoning = message_reasoning(chunk)

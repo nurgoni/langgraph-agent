@@ -13,6 +13,7 @@ from langchain_core.messages import ChatMessage as LangChainChatMessage
 from langgraph.types import Interrupt
 
 from agent_service.agents.base import BaseAgent
+from agent_service.agents.supervisor import subagent_name
 from agent_service.llm.reasoning import message_reasoning
 from agent_service.schema.responses import AgentInfo, ChatMessage, ToolCall
 
@@ -79,6 +80,15 @@ def langchain_to_chat_message(message: BaseMessage) -> ChatMessage:
     >>> langchain_to_chat_message(HumanMessage("Hai")).type
     'human'
     """
+    chat_message = _convert_by_type(message)
+    agent = subagent_name(message)
+    if agent is None:
+        return chat_message
+    return chat_message.model_copy(update={"agent": agent})
+
+
+def _convert_by_type(message: BaseMessage) -> ChatMessage:
+    """Konversi sesuai tipe message LangChain, tanpa penanda sub-agent."""
     match message:
         case HumanMessage():
             return ChatMessage(type="human", content=content_to_text(message.content))

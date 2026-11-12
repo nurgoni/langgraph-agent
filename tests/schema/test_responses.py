@@ -87,3 +87,8 @@ def test_chat_message_reasoning_is_optional() -> None:
 
     assert plain.reasoning is None
     assert reasoned.model_dump()["reasoning"] == "Sapa balik"
+
+
+def test_chat_message_agent_is_optional() -> None:
+    assert ChatMessage(type="ai", content="x").agent is None
+    assert ChatMessage(type="ai", content="x", agent="math_expert").agent == "math_expert"
