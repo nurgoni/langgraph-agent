@@ -13,15 +13,38 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** v0.2.0 sudah dirilis. M3 berjalan: F19 selesai di `feature/F19-reasoning-display`,
-  menunggu push dan PR.
-- **Berikutnya:** F15 (research assistant), lalu F16, F17, dan rilis v0.3.0.
+- **Fase:** v0.2.0 sudah dirilis. M3 berjalan: F19 sudah di `develop`. F15 selesai di
+  `feature/F15-research-assistant`, menunggu push dan PR.
+- **Berikutnya:** F16 (interrupt agent), lalu F17 dan rilis v0.3.0.
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Terakhir diperbarui:** 2026-11-12
 
 ## Decision Log
+
+### 2026-11-12: Research assistant dari F15
+
+- **Keputusan:**
+  - `ToolCallingAgent(agent_id, description, tools, system_prompt, clock)`. Graph:
+    `agent → tools_condition → ToolNode → agent`. `ToolCallingState` menambah `remaining_steps`
+    (`RemainingSteps`), dan `MIN_REMAINING_STEPS = 2` menggantikan literal lama.
+  - `ToolNode(handle_tool_errors=(ToolException,))`. Tool mengubah error yang diharapkan menjadi
+    `ToolException`, sedangkan bug lain tetap terlihat. Default `ToolNode` di langgraph 1.2 hanya
+    menangani error validasi argumen.
+  - Web search memakai `ddgs` langsung lewat adapter `DuckDuckGoSearch` (`SearchBackend` protocol).
+    `DDGS.text` sinkron, jadi dijalankan dengan `asyncio.to_thread`. `DDGS()` tidak membuka
+    koneksi saat dibuat.
+  - Docstring `@tool` berbahasa Inggris karena dikirim ke LLM (pengecualian dari konvensi
+    docstring Indonesia, sama seperti deskripsi `config_schema`).
+  - Prompt agent ditulis berbahasa Inggris dengan instruksi "answer in the user's language".
+- **Pelajaran:**
+  - `DDGS.text(query, **kwargs)` tidak cocok dengan Protocol yang meminta parameter bernama untuk
+    pyrefly. Pakai adapter kecil daripada melonggarkan Protocol.
+  - Untuk memeriksa input model di test, subclass `FakeModel` yang meng-override `bind_tools`,
+    `_generate`, dan `_stream` lalu menyimpan rekaman di `PrivateAttr`.
+  - Akses ke index paket kembali normal (`uv add` berhasil). `UV_OFFLINE=1` tetap berguna untuk
+    `uv run`/`uv lock` saat jaringan lambat.
 
 ### 2026-11-12: Reasoning display dari F19
 
@@ -462,10 +485,9 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pe
 
 ## TODO Berikutnya
 
-- [ ] User: push `feature/F19-reasoning-display`, lalu buka PR F19 ke `develop`. Cek job CI
-      `e2e` (image dibangun ulang dengan kode F19).
+- [ ] User: push `feature/F15-research-assistant`, lalu buka PR F15 ke `develop`.
 - [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
       (CONTRIBUTING.md § Setup Awal Repo).
 - [ ] Usulkan ke user: batas token jawaban (misalnya `LLM_MAX_TOKENS`), karena model reasoning
       bisa berpikir sangat lama.
-- [ ] F15: research assistant (`ToolCallingAgent`, web search DuckDuckGo, calculator).
+- [ ] F16: interrupt agent (`interrupt()` + resume, tanpa rekursi dan tanpa mutasi state).

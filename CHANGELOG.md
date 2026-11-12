@@ -12,6 +12,8 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
   `reasoning_content`) diteruskan sebagai frame SSE `reasoning` sebelum token jawaban, disimpan
   di `ChatMessage.reasoning`, dan ditampilkan di blok "Thinking" UI yang bisa dibuka-tutup
   (F19).
+- Agent `research-assistant`: `ToolCallingAgent` generik dengan tool web search DuckDuckGo (tanpa
+  API key) dan kalkulator numexpr. Error tool dikembalikan ke model agar bisa dicoba ulang (F15).
 
 ## [0.2.0] - 2026-11-05
 
