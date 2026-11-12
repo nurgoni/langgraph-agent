@@ -31,7 +31,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F13 | UI sidebar & threads | M2 | done |
 | F14 | Docker Compose & e2e | M2 | done |
 | F19 | Reasoning display | M3 | done |
-| F15 | Research assistant | M3 | todo |
+| F15 | Research assistant | M3 | done |
 | F16 | Interrupt agent | M3 | todo |
 | F17 | Supervisor agent | M3 | todo |
 
@@ -729,9 +729,22 @@ F13 → F14 → *rilis v0.2.0* → F19 → F15 → F16 → F17 → *rilis v0.3.0
   2. `feat(agents): add duckduckgo web search tool`
   3. `feat(agents): add configurable ToolCallingAgent`
   4. `feat(agents): register research-assistant agent`
+  5. `docs: record F15 research assistant decisions`
+- **Penyesuaian saat implementasi:**
+  - Web search memakai package `ddgs` langsung (bukan `langchain-community`). Tool dibuat oleh
+    factory `create_web_search_tool(backend)` dengan `SearchBackend` yang di-inject. Adapter
+    `DuckDuckGoSearch` dipakai di produksi, dan pencarian sinkron dijalankan lewat
+    `asyncio.to_thread`.
+  - `ToolNode(handle_tool_errors=(ToolException,))`: error tool yang diharapkan dikembalikan ke
+    model sebagai pesan error, sedangkan bug lain tetap menggagalkan run.
+  - Prompt dan factory research assistant ada di `agents/research.py`. Agent default tetap
+    `chatbot`.
+  - Safeguard Groq dan tool cuaca dari kode lama tidak di-port (di luar scope v1).
+  - Smoke test dengan qwen3.5:9b dan DuckDuckGo asli: web_search → calculator → jawaban dalam
+    18,5 detik. Model tidak selalu mengutip link walaupun diminta prompt.
 - **Acceptance criteria:**
-  - [ ] Loop tool calling dites dengan `FakeModel`.
-  - [ ] Tool web search di-mock di unit test.
+  - [x] Loop tool calling dites dengan `FakeModel`.
+  - [x] Tool web search di-mock di unit test.
 - **Squash title:** `feat(agents): add research assistant with tool calling (F15)`
 
 ### F16: Interrupt agent

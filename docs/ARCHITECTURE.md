@@ -22,7 +22,7 @@ Client dan UI (M2) berkomunikasi dengan service hanya lewat HTTP, dengan schema 
 src/agent_service/
 ├── core/      Settings, konstanta, configure_logging
 ├── llm/       ModelFactory, FakeModel
-├── agents/    BaseAgent, AgentRegistry, catalog, ChatbotAgent, error agent
+├── agents/    BaseAgent, AgentRegistry, catalog, ChatbotAgent, ToolCallingAgent, tools/
 ├── memory/    CheckpointerProvider, ThreadMetadataRepository (SQLite)
 ├── schema/    Model Pydantic untuk API: request, response, event SSE, nama header
 ├── service/   create_app, lifespan, auth, route, StreamService, ThreadRepository
@@ -166,6 +166,26 @@ Satu file SQLite di `SQLITE_DB_PATH` berisi tiga tabel:
 
 `ThreadMetadataRepository` memakai koneksi `aiosqlite` sendiri, karena transaksi saver dijaga oleh
 lock privat milik saver. Penghapusan thread memanggil `adelete_thread` lalu menghapus judulnya.
+
+## Agent dengan Tool
+
+`ToolCallingAgent` (`agents/tool_calling.py`) adalah agent generik yang dikonfigurasi lewat daftar
+tool dan system prompt. Graph-nya `agent → tools → agent`: node `agent` memanggil model dengan
+tool yang sudah di-bind, `tools_condition` mengarahkan tool call ke `ToolNode`, lalu hasilnya kembali
+ke model sampai model menjawab tanpa tool call.
+
+- **Tanggal di prompt** (`{current_date}`) dihitung setiap kali model dipanggil. System message
+  tidak disimpan di riwayat.
+- **`ToolException`** dari tool dikembalikan ke model sebagai `ToolMessage` berstatus `error`, jadi
+  model bisa mencoba lagi. Exception lain tetap menggagalkan run.
+- **Jika sisa langkah kurang dari `MIN_REMAINING_STEPS`**, model tidak boleh memanggil tool baru dan
+  menjawab `STEP_LIMIT_MESSAGE`.
+- **Tool** ditulis sebagai function `@tool` di `agents/tools/`. Docstring-nya berbahasa Inggris
+  karena menjadi deskripsi tool untuk model. Tool dengan dependency (misalnya mesin pencari) dibuat
+  lewat factory yang menerima dependency tersebut, supaya test bisa memakai tiruan tanpa network.
+
+`research-assistant` (`agents/research.py`) adalah `ToolCallingAgent` dengan `web_search`
+(DuckDuckGo, dijalankan di thread terpisah karena library-nya sinkron) dan `calculator` (numexpr).
 
 ## Menambah Agent
 
