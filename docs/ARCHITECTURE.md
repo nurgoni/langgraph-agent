@@ -119,7 +119,8 @@ Hal penting dari alur ini:
 4. **`/invoke`** memanggil `graph.ainvoke` dan mengembalikan message terakhir, atau pertanyaan
    interrupt, sebagai `ChatMessage` dengan `run_id`.
 5. **`/stream`** memakai `StreamService` dengan tiga stream mode:
-   - `messages`: menghasilkan frame `token`, kecuali node bertag `skip_stream`.
+   - `messages`: menghasilkan frame `reasoning` (jika model mengirim pemikiran) lalu `token`,
+     kecuali node bertag `skip_stream`.
    - `updates`: menghasilkan frame `message` untuk jawaban AI, tool call, hasil tool, dan
      interrupt.
    - `custom`: menghasilkan frame `message` dari `get_stream_writer()`.
@@ -241,6 +242,16 @@ oleh `tests/client/test_layering.py`.
   setelah service menerima request.
 - **`MessageRenderer`** punya satu method per tipe message. Jawaban AI, tool call, dan hasil tool
   berurutan digabung dalam satu blok chat, dengan tool call tampil sebagai `st.status`.
+
+## Reasoning Model
+
+Model reasoning menulis pemikirannya di field stream non-standar (`reasoning` di Ollama,
+`reasoning_content` di vLLM/DeepSeek). `ReasoningChatOpenAI` (`llm/reasoning.py`) menyalinnya ke
+`additional_kwargs["reasoning_content"]` di setiap chunk. `StreamService` mengubahnya menjadi frame
+`reasoning`, dan LangChain menggabungkan potongannya sehingga message akhir di checkpoint berisi
+reasoning lengkap. Converter mengisi `ChatMessage.reasoning`, dan UI menampilkannya di blok
+"Thinking" (terbuka saat live, tertutup di riwayat). Hanya field standar yang dikirim balik ke
+model, jadi reasoning lama tidak ikut di prompt giliran berikutnya.
 
 ## Deployment
 
