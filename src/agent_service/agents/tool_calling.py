@@ -77,6 +77,24 @@ class ToolCallingAgent(BaseAgent):
         Returns:
             Graph yang sudah di-compile.
         """
+        return self._graph_builder(model).compile(checkpointer=checkpointer)
+
+    def build_stateless(self, model: BaseChatModel) -> AgentGraph:
+        """Compile graph yang sama tanpa checkpoint, untuk dipakai sebagai sub-agent.
+
+        Setiap pemanggilan dimulai dari state kosong dan tidak menulis checkpoint, walaupun
+        dijalankan di dalam node graph lain yang punya checkpointer.
+
+        Args:
+            model: Chat model untuk graph ini.
+
+        Returns:
+            Graph tanpa checkpointer.
+        """
+        return self._graph_builder(model).compile(checkpointer=False)
+
+    def _graph_builder(self, model: BaseChatModel) -> StateGraph:
+        """Susun graph `agent → tools → agent` untuk `model`, belum di-compile."""
         model_with_tools = model.bind_tools(self._tools)
 
         # Closure, bukan method: satu instance agent membangun graph untuk beberapa model.
@@ -96,7 +114,7 @@ class ToolCallingAgent(BaseAgent):
         builder.add_edge(START, AGENT_NODE)
         builder.add_conditional_edges(AGENT_NODE, tools_condition)
         builder.add_edge(TOOLS_NODE, AGENT_NODE)
-        return builder.compile(checkpointer=checkpointer)
+        return builder
 
     def _render_system_prompt(self) -> str:
         """System prompt dengan tanggal hari ini."""
