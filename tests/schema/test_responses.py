@@ -79,3 +79,16 @@ def test_service_metadata_exposes_agent_config_schema() -> None:
     )
 
     assert metadata.model_dump()["agents"][0]["config_schema"]["type"] == "object"
+
+
+def test_chat_message_reasoning_is_optional() -> None:
+    plain = ChatMessage(type="ai", content="Halo")
+    reasoned = ChatMessage(type="ai", content="Halo", reasoning="Sapa balik")
+
+    assert plain.reasoning is None
+    assert reasoned.model_dump()["reasoning"] == "Sapa balik"
+
+
+def test_chat_message_agent_is_optional() -> None:
+    assert ChatMessage(type="ai", content="x").agent is None
+    assert ChatMessage(type="ai", content="x", agent="math_expert").agent == "math_expert"

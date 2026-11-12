@@ -510,3 +510,24 @@ def test_failed_delete_shows_error(clients: list[AgentClient]) -> None:
     app.button(key="sidebar_delete_t1").click().run()
 
     assert "Could not delete the conversation" in app.toast[0].value
+
+
+def test_reasoning_frames_show_thinking_block_and_are_kept(clients: list[AgentClient]) -> None:
+    body = sse(
+        {"type": "reasoning", "content": "Pilih "},
+        {"type": "reasoning", "content": "dua warna"},
+        {"type": "token", "content": "Merah"},
+        {
+            "type": "message",
+            "content": {"type": "ai", "content": "Merah", "reasoning": "Pilih dua warna"},
+        },
+    )
+    service = FakeService(lambda request: httpx.Response(200, text=body, headers=ID_HEADERS))
+    app = start_app(service, clients)
+
+    send(app, "Satu warna?")
+    app.run()
+
+    [status] = app.status
+    assert status.markdown[0].value == "Pilih dua warna"
+    assert session_of(app).messages[-1].reasoning == "Pilih dua warna"

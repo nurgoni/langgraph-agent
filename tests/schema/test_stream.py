@@ -8,6 +8,7 @@ from agent_service.schema.stream import (
     STREAM_EVENT_ADAPTER,
     ErrorEvent,
     MessageEvent,
+    ReasoningEvent,
     TokenEvent,
 )
 
@@ -34,6 +35,7 @@ def test_message_event_nests_chat_message() -> None:
         ('{"type": "token", "content": "a"}', TokenEvent),
         ('{"type": "message", "content": {"type": "ai", "content": "b"}}', MessageEvent),
         ('{"type": "error", "content": "boom"}', ErrorEvent),
+        ('{"type": "reasoning", "content": "Hmm"}', ReasoningEvent),
     ],
 )
 def test_adapter_selects_event_class_by_type(raw: str, expected_class: type) -> None:
@@ -43,3 +45,9 @@ def test_adapter_selects_event_class_by_type(raw: str, expected_class: type) -> 
 def test_adapter_rejects_unknown_event_type() -> None:
     with pytest.raises(ValidationError):
         STREAM_EVENT_ADAPTER.validate_json('{"type": "unknown", "content": "x"}')
+
+
+def test_reasoning_event_serializes_to_prd_frame_shape() -> None:
+    payload = json.loads(ReasoningEvent(content="Pertama, ").model_dump_json())
+
+    assert payload == {"type": "reasoning", "content": "Pertama, "}

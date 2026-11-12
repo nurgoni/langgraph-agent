@@ -30,9 +30,11 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F12 | UI chat | M2 | done |
 | F13 | UI sidebar & threads | M2 | done |
 | F14 | Docker Compose & e2e | M2 | done |
-| F15 | Research assistant | M3 | todo |
-| F16 | Interrupt agent | M3 | todo |
-| F17 | Supervisor agent | M3 | todo |
+| F19 | Reasoning display | M3 | done |
+| F15 | Research assistant | M3 | done |
+| F16 | Interrupt agent | M3 | done |
+| F17 | Supervisor agent | M3 | done |
+| F20 | Firecrawl web search | M3 | done |
 
 ## Milestone & Rilis
 
@@ -41,7 +43,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | M0: Bootstrap | F00 | – | Repo, tooling, dan CI siap |
 | M1: Core + Service | F01–F10, F18 | `v0.1.0` | API lengkap dengan `chatbot`, dites dengan FakeModel |
 | M2: Client + UI | F11–F14 | `v0.2.0` | Chat end-to-end via Docker Compose |
-| M3: Agent tambahan | F15–F17 | `v0.3.0` | Tool calling, human-in-the-loop, multi-agent |
+| M3: Agent tambahan | F19, F15–F17, F20 | `v0.3.0` | Reasoning terlihat, tool calling, human-in-the-loop, multi-agent |
 
 ## Dependency Graph
 
@@ -52,11 +54,12 @@ F00 ─► F04 ─────────────────────�
                                     F06 ─► F09 ─► F18
 F04 ─► F11 ─► F12 ─► F13 ─► F14          (F13 juga butuh F18)
 F05 ─► F15 ─► F17                        (F17 juga butuh F08, F12)
+F08 ─► F19 ◄─ F12                        (F19 juga butuh F02, F11)
 ```
 
 **Urutan eksekusi yang disarankan (satu developer):**
 F00 → F01 → F04 → F02 → F03 → F05 → F06 → F07 → F09 → F18 → F08 → F10 → *rilis v0.1.0* → F11 → F12 →
-F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
+F13 → F14 → *rilis v0.2.0* → F19 → F15 → F16 → F17 → F20 → *rilis v0.3.0*
 
 **Bisa dikerjakan paralel (lebih dari satu developer):**
 - F02 ∥ F03 ∥ F04
@@ -82,7 +85,8 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
 | FR-11 | F06 | | FR-23 | F17 |
 | FR-12 | F07, F16 | | FR-24 | F12, F16 |
 | FR-25 | F18, F13 | | FR-27 | F04, F05, F06, F07 |
-| FR-26 | F18, F13 | | | |
+| FR-26 | F18, F13 | | FR-28 | F07, F08, F18 |
+| FR-29 | F19 | | | |
 
 ## Loop Eksekusi per Fitur
 
@@ -653,6 +657,60 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
 
 ## M3: Agent Tambahan → v0.3.0
 
+### F19: Reasoning display
+
+- **Branch:** `feature/F19-reasoning-display`
+- **FR:** FR-29
+- **Latar belakang:** model reasoning (misalnya Qwen3 lewat Ollama) menulis token pemikiran di field
+  stream terpisah, bukan `content`. `ChatOpenAI` membuang field non-standar itu, sehingga selama
+  model berpikir `/stream` tidak mengirim frame apa pun dan UI tampak idle.
+- **Langkah 1 (klarifikasi, sebelum menulis kode):**
+  - Ukur stream mentah endpoint yang dipakai: nama field reasoning (`reasoning` atau
+    `reasoning_content`) dan waktunya sebelum `content` dimulai. Script probe pernah dibuat untuk
+    ini, berupa `httpx.stream` ke `{LLM_BASE_URL}/chat/completions` dengan mencatat field per delta.
+  - Putuskan bersama user: apakah reasoning disimpan di riwayat dan tampil saat thread dibuka ulang
+    (PRD §11 no. 5).
+- **File:** `llm/reasoning.py` (subclass `ChatOpenAI` yang menyalin field reasoning ke
+  `additional_kwargs`), `llm/factory.py`, `llm/fake.py` (reasoning bisa di-script),
+  `schema/stream.py` (`ReasoningEvent`), `schema/responses.py` (`ChatMessage.reasoning`, jika
+  disimpan), `service/streaming.py`, `service/converters.py`, `ui/message_renderer.py`, `tests/`.
+- **Catatan desain:**
+  - Tetap satu jalur OpenAI-compatible (scope v1). Bukan menambah provider baru seperti
+    `langchain-ollama`.
+  - Event SSE baru `{"type": "reasoning", "content": "..."}` dikirim sebelum token jawaban. Ini
+    perubahan kontrak: service dan client (yang memakai `STREAM_EVENT_ADAPTER` yang sama) dirilis
+    bersama. Client versi lama akan menolak frame ini.
+  - `stream_tokens=False` juga mematikan frame `reasoning`.
+  - UI menampilkan reasoning di blok "Thinking" (`st.status`/expander) yang terbuka selama model
+    berpikir, lalu tertutup saat jawaban mulai mengalir.
+  - Model tanpa reasoning (dan `FakeModel` default) tidak berubah perilakunya.
+- **Rencana commit:**
+  1. `feat(llm): keep reasoning from openai-compatible streams`
+  2. `feat(schema): add reasoning stream event`
+  3. `feat(service): stream reasoning before answer tokens`
+  4. `feat(ui): show reasoning in a collapsible thinking block`
+  5. `docs: record F19 reasoning decisions`
+- **Acceptance criteria:**
+  - [x] Dengan `FakeModel` yang di-script berisi reasoning, `/stream` mengirim frame `reasoning`
+        sebelum `token`, dan UI menampilkan blok "Thinking" sebelum jawaban.
+  - [x] Smoke test dengan model reasoning asli: frame `reasoning` muncul selama jeda yang
+        sebelumnya kosong (qwen3.5:9b: reasoning pertama di detik 3,7, token pertama di detik 9,8).
+  - [x] Model tanpa reasoning menghasilkan urutan frame yang sama seperti sebelum F19.
+  - [x] Test kontrak client vs service mencakup frame `reasoning`.
+- **Penyesuaian saat implementasi:**
+  - Hasil ukur langkah 1: Ollama mengirim field `reasoning` (vLLM/DeepSeek memakai
+    `reasoning_content`). Keduanya diterima, lalu disimpan sebagai
+    `additional_kwargs["reasoning_content"]`.
+  - Keputusan user (open question 5): reasoning disimpan di riwayat. `ChatMessage.reasoning`
+    diisi di `/invoke`, `/history`, dan frame `message` akhir, lalu UI menampilkannya tertutup saat
+    thread dibuka ulang.
+  - Tidak ada perubahan kode di client. `SseParser` sudah menerima event baru lewat
+    `STREAM_EVENT_ADAPTER`.
+  - `skip_stream` juga menyembunyikan reasoning.
+  - Temuan: model reasoning bisa berpikir sangat lama (sekali lebih dari 300 detik untuk prompt
+    singkat), karena belum ada batas token jawaban. Dicatat sebagai kandidat fitur berikutnya.
+- **Squash title:** `feat(llm): stream and display model reasoning (F19)`
+
 ### F15: Research assistant
 
 - **Branch:** `feature/F15-research-assistant`
@@ -672,9 +730,22 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
   2. `feat(agents): add duckduckgo web search tool`
   3. `feat(agents): add configurable ToolCallingAgent`
   4. `feat(agents): register research-assistant agent`
+  5. `docs: record F15 research assistant decisions`
+- **Penyesuaian saat implementasi:**
+  - Web search memakai package `ddgs` langsung (bukan `langchain-community`). Tool dibuat oleh
+    factory `create_web_search_tool(backend)` dengan `SearchBackend` yang di-inject. Adapter
+    `DuckDuckGoSearch` dipakai di produksi, dan pencarian sinkron dijalankan lewat
+    `asyncio.to_thread`.
+  - `ToolNode(handle_tool_errors=(ToolException,))`: error tool yang diharapkan dikembalikan ke
+    model sebagai pesan error, sedangkan bug lain tetap menggagalkan run.
+  - Prompt dan factory research assistant ada di `agents/research.py`. Agent default tetap
+    `chatbot`.
+  - Safeguard Groq dan tool cuaca dari kode lama tidak di-port (di luar scope v1).
+  - Smoke test dengan qwen3.5:9b dan DuckDuckGo asli: web_search → calculator → jawaban dalam
+    18,5 detik. Model tidak selalu mengutip link walaupun diminta prompt.
 - **Acceptance criteria:**
-  - [ ] Loop tool calling dites dengan `FakeModel`.
-  - [ ] Tool web search di-mock di unit test.
+  - [x] Loop tool calling dites dengan `FakeModel`.
+  - [x] Tool web search di-mock di unit test.
 - **Squash title:** `feat(agents): add research assistant with tool calling (F15)`
 
 ### F16: Interrupt agent
@@ -688,6 +759,20 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
 - **Rencana commit:**
   1. `feat(agents): add InterruptAgent asking for missing input`
   2. `test(agents): cover interrupt and resume through invoke endpoint`
+  3. `docs: record F16 interrupt agent decisions`
+- **Penyesuaian saat implementasi:**
+  - Contoh zodiak dari kode lama dipertahankan. Graph: `START → (birthdate ada?) → respond`, atau
+    `extract_birthdate → (valid?) → respond`, atau `ask_birthdate (interrupt) → extract_birthdate`.
+  - Ekstraksi memakai `with_structured_output(..., method="function_calling")` bertag
+    `skip_stream`. Validasi tanggal (format, tanggal di masa depan) dan perhitungan zodiak dilakukan
+    di kode, bukan oleh model.
+  - Tanggal lahir disimpan di state thread (checkpoint), bukan di Store (Store di luar scope v1).
+    Giliran berikutnya di thread yang sama tidak bertanya lagi.
+  - Pertanyaan interrupt ditulis model dalam bahasa user, dengan fallback konstanta berbahasa
+    Inggris.
+  - Node `background` dari kode lama tidak di-port.
+- **Acceptance (smoke test qwen3.5:9b):** "Apa zodiak saya?" → bertanya, "bulan Mei" → bertanya
+  lagi, "17 Mei 1990" → Taurus, lalu pertanyaan lanjutan dijawab tanpa interrupt.
 - **Squash title:** `feat(agents): add human-in-the-loop interrupt agent (F16)`
 
 ### F17: Supervisor agent
@@ -702,8 +787,56 @@ F13 → F14 → *rilis v0.2.0* → F15 → F16 → F17 → *rilis v0.3.0*
 - **Referensi lama:** `agents/langgraph_supervisor_agent.py` (`:8` model dibuat saat import),
   `service/service.py:282`.
 - **Rencana commit:**
-  1. `feat(agents): add SupervisorAgent with math and research sub-agents`
-  2. `feat(service): stream sub-agent events using explicit tags`
-  3. `feat(ui): render sub-agent handoffs as nested blocks`
+  1. `feat(agents): let ToolCallingAgent run as a stateless sub-agent`
+  2. `feat(agents): add SupervisorAgent with math and research sub-agents`
+  3. `feat(service): stream sub-agent events using explicit tags`
+  4. `feat(ui): render sub-agent handoffs as nested blocks`
+  5. `feat(agents): stream expert steps while the expert works`
+  6. `fix(agents): ask supervisor to delegate dependent tasks in order`
+  7. `docs: record F17 supervisor decisions`
+- **Penyesuaian saat implementasi:**
+  - Tanpa dependency `langgraph-supervisor`. Graph sendiri: `supervisor` (LLM dengan tool
+    delegasi `ask_<expert>`) ⇄ `delegate` (menjalankan `ToolCallingAgent.build_stateless(model)`
+    milik expert).
+  - Penanda eksplisit: message expert diberi `additional_kwargs["subagent"]` (tersimpan di
+    checkpoint) dan menjadi `ChatMessage.agent`. Run expert diberi tag `subagent`. Supervisor hanya
+    melihat message tanpa penanda.
+  - Langkah expert dikirim bertahap lewat `get_stream_writer()` (mode `custom`), dan
+    `StreamService` membuang duplikat berdasarkan `id` message.
+  - UI: kontainer berbingkai per expert, karena Streamlit tidak mengizinkan expander bersarang.
+  - Smoke test qwen3.5:9b + DuckDuckGo: research_expert → 1991, math_expert → `2026 - 1991 = 35`,
+    dengan langkah expert tiba bertahap.
 - **Squash title:** `feat(agents): add supervisor agent with nested streaming (F17)`
+- **Setelah merge:** F20, lalu rilis **v0.3.0**.
+
+### F20: Firecrawl web search
+
+- **Branch:** `feature/F20-firecrawl-web-search`
+- **Latar belakang:** saat smoke test F17, DuckDuckGo gagal beberapa kali berturut-turut. User memilih
+  Firecrawl (akun free tier dengan API key).
+- **File:** `core/settings.py` (`firecrawl_api_key`), `agents/tools/web_search.py`
+  (`SearchBackend` async, `FirecrawlSearch`, `UnconfiguredSearch`, `create_search_backend`),
+  `agents/research.py`, `agents/supervisor.py`, `agents/catalog.py`, `service/app.py`
+  (`build_search_backend`), `compose.yaml`, `.env.example`, `tests/`.
+- **Catatan desain:**
+  - REST API langsung (`POST https://api.firecrawl.dev/v2/search`, `{query, limit}`, bearer key)
+    dengan `httpx.AsyncClient` yang dipakai ulang. Tidak ada SDK tambahan, dan tidak perlu thread.
+    Hanya hasil web (`data.web[]`: `url`, `title`, `description`), tanpa scraping, supaya hemat
+    kredit.
+  - Keputusan user: tanpa key, agent tetap berjalan. `UnconfiguredSearch` membuat tool menjawab
+    "not configured", dan startup mencatat warning.
+  - Key mengalir `Settings` → `create_app` → katalog agent → tool. `agents/` tidak membaca env.
+  - `ddgs` dihapus dari dependency.
+- **Rencana commit:**
+  1. `feat(core): add FIRECRAWL_API_KEY setting`
+  2. `feat(agents): replace duckduckgo web search with firecrawl`
+  3. `feat(service): pass firecrawl search backend from settings to agents`
+  4. `docs: switch web search docs to firecrawl`
+- **Acceptance criteria:**
+  - [x] Request ke Firecrawl (URL, header, body) dan parsing respons dites dengan `MockTransport`.
+  - [x] Error 401/402/429/500, koneksi gagal, dan JSON rusak menjadi pesan error untuk model.
+  - [x] Tanpa key: service start, warning tercatat, dan agent menjawab tanpa pencarian (smoke test
+        dengan qwen3.5:9b).
+  - [ ] Smoke test dengan key Firecrawl asli (menunggu user mengisi `FIRECRAWL_API_KEY`).
+- **Squash title:** `feat(agents): switch web search to firecrawl (F20)`
 - **Setelah merge:** rilis **v0.3.0**.

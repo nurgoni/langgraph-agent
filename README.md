@@ -13,6 +13,8 @@ kode yang sederhana, eksplisit, dan mudah dites (Zen of Python).
 
 - **Multi-agent registry**: pilih agent lewat URL `/{agent_id}/...`.
 - **Streaming SSE**: token dan message (termasuk tool call dan sub-agent) dikirim secara real-time.
+- **Reasoning terlihat**: pemikiran model reasoning (misalnya Qwen3 lewat Ollama) di-stream
+  sebelum jawaban dan tampil di blok "Thinking" UI.
 - **Percakapan persisten**: riwayat thread disimpan di SQLite via LangGraph checkpointer.
 - **Human-in-the-loop**: agent bisa berhenti (`interrupt`) dan melanjutkan dengan input user.
 - **Python client**: `AgentClient` sync dan async.
@@ -94,6 +96,7 @@ menunjuk ke container itu sendiri.
 | `USE_FAKE_MODEL` | tidak | `true` untuk dev/test tanpa LLM |
 | `SQLITE_DB_PATH` | tidak | Default `checkpoints.db` |
 | `AUTH_SECRET` | tidak | Jika diset, semua request butuh `Authorization: Bearer ...` |
+| `FIRECRAWL_API_KEY` | tidak | Key [Firecrawl](https://firecrawl.dev) untuk tool `web_search` (research-assistant, supervisor). Kosong = tanpa pencarian web |
 | `AGENT_URL` | tidak | URL service untuk UI/client, default `http://localhost:8080` |
 
 \* Tidak wajib jika `USE_FAKE_MODEL=true`. Daftar lengkap ada di [PRD.md §8](PRD.md#8-konfigurasi-env-var-v1).

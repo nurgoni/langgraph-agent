@@ -13,7 +13,13 @@ from agent_service.client import (
     StreamRun,
 )
 from agent_service.schema.responses import ChatMessage
-from agent_service.schema.stream import ErrorEvent, MessageEvent, StreamEvent, TokenEvent
+from agent_service.schema.stream import (
+    ErrorEvent,
+    MessageEvent,
+    ReasoningEvent,
+    StreamEvent,
+    TokenEvent,
+)
 from agent_service.ui.message_renderer import MessageRenderer
 from agent_service.ui.session import ChatSession
 
@@ -147,6 +153,8 @@ class ChatView:
             `True` jika event berupa error dari service.
         """
         match event:
+            case ReasoningEvent():
+                renderer.append_reasoning(event.content)
             case TokenEvent():
                 renderer.append_token(event.content)
             case MessageEvent():

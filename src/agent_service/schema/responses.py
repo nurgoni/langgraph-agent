@@ -31,6 +31,14 @@ class ChatMessage(BaseModel):
         description="Untuk message `tool`: ID tool call yang dijawab.",
     )
     run_id: str | None = Field(default=None, description="ID run agent yang menghasilkan message.")
+    agent: str | None = Field(
+        default=None,
+        description="Sub-agent (expert) yang membuat message ini, atau kosong untuk agent utama.",
+    )
+    reasoning: str | None = Field(
+        default=None,
+        description="Untuk message `ai`: pemikiran model sebelum menjawab, jika model mengirimnya.",
+    )
     response_metadata: dict[str, JsonValue] = Field(
         default_factory=dict,
         description="Metadata dari provider, misalnya jumlah token.",

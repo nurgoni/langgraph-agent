@@ -151,8 +151,15 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
   daftar thread bisa dibuka ulang. `user_id` ikut disimpan karena service hanya membuka thread
   untuk pemiliknya (FR-28). Siapa pun yang memegang URL lengkap bisa membaca thread tersebut, sesuai
   v1 yang belum punya auth per user.
-- **FR-23** Menampilkan handoff sub-agent (supervisor) secara bertingkat.
+- **FR-23** Menampilkan handoff sub-agent (supervisor) secara bertingkat. Message buatan sub-agent
+  membawa `ChatMessage.agent` (nama expert), dikirim bertahap selama expert bekerja, dan tetap
+  bertingkat saat thread dibuka ulang.
 - **FR-24** Saat agent meminta input (interrupt), pertanyaannya ditampilkan sebagai pesan AI biasa.
+- **FR-29** Jika model mengirim reasoning (token pemikiran), service meneruskannya sebagai frame SSE
+  `reasoning` sebelum token jawaban, dan UI menampilkannya di blok "Thinking" yang bisa
+  dibuka-tutup, supaya jeda saat model berpikir tidak terlihat seperti idle. Reasoning disimpan
+  di riwayat (`ChatMessage.reasoning`) dan tampil tertutup saat thread dibuka ulang.
+  `stream_tokens=false` juga mematikan frame `reasoning`. Model tanpa reasoning tidak terpengaruh.
 
 ## 6. Non-Functional Requirements
 
@@ -190,7 +197,8 @@ Varian tanpa `{agent_id}` (`/invoke`, `/stream`, dan seterusnya) memakai agent d
 UserInput       { message: str, model?: str, thread_id?: str, user_id?: str, agent_config?: dict }
 StreamInput     UserInput + { stream_tokens: bool = true }
 ChatMessage     { type: "human"|"ai"|"tool"|"custom", content: str, tool_calls: list,
-                  tool_call_id?: str, run_id?: str, custom_data?: dict }
+                  tool_call_id?: str, run_id?: str, agent?: str, reasoning?: str,
+                  custom_data?: dict }
 ChatHistoryInput { thread_id: str, user_id: str }
 ChatHistory     { messages: list[ChatMessage] }
 ThreadSummary   { thread_id: str, agent_id: str, title: str, updated_at?: datetime }
@@ -206,6 +214,7 @@ itu, isinya harus lolos `config_schema` milik agent tujuan (FR-27).
 Setiap frame berupa `data: <json>\n\n`:
 
 ```text
+data: {"type": "reasoning", "content": "Pertama, ..."}   (FR-29, mulai F19)
 data: {"type": "token",   "content": "Hal"}
 data: {"type": "message", "content": { ...ChatMessage... }}
 data: {"type": "error",   "content": "pesan error"}
@@ -228,6 +237,7 @@ Node yang LLM-nya diberi tag `skip_stream` tidak menghasilkan frame `token`.
 | `USE_FAKE_MODEL` | `false` | Pakai FakeModel (dev/test) |
 | `SQLITE_DB_PATH` | `checkpoints.db` | Lokasi DB checkpointer |
 | `AUTH_SECRET` | – | Bearer token. Kosong = tanpa auth |
+| `FIRECRAWL_API_KEY` | – | Key Firecrawl untuk tool `web_search`. Kosong = tool menjawab "not configured", agent tetap berjalan |
 | `HOST` / `PORT` | `0.0.0.0` / `8080` | Bind address service |
 | `LOG_LEVEL` | `INFO` | Level logging |
 | `AGENT_URL` | `http://localhost:8080` | Dipakai UI/client |
@@ -253,15 +263,20 @@ Rincian fitur per milestone, urutan eksekusi, dan rencana commit ada di
 |---|---|---|
 | **M1: Core + Service** | `Settings`, `ModelFactory`, `CheckpointerProvider`, `BaseAgent`, `AgentRegistry`, agent `chatbot`, semua endpoint FR-5–FR-16 | Test endpoint hijau dengan FakeModel |
 | **M2: Client + UI** | `AgentClient`, Streamlit app FR-20–FR-24 | Chat end-to-end via Docker Compose |
-| **M3: Agent tambahan** | `research-assistant`, `interrupt-agent`, `supervisor` | Test per agent + streaming subgraph |
+| **M3: Agent tambahan** | Reasoning terlihat (FR-29), `research-assistant`, `interrupt-agent`, `supervisor` | Test per agent + streaming subgraph + frame `reasoning` |
 
 ## 11. Open Questions
 
 1. ~~Apakah `/threads` perlu fitur hapus/rename thread di v1?~~ **Terjawab (2026-11-01):** ya,
    lihat FR-25 dan FR-26.
 2. ~~Web search memakai DuckDuckGo (tanpa key) atau provider lain?~~ **Terjawab (2026-11-01):**
-   DuckDuckGo.
+   DuckDuckGo. **Diganti (2026-11-12):** Firecrawl Search API (`FIRECRAWL_API_KEY`), karena
+   DuckDuckGo tidak stabil (F20).
 3. ~~Perlukah `agent_config` divalidasi dengan schema per agent (Pydantic model milik agent)?~~
    **Terjawab (2026-11-01):** ya, lihat FR-27.
 4. ~~Nama package final: `agent_service` atau yang lain?~~ **Terjawab (2026-11-01):**
    `agent_service`.
+5. ~~Apakah reasoning model (FR-29) disimpan di riwayat thread dan ditampilkan lagi saat
+   thread dibuka ulang, atau hanya tampil selama stream berlangsung?~~ **Terjawab (2026-11-12):**
+   disimpan. `ChatMessage.reasoning` dikembalikan oleh `/invoke` dan `/history`, dan UI
+   menampilkannya tertutup saat thread dibuka ulang. Reasoning tidak dikirim balik ke model.

@@ -15,12 +15,15 @@ services:
       - "${SERVICE_PORT:-8080}:8080"
     environment:
       # Ditulis eksplisit, bukan env_file: konfigurasi LLM di .env (misalnya LLM_BASE_URL ke
-      # localhost) tidak berlaku dari dalam container.
+      # localhost) tidak berlaku dari dalam container. Yang diambil dari .env hanya AUTH_SECRET,
+      # LOG_LEVEL, dan FIRECRAWL_API_KEY.
       USE_FAKE_MODEL: "true"
       DEFAULT_MODEL: fake
       AVAILABLE_MODELS: fake
       AUTH_SECRET: ${AUTH_SECRET:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # Kosong: tool web_search menjawab "not configured", agent tetap berjalan.
+      FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
     volumes:
       - agent-data:/data
     restart: unless-stopped

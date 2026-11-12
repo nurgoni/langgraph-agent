@@ -13,15 +13,140 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** v0.1.0 sudah dirilis. M2: F11–F13 sudah di `develop`. F14 selesai di
-  `feature/F14-compose-e2e`, menunggu push dan PR. Setelah merge: rilis v0.2.0.
-- **Berikutnya:** rilis v0.2.0, lalu M3 dimulai dari F15 (research assistant).
+- **Fase:** M3 selesai (F19, F15, F16, F17, F20 di `develop`). `release/v0.3.0` disiapkan,
+  menunggu push, PR ke `main` (`--no-ff`), tag `v0.3.0`, dan back-merge ke `develop`.
+- **Berikutnya:** belum ada milestone setelah M3. Tanyakan ke user (kandidat: batas token
+  jawaban `LLM_MAX_TOKENS`, pemisahan dependency image Docker).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
-- **Terakhir diperbarui:** 2026-11-04
+- **Terakhir diperbarui:** 2026-11-12
 
 ## Decision Log
+
+### 2026-11-12: Web search pindah ke Firecrawl (F20)
+
+- **Supersedes:** "2026-11-01: Package `agent_service`, web search DuckDuckGo" (bagian web search)
+  dan detail `ddgs`/`DuckDuckGoSearch` di entri F15.
+- **Keputusan user:** web search memakai Firecrawl (free tier, API key). Tanpa key, agent tetap
+  berjalan, dan tool menjawab "not configured".
+- **Keputusan desain:**
+  - `SearchBackend` sekarang async: `search(query, max_results) -> list[SearchResult]`.
+    `FirecrawlSearch` memanggil `POST https://api.firecrawl.dev/v2/search` lewat satu
+    `httpx.AsyncClient` (bearer key, body `{query, limit}`, hasil di `data.web[]`, tanpa scraping).
+  - Semua kegagalan menjadi `SearchError`, yang diubah tool menjadi `ToolException`.
+  - `FIRECRAWL_API_KEY` dibaca `Settings`. `create_app` → `build_search_backend(settings)` →
+    `create_default_agents(search_backend)`.
+  - `ddgs` dihapus (`uv remove ddgs --no-sync`, karena `.venv` dikunci proses yang berjalan).
+- **Pelajaran:**
+  - Di Windows, `uv remove`/`uv sync` gagal (`Access is denied`) jika service/UI yang meng-import
+    package itu masih berjalan, dan bisa meninggalkan `dist-info` setengah terhapus. Pakai
+    `--no-sync`, lalu `uv sync` setelah proses dihentikan.
+  - Dokumentasi Firecrawl tidak mencantumkan arti 401/402/429. Semua status non-2xx diperlakukan
+    sama (`SearchError` dengan cuplikan body).
+
+### 2026-11-12: Supervisor agent dari F17
+
+- **Keputusan:**
+  - Tanpa `langgraph-supervisor`. `SupervisorAgent(experts: list[Expert])` dengan tool delegasi
+    `ask_<name>` (schema function eksplisit, argumen `task`), dan node `delegate` yang menjalankan
+    `ToolCallingAgent.build_stateless(model)` (`checkpointer=False`, supaya setiap delegasi mulai
+    bersih).
+  - Penanda eksplisit, bukan string matching: `additional_kwargs["subagent"]` pada message expert
+    (`mark_subagent_message`, selalu dengan `id`) → `ChatMessage.agent`. Run expert bertag
+    `subagent`. Supervisor memfilter message bertanda dari prompt-nya.
+  - Langkah expert dikirim lewat `get_stream_writer()` saat terjadi. `StreamService` mencatat
+    `id` message yang sudah dikirim (`_sent_message_ids`).
+  - UI memakai `st.container(border=True)` per expert (expander tidak bisa bersarang).
+- **Pelajaran:**
+  - `StreamMessagesHandler` LangGraph tidak mengalirkan token dari graph yang dijalankan di dalam
+    node saat `subgraphs=False` (dicek dari namespace). Tag `subagent` tetap difilter sebagai
+    pertahanan eksplisit.
+  - `metadata["tags"]` di mode `messages` hanya terisi jika run LLM punya tag user. Tag yang
+    dipasang di graph induk lewat `with_config` tidak muncul di sana.
+  - Model 9B sering mengirim beberapa delegasi sekaligus walaupun hasilnya saling bergantung.
+    Instruksi "delegasikan tugas yang bergantung secara berurutan" di prompt memperbaikinya.
+  - DuckDuckGo kadang gagal sementara (lima `ToolException` beruntun, lalu normal lagi).
+
+### 2026-11-12: Interrupt agent dari F16
+
+- **Keputusan:**
+  - Contoh zodiak dari kode lama dipertahankan, dengan graph tanpa rekursi:
+    `route_start → extract_birthdate → route_after_extract → ask_birthdate (interrupt) →
+    extract_birthdate`, atau `respond`. Router dan `ask_birthdate` adalah function murni, sedangkan
+    node yang butuh model berupa closure di `build()`.
+  - Ekstraksi: `with_structured_output(BirthdateExtraction, method="function_calling")` +
+    `with_config(tags=["skip_stream"])`. Mode `function_calling` dipilih karena bekerja dengan
+    `FakeModel` (tool call yang di-script) dan dengan Ollama.
+  - Validasi di kode: `parse_iso_date`, tanggal masa depan ditolak (`FUTURE_DATE_QUESTION`), dan
+    `zodiac_sign` deterministik.
+  - Tanggal lahir disimpan di state thread (`InterruptState.birthdate`, ISO string). Tidak ada Store.
+- **Pelajaran:**
+  - Node yang mengembalikan update parsial diberi return type `dict[str, ...]`, bukan TypedDict
+    state (yang mewajibkan `messages`), supaya tidak perlu `# pyrefly: ignore`.
+  - Hasil `with_structured_output` tidak masuk ke riwayat karena node tidak mengembalikannya
+    sebagai message.
+
+### 2026-11-12: Research assistant dari F15
+
+- **Keputusan:**
+  - `ToolCallingAgent(agent_id, description, tools, system_prompt, clock)`. Graph:
+    `agent → tools_condition → ToolNode → agent`. `ToolCallingState` menambah `remaining_steps`
+    (`RemainingSteps`), dan `MIN_REMAINING_STEPS = 2` menggantikan literal lama.
+  - `ToolNode(handle_tool_errors=(ToolException,))`. Tool mengubah error yang diharapkan menjadi
+    `ToolException`, sedangkan bug lain tetap terlihat. Default `ToolNode` di langgraph 1.2 hanya
+    menangani error validasi argumen.
+  - Web search memakai `ddgs` langsung lewat adapter `DuckDuckGoSearch` (`SearchBackend` protocol).
+    `DDGS.text` sinkron, jadi dijalankan dengan `asyncio.to_thread`. `DDGS()` tidak membuka
+    koneksi saat dibuat.
+  - Docstring `@tool` berbahasa Inggris karena dikirim ke LLM (pengecualian dari konvensi
+    docstring Indonesia, sama seperti deskripsi `config_schema`).
+  - Prompt agent ditulis berbahasa Inggris dengan instruksi "answer in the user's language".
+- **Pelajaran:**
+  - `DDGS.text(query, **kwargs)` tidak cocok dengan Protocol yang meminta parameter bernama untuk
+    pyrefly. Pakai adapter kecil daripada melonggarkan Protocol.
+  - Untuk memeriksa input model di test, subclass `FakeModel` yang meng-override `bind_tools`,
+    `_generate`, dan `_stream` lalu menyimpan rekaman di `PrivateAttr`.
+  - Akses ke index paket kembali normal (`uv add` berhasil). `UV_OFFLINE=1` tetap berguna untuk
+    `uv run`/`uv lock` saat jaringan lambat.
+
+### 2026-11-12: Reasoning display dari F19
+
+- **Hasil ukur (langkah 1):** Ollama `qwen3.5:9b` mengirim pemikiran di delta field `reasoning`
+  (±200–1900 chunk). Saat model hangat, reasoning pertama datang di detik ~3 dan `content` di
+  detik ~10. Cold start menambah ±12 detik untuk memuat model.
+- **Keputusan user:** reasoning disimpan di riwayat (open question 5 terjawab).
+- **Keputusan desain:**
+  - `ReasoningChatOpenAI` (`llm/reasoning.py`) override `_convert_chunk_to_generation_chunk` dan
+    `_create_chat_result`. Field `reasoning` dan `reasoning_content` disimpan ke
+    `additional_kwargs["reasoning_content"]` (`REASONING_KWARG`). String per chunk digabung
+    LangChain, sehingga checkpoint menyimpan reasoning lengkap.
+  - `ReasoningEvent` di schema. `StreamService` mengirim reasoning sebelum token dari chunk yang
+    sama, dan `stream_tokens=False`/`skip_stream` ikut mematikannya. `ChatMessage.reasoning` diisi
+    converter.
+  - UI: `MessageRenderer.append_reasoning()` membuka status "Thinking…". Token pertama atau
+    message AI menutupnya. Riwayat menampilkan status tertutup, dan `_reasoning_streamed` mencegah
+    reasoning digambar dua kali.
+  - Test `ReasoningChatOpenAI` memakai `http_client`/`http_async_client` dengan `MockTransport`
+    (respons SSE format Ollama), tanpa network.
+- **Temuan:** satu smoke test UI time out setelah 300 detik karena model berpikir terlalu lama.
+  Ulangan prompt yang sama selesai dalam 51 detik (10.510 karakter reasoning). Rendering UI tidak
+  bermasalah (1000 frame dirender dalam 0,2 detik). Belum ada batas token jawaban.
+
+### 2026-11-05: Reasoning model tidak terlihat → fitur F19 (M3)
+
+- **Temuan:** keluhan user "respons lama, terlihat idle" pada `chatbot` dengan `qwen3.5:9b`.
+  `chatbot` tidak punya langkah reasoning sendiri, dan UI tidak punya tampilan reasoning. Model
+  keluarga Qwen3 berpikir dulu dan (lewat endpoint OpenAI-compatible) mengirim pemikiran di field
+  non-standar. `ChatOpenAI` secara eksplisit tidak mengekstrak field non-standar seperti
+  `reasoning_content` (peringatan di docstring `langchain-openai`), jadi tidak ada frame selama model
+  berpikir. Nama field di Ollama belum diukur karena Ollama mati saat dicek.
+- **Keputusan user:** rilis v0.2.0 dulu, lalu tambahkan "reasoning terlihat" sebagai fitur M3
+  (F19, FR-29), dikerjakan pertama di M3.
+- **Arah desain:** tetap satu jalur OpenAI-compatible (subclass `ChatOpenAI`), event SSE baru
+  `reasoning`, dan blok "Thinking" di UI. Penyimpanan reasoning di riwayat masih open question.
+- **Pelajaran:** `uv lock` bisa time out saat index paket tidak terjangkau. Untuk perubahan yang
+  hanya menyentuh versi project, `uv lock --offline` cukup (resolusi dari cache).
 
 ### 2026-11-04: Docker Compose & e2e dari F14
 
@@ -424,9 +549,14 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pe
 
 ## TODO Berikutnya
 
-- [ ] User: push `feature/F14-compose-e2e`, lalu buka PR F14 ke `develop`. Cek job CI `e2e`
-      (pertama kali berjalan di GitHub Actions).
+- [ ] User: isi `FIRECRAWL_API_KEY` di `.env`, lalu minta agent menjalankan smoke test Firecrawl
+      asli.
+- [ ] User: hentikan service/UI yang sedang berjalan, lalu `uv sync` untuk membuang `ddgs`/`lxml`
+      dari `.venv` (`lxml-6.1.3.dist-info` setengah terhapus memicu 51 DeprecationWarning di test
+      UI).
 - [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
       (CONTRIBUTING.md § Setup Awal Repo).
-- [ ] Rilis v0.2.0: `release/v0.2.0` dari `develop`, bump `version`, pindahkan `[Unreleased]`,
-      PR ke `main` (`--no-ff`), tag `v0.2.0`, back-merge ke `develop`.
+- [ ] Usulkan ke user: batas token jawaban (misalnya `LLM_MAX_TOKENS`), karena model reasoning
+      bisa berpikir sangat lama.
+- [ ] User: push `release/v0.3.0`, PR ke `main` (merge commit `--no-ff`), tag annotated `v0.3.0`,
+      lalu back-merge `main` → `develop`.

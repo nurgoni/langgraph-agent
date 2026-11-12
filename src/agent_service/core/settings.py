@@ -54,6 +54,9 @@ class Settings(BaseSettings):
 
     sqlite_db_path: Path = DEFAULT_SQLITE_DB_PATH
 
+    # Kosong berarti tool web search menjawab "not configured", tanpa menggagalkan startup.
+    firecrawl_api_key: SecretStr | None = None
+
     auth_secret: SecretStr | None = None
     host: str = DEFAULT_HOST
     port: int = Field(default=DEFAULT_PORT, ge=MIN_PORT, le=MAX_PORT)

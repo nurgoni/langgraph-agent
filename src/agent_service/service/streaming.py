@@ -8,11 +8,14 @@ from langchain_core.messages import AIMessageChunk, BaseMessage, HumanMessage
 from langgraph.types import Interrupt, StreamMode
 
 from agent_service.agents.base import AgentGraph
+from agent_service.agents.supervisor import SUBAGENT_TAG
+from agent_service.llm.reasoning import message_reasoning
 from agent_service.schema.responses import ChatMessage
 from agent_service.schema.stream import (
     STREAM_DONE_MARKER,
     ErrorEvent,
     MessageEvent,
+    ReasoningEvent,
     StreamEvent,
     TokenEvent,
 )
@@ -75,6 +78,9 @@ class StreamService:
         self._run = run
         self._stream_tokens = stream_tokens
         self._run_id = str(run.run_id)
+        # Message expert dikirim lebih awal lewat mode `custom`, lalu muncul lagi di update node
+        # `delegate`. ID yang sudah terkirim dicatat supaya tidak dikirim dua kali.
+        self._sent_message_ids: set[str] = set()
 
     async def stream(self) -> AsyncGenerator[str]:
         """Jalankan graph dan hasilkan frame SSE, selalu diakhiri `[DONE]`.
@@ -118,20 +124,29 @@ class StreamService:
         return events
 
     def _handle_message_chunk(self, payload: object) -> list[StreamEvent]:
-        """Token LLM dari `(chunk, metadata)`, kecuali token dimatikan, node bertag `skip_stream`,
-        atau chunk kosong.
+        """Reasoning dan token LLM dari `(chunk, metadata)` (FR-29).
+
+        Tidak ada event jika token dimatikan, run bertag `skip_stream` atau `subagent`, atau chunk
+        kosong.
+        Reasoning dikirim lebih dulu karena model memikirkannya sebelum menjawab.
         """
         if not self._stream_tokens or not isinstance(payload, tuple):
             return []
         chunk, metadata = payload
         if not isinstance(chunk, AIMessageChunk):
             return []
-        if SKIP_STREAM_TAG in (metadata.get("tags") or []):
+        tags = metadata.get("tags") or []
+        # Token expert tidak masuk ke chat utama. Message utuhnya tetap dikirim lewat `updates`.
+        if SKIP_STREAM_TAG in tags or SUBAGENT_TAG in tags:
             return []
+        events: list[StreamEvent] = []
+        reasoning = message_reasoning(chunk)
+        if reasoning:
+            events.append(ReasoningEvent(content=reasoning))
         text = content_to_text(chunk.content)
-        if not text:
-            return []
-        return [TokenEvent(content=text)]
+        if text:
+            events.append(TokenEvent(content=text))
+        return events
 
     def _handle_custom(self, payload: object) -> list[StreamEvent]:
         """Event dari `get_stream_writer()`: message LangChain, atau dict sebagai message custom."""
@@ -152,11 +167,17 @@ class StreamService:
         return events
 
     def _message_events(self, messages: Iterable[BaseMessage]) -> list[StreamEvent]:
-        """Message LangChain sebagai frame `message`. Message human (echo input) dilewati."""
+        """Message LangChain sebagai frame `message`.
+
+        Message human (echo input) dan message yang sudah pernah dikirim (berdasarkan `id`)
+        dilewati.
+        """
         events: list[StreamEvent] = []
         for message in messages:
-            if isinstance(message, HumanMessage):
+            if isinstance(message, HumanMessage) or message.id in self._sent_message_ids:
                 continue
+            if message.id is not None:
+                self._sent_message_ids.add(message.id)
             try:
                 chat_message = langchain_to_chat_message(message)
             except UnsupportedMessageError:

@@ -22,7 +22,8 @@ Client dan UI (M2) berkomunikasi dengan service hanya lewat HTTP, dengan schema 
 src/agent_service/
 ├── core/      Settings, konstanta, configure_logging
 ├── llm/       ModelFactory, FakeModel
-├── agents/    BaseAgent, AgentRegistry, catalog, ChatbotAgent, error agent
+├── agents/    BaseAgent, AgentRegistry, catalog, ChatbotAgent, ToolCallingAgent, InterruptAgent,
+│              SupervisorAgent, tools/
 ├── memory/    CheckpointerProvider, ThreadMetadataRepository (SQLite)
 ├── schema/    Model Pydantic untuk API: request, response, event SSE, nama header
 ├── service/   create_app, lifespan, auth, route, StreamService, ThreadRepository
@@ -119,7 +120,8 @@ Hal penting dari alur ini:
 4. **`/invoke`** memanggil `graph.ainvoke` dan mengembalikan message terakhir, atau pertanyaan
    interrupt, sebagai `ChatMessage` dengan `run_id`.
 5. **`/stream`** memakai `StreamService` dengan tiga stream mode:
-   - `messages`: menghasilkan frame `token`, kecuali node bertag `skip_stream`.
+   - `messages`: menghasilkan frame `reasoning` (jika model mengirim pemikiran) lalu `token`,
+     kecuali node bertag `skip_stream`.
    - `updates`: menghasilkan frame `message` untuk jawaban AI, tool call, hasil tool, dan
      interrupt.
    - `custom`: menghasilkan frame `message` dari `get_stream_writer()`.
@@ -165,6 +167,71 @@ Satu file SQLite di `SQLITE_DB_PATH` berisi tiga tabel:
 
 `ThreadMetadataRepository` memakai koneksi `aiosqlite` sendiri, karena transaksi saver dijaga oleh
 lock privat milik saver. Penghapusan thread memanggil `adelete_thread` lalu menghapus judulnya.
+
+## Agent dengan Tool
+
+`ToolCallingAgent` (`agents/tool_calling.py`) adalah agent generik yang dikonfigurasi lewat daftar
+tool dan system prompt. Graph-nya `agent → tools → agent`: node `agent` memanggil model dengan
+tool yang sudah di-bind, `tools_condition` mengarahkan tool call ke `ToolNode`, lalu hasilnya kembali
+ke model sampai model menjawab tanpa tool call.
+
+- **Tanggal di prompt** (`{current_date}`) dihitung setiap kali model dipanggil. System message
+  tidak disimpan di riwayat.
+- **`ToolException`** dari tool dikembalikan ke model sebagai `ToolMessage` berstatus `error`, jadi
+  model bisa mencoba lagi. Exception lain tetap menggagalkan run.
+- **Jika sisa langkah kurang dari `MIN_REMAINING_STEPS`**, model tidak boleh memanggil tool baru dan
+  menjawab `STEP_LIMIT_MESSAGE`.
+- **Tool** ditulis sebagai function `@tool` di `agents/tools/`. Docstring-nya berbahasa Inggris
+  karena menjadi deskripsi tool untuk model. Tool dengan dependency (misalnya mesin pencari) dibuat
+  lewat factory yang menerima dependency tersebut, supaya test bisa memakai tiruan tanpa network.
+
+`research-assistant` (`agents/research.py`) adalah `ToolCallingAgent` dengan `web_search`
+(Firecrawl Search API) dan `calculator` (numexpr).
+
+Tool `web_search` memakai `SearchBackend` async yang di-inject. `create_app` membuatnya dari
+`FIRECRAWL_API_KEY` (`build_search_backend`): `FirecrawlSearch` (satu `httpx.AsyncClient`,
+`POST /v2/search`, hanya hasil web tanpa scraping) jika key ada, atau `UnconfiguredSearch` jika
+kosong. Pada kasus kedua, tool menjawab "not configured" dan agent tetap berjalan. Error
+pencarian (koneksi, 401/402/429, respons rusak) menjadi `SearchError` → `ToolException`, lalu
+dikembalikan ke model.
+
+## Human-in-the-loop
+
+`InterruptAgent` (`agents/interrupt.py`) menunjukkan pola `interrupt()` yang dipakai ulang:
+
+```text
+START ─► (data sudah ada?) ─ya─► respond ─► END
+             │ tidak
+             ▼
+          extract ─► (valid?) ─ya─► respond
+             ▲           │ tidak
+             └── ask ◄───┘   ask memanggil interrupt(pertanyaan)
+```
+
+- **`ask_birthdate`** memanggil `interrupt(pertanyaan)`. Service mengirim pertanyaan itu sebagai
+  message AI. Giliran user berikutnya di thread yang sama dikirim sebagai `Command(resume=...)`
+  (`build_run_input`), sehingga node yang sama dijalankan ulang dan `interrupt()` mengembalikan
+  jawaban user. Jawaban itu dikembalikan sebagai `HumanMessage` baru, tanpa memutasi state.
+- **Ulangan** terjadi lewat edge `ask → extract`, bukan rekursi.
+- **Panggilan LLM internal** (ekstraksi terstruktur) diberi tag `skip_stream`, sehingga tidak muncul
+  sebagai token. Hasilnya juga tidak disimpan sebagai message.
+- **Data yang sudah valid** disimpan di state thread, sehingga giliran berikutnya langsung ke
+  `respond`.
+
+## Multi-agent (Supervisor)
+
+`SupervisorAgent` (`agents/supervisor.py`) adalah graph `supervisor ⇄ delegate`:
+
+- **`supervisor`** adalah LLM dengan satu tool delegasi `ask_<expert>(task)` per `Expert`. Node ini
+  hanya melihat message tanpa penanda sub-agent, jadi urutan tool call dan hasilnya tetap valid.
+- **`delegate`** menjalankan graph stateless milik expert (`ToolCallingAgent.build_stateless`) dengan
+  model yang sama dari request (FR-4) dan tag run `subagent`. Setiap message expert ditandai
+  `additional_kwargs["subagent"]`, dikirim bertahap lewat `get_stream_writer()`, lalu disimpan.
+  Jawaban akhir expert dikembalikan ke supervisor sebagai `ToolMessage`.
+- **Converter** mengubah penanda itu menjadi `ChatMessage.agent`. `StreamService` tidak mengalirkan
+  token dari run bertag `subagent`, dan mengirim message expert sekali saja (dedupe per `id`).
+- **UI** merender message ber-`agent` di kontainer berbingkai bernama expert, baik saat live maupun
+  di riwayat.
 
 ## Menambah Agent
 
@@ -241,6 +308,16 @@ oleh `tests/client/test_layering.py`.
   setelah service menerima request.
 - **`MessageRenderer`** punya satu method per tipe message. Jawaban AI, tool call, dan hasil tool
   berurutan digabung dalam satu blok chat, dengan tool call tampil sebagai `st.status`.
+
+## Reasoning Model
+
+Model reasoning menulis pemikirannya di field stream non-standar (`reasoning` di Ollama,
+`reasoning_content` di vLLM/DeepSeek). `ReasoningChatOpenAI` (`llm/reasoning.py`) menyalinnya ke
+`additional_kwargs["reasoning_content"]` di setiap chunk. `StreamService` mengubahnya menjadi frame
+`reasoning`, dan LangChain menggabungkan potongannya sehingga message akhir di checkpoint berisi
+reasoning lengkap. Converter mengisi `ChatMessage.reasoning`, dan UI menampilkannya di blok
+"Thinking" (terbuka saat live, tertutup di riwayat). Hanya field standar yang dikirim balik ke
+model, jadi reasoning lama tidak ikut di prompt giliran berikutnya.
 
 ## Deployment
 
