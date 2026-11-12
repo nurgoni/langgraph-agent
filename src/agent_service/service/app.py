@@ -10,6 +10,7 @@ from fastapi import Depends, FastAPI
 from agent_service.agents.base import BaseAgent
 from agent_service.agents.catalog import DEFAULT_AGENT_ID, create_default_agents
 from agent_service.agents.registry import AgentRegistry
+from agent_service.agents.tools.web_search import SearchBackend, create_search_backend
 from agent_service.core.settings import Settings
 from agent_service.llm.factory import ModelFactory
 from agent_service.memory.checkpointer import CheckpointerProvider
@@ -42,7 +43,8 @@ def create_app(
 
     Args:
         settings: Konfigurasi service. Default: dibaca dari env dan `.env`.
-        agents: Agent yang didaftarkan. Default: `create_default_agents()`.
+        agents: Agent yang didaftarkan. Default: `create_default_agents()` dengan web search
+            dari `FIRECRAWL_API_KEY`.
         default_agent_id: Agent untuk `/info` dan route tanpa `{agent_id}`.
 
     Returns:
@@ -56,7 +58,10 @@ def create_app(
     ('Agent Service', 'chatbot')
     """
     resolved_settings = Settings() if settings is None else settings
-    resolved_agents = create_default_agents() if agents is None else list(agents)
+    if agents is None:
+        resolved_agents = create_default_agents(build_search_backend(resolved_settings))
+    else:
+        resolved_agents = list(agents)
     agent_ids = [agent.agent_id for agent in resolved_agents]
     if default_agent_id not in agent_ids:
         raise DefaultAgentNotRegisteredError(
@@ -75,6 +80,16 @@ def create_app(
     app.state.settings = resolved_settings
     app.state.default_agent_id = default_agent_id
     return app
+
+
+def build_search_backend(settings: Settings) -> SearchBackend:
+    """Mesin pencari untuk tool web search, dari `FIRECRAWL_API_KEY` di `Settings`.
+
+    >>> type(build_search_backend(Settings(_env_file=None, use_fake_model=True))).__name__
+    'UnconfiguredSearch'
+    """
+    secret = settings.firecrawl_api_key
+    return create_search_backend(None if secret is None else secret.get_secret_value())
 
 
 def _build_lifespan(settings: Settings, agents: Sequence[BaseAgent]) -> Lifespan:
