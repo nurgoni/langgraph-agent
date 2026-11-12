@@ -208,3 +208,15 @@ async def test_tool_exception_from_any_tool_is_reported() -> None:
 
 def test_local_now_is_timezone_aware() -> None:
     assert local_now().tzinfo is not None
+
+
+async def test_stateless_graph_starts_fresh_on_every_call() -> None:
+    model = RecordingModel(responses=["satu", "dua"])
+    graph = make_agent().build_stateless(model)
+
+    first = await graph.ainvoke({"messages": [HumanMessage("a")]}, thread())
+    second = await graph.ainvoke({"messages": [HumanMessage("b")]}, thread())
+
+    assert [m.content for m in first["messages"]] == ["a", "satu"]
+    assert [m.content for m in second["messages"]] == ["b", "dua"]
+    assert graph.checkpointer is False

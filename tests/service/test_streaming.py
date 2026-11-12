@@ -3,7 +3,7 @@ import logging
 from collections.abc import Awaitable, Callable
 
 import pytest
-from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.messages import ChatMessage as LangChainChatMessage
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import InMemorySaver
@@ -14,6 +14,7 @@ from langgraph.types import interrupt
 
 from agent_service.agents.base import AgentGraph
 from agent_service.agents.chatbot import ChatbotAgent
+from agent_service.agents.supervisor import create_supervisor_agent
 from agent_service.llm.fake import FakeModel
 from agent_service.schema.requests import UserInput
 from agent_service.schema.responses import ChatMessage
@@ -293,3 +294,103 @@ async def test_model_without_reasoning_sends_no_reasoning_frames() -> None:
     events = events_of(await collect(graph, agent_id="chatbot"))
 
     assert not any(isinstance(event, ReasoningEvent) for event in events)
+
+
+class NoSearch:
+    def text(self, query: str, max_results: int) -> list[dict[str, str]]:
+        return []
+
+
+async def test_supervisor_streams_expert_messages_marked_and_no_expert_tokens() -> None:
+    model = FakeModel(
+        responses=[
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "ask_math_expert", "args": {"task": "1 + 1"}, "id": "s1"}],
+            ),
+            "Expert says two",
+            "Supervisor says two",
+        ]
+    )
+    graph = create_supervisor_agent(NoSearch()).build(model, InMemorySaver())
+
+    events = events_of(await collect(graph, agent_id="supervisor"))
+
+    tokens = "".join(e.content for e in events if isinstance(e, TokenEvent))
+    messages = [e.content for e in events if isinstance(e, MessageEvent)]
+    assert tokens == "Supervisor says two"
+    assert [(m.type, m.agent, m.content) for m in messages] == [
+        ("ai", None, ""),
+        ("ai", "math_expert", "Expert says two"),
+        ("tool", None, "Expert says two"),
+        ("ai", None, "Supervisor says two"),
+    ]
+
+
+async def test_expert_steps_stream_before_delegation_finishes() -> None:
+    model = FakeModel(
+        responses=[
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "ask_math_expert", "args": {"task": "1 + 1"}, "id": "s1"}],
+            ),
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "calculator", "args": {"expression": "1 + 1"}, "id": "c1"}],
+            ),
+            "Expert says two",
+            "Supervisor says two",
+        ]
+    )
+    graph = create_supervisor_agent(NoSearch()).build(model, InMemorySaver())
+    custom_messages = []
+    async for mode, payload in graph.astream(
+        {"messages": [HumanMessage("1 + 1?")]},
+        {"configurable": {"thread_id": "t1"}},
+        stream_mode=["custom", "updates"],
+    ):
+        if mode == "custom":
+            custom_messages.append(payload)
+        elif "delegate" in payload:
+            break
+
+    assert [type(m).__name__ for m in custom_messages] == ["AIMessage", "ToolMessage", "AIMessage"]
+
+
+async def test_expert_messages_are_not_sent_twice() -> None:
+    model = FakeModel(
+        responses=[
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "ask_math_expert", "args": {"task": "1 + 1"}, "id": "s1"}],
+            ),
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "calculator", "args": {"expression": "1 + 1"}, "id": "c1"}],
+            ),
+            "Expert says two",
+            "Supervisor says two",
+        ]
+    )
+    graph = create_supervisor_agent(NoSearch()).build(model, InMemorySaver())
+
+    events = events_of(await collect(graph, agent_id="supervisor", stream_tokens=False))
+
+    expert = [e.content for e in events if isinstance(e, MessageEvent) and e.content.agent]
+    assert [(m.type, m.content) for m in expert] == [
+        ("ai", ""),
+        ("tool", "2"),
+        ("ai", "Expert says two"),
+    ]
+
+
+async def test_subagent_tag_hides_tokens_explicitly() -> None:
+    model = FakeModel(responses=["rahasia expert"]).with_config(tags=["subagent"])
+
+    async def expert(state: MessagesState) -> MessagesState:
+        await model.ainvoke(state["messages"])
+        return {"messages": [AIMessage(content="publik")]}
+
+    events = events_of(await collect(build_graph(expert)))
+
+    assert not any(isinstance(event, TokenEvent) for event in events)

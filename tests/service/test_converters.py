@@ -144,3 +144,12 @@ def test_ai_message_reasoning_is_converted() -> None:
 
 def test_ai_message_without_reasoning_has_none() -> None:
     assert langchain_to_chat_message(AIMessage(content="Hai")).reasoning is None
+
+
+def test_subagent_marker_becomes_agent_field() -> None:
+    marked = AIMessage(content="84", additional_kwargs={"subagent": "math_expert"})
+    tool_result = ToolMessage(content="84", tool_call_id="c1", additional_kwargs={"subagent": "x"})
+
+    assert langchain_to_chat_message(marked).agent == "math_expert"
+    assert langchain_to_chat_message(tool_result).agent == "x"
+    assert langchain_to_chat_message(AIMessage(content="Halo")).agent is None

@@ -151,7 +151,9 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
   daftar thread bisa dibuka ulang. `user_id` ikut disimpan karena service hanya membuka thread
   untuk pemiliknya (FR-28). Siapa pun yang memegang URL lengkap bisa membaca thread tersebut, sesuai
   v1 yang belum punya auth per user.
-- **FR-23** Menampilkan handoff sub-agent (supervisor) secara bertingkat.
+- **FR-23** Menampilkan handoff sub-agent (supervisor) secara bertingkat. Message buatan sub-agent
+  membawa `ChatMessage.agent` (nama expert), dikirim bertahap selama expert bekerja, dan tetap
+  bertingkat saat thread dibuka ulang.
 - **FR-24** Saat agent meminta input (interrupt), pertanyaannya ditampilkan sebagai pesan AI biasa.
 - **FR-29** Jika model mengirim reasoning (token pemikiran), service meneruskannya sebagai frame SSE
   `reasoning` sebelum token jawaban, dan UI menampilkannya di blok "Thinking" yang bisa
@@ -195,7 +197,8 @@ Varian tanpa `{agent_id}` (`/invoke`, `/stream`, dan seterusnya) memakai agent d
 UserInput       { message: str, model?: str, thread_id?: str, user_id?: str, agent_config?: dict }
 StreamInput     UserInput + { stream_tokens: bool = true }
 ChatMessage     { type: "human"|"ai"|"tool"|"custom", content: str, tool_calls: list,
-                  tool_call_id?: str, run_id?: str, reasoning?: str, custom_data?: dict }
+                  tool_call_id?: str, run_id?: str, agent?: str, reasoning?: str,
+                  custom_data?: dict }
 ChatHistoryInput { thread_id: str, user_id: str }
 ChatHistory     { messages: list[ChatMessage] }
 ThreadSummary   { thread_id: str, agent_id: str, title: str, updated_at?: datetime }
