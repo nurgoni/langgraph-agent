@@ -22,7 +22,7 @@ Client dan UI (M2) berkomunikasi dengan service hanya lewat HTTP, dengan schema 
 src/agent_service/
 ├── core/      Settings, konstanta, configure_logging
 ├── llm/       ModelFactory, FakeModel
-├── agents/    BaseAgent, AgentRegistry, catalog, ChatbotAgent, ToolCallingAgent, tools/
+├── agents/    BaseAgent, AgentRegistry, catalog, ChatbotAgent, ToolCallingAgent, InterruptAgent, tools/
 ├── memory/    CheckpointerProvider, ThreadMetadataRepository (SQLite)
 ├── schema/    Model Pydantic untuk API: request, response, event SSE, nama header
 ├── service/   create_app, lifespan, auth, route, StreamService, ThreadRepository
@@ -186,6 +186,29 @@ ke model sampai model menjawab tanpa tool call.
 
 `research-assistant` (`agents/research.py`) adalah `ToolCallingAgent` dengan `web_search`
 (DuckDuckGo, dijalankan di thread terpisah karena library-nya sinkron) dan `calculator` (numexpr).
+
+## Human-in-the-loop
+
+`InterruptAgent` (`agents/interrupt.py`) menunjukkan pola `interrupt()` yang dipakai ulang:
+
+```text
+START ─► (data sudah ada?) ─ya─► respond ─► END
+             │ tidak
+             ▼
+          extract ─► (valid?) ─ya─► respond
+             ▲           │ tidak
+             └── ask ◄───┘   ask memanggil interrupt(pertanyaan)
+```
+
+- **`ask_birthdate`** memanggil `interrupt(pertanyaan)`. Service mengirim pertanyaan itu sebagai
+  message AI. Giliran user berikutnya di thread yang sama dikirim sebagai `Command(resume=...)`
+  (`build_run_input`), sehingga node yang sama dijalankan ulang dan `interrupt()` mengembalikan
+  jawaban user. Jawaban itu dikembalikan sebagai `HumanMessage` baru, tanpa memutasi state.
+- **Ulangan** terjadi lewat edge `ask → extract`, bukan rekursi.
+- **Panggilan LLM internal** (ekstraksi terstruktur) diberi tag `skip_stream`, sehingga tidak muncul
+  sebagai token. Hasilnya juga tidak disimpan sebagai message.
+- **Data yang sudah valid** disimpan di state thread, sehingga giliran berikutnya langsung ke
+  `respond`.
 
 ## Menambah Agent
 

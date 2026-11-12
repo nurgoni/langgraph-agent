@@ -14,6 +14,9 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
   (F19).
 - Agent `research-assistant`: `ToolCallingAgent` generik dengan tool web search DuckDuckGo (tanpa
   API key) dan kalkulator numexpr. Error tool dikembalikan ke model agar bisa dicoba ulang (F15).
+- Agent `interrupt-agent`: menanyakan tanggal lahir lewat `interrupt()` jika belum diketahui, lalu
+  melanjutkan dari jawaban user (resume). Ulangan pertanyaan berjalan lewat edge graph, tanpa
+  rekursi atau mutasi state (F16).
 
 ## [0.2.0] - 2026-11-05
 

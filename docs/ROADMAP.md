@@ -32,7 +32,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F14 | Docker Compose & e2e | M2 | done |
 | F19 | Reasoning display | M3 | done |
 | F15 | Research assistant | M3 | done |
-| F16 | Interrupt agent | M3 | todo |
+| F16 | Interrupt agent | M3 | done |
 | F17 | Supervisor agent | M3 | todo |
 
 ## Milestone & Rilis
@@ -758,6 +758,20 @@ F13 → F14 → *rilis v0.2.0* → F19 → F15 → F16 → F17 → *rilis v0.3.0
 - **Rencana commit:**
   1. `feat(agents): add InterruptAgent asking for missing input`
   2. `test(agents): cover interrupt and resume through invoke endpoint`
+  3. `docs: record F16 interrupt agent decisions`
+- **Penyesuaian saat implementasi:**
+  - Contoh zodiak dari kode lama dipertahankan. Graph: `START → (birthdate ada?) → respond`, atau
+    `extract_birthdate → (valid?) → respond`, atau `ask_birthdate (interrupt) → extract_birthdate`.
+  - Ekstraksi memakai `with_structured_output(..., method="function_calling")` bertag
+    `skip_stream`. Validasi tanggal (format, tanggal di masa depan) dan perhitungan zodiak dilakukan
+    di kode, bukan oleh model.
+  - Tanggal lahir disimpan di state thread (checkpoint), bukan di Store (Store di luar scope v1).
+    Giliran berikutnya di thread yang sama tidak bertanya lagi.
+  - Pertanyaan interrupt ditulis model dalam bahasa user, dengan fallback konstanta berbahasa
+    Inggris.
+  - Node `background` dari kode lama tidak di-port.
+- **Acceptance (smoke test qwen3.5:9b):** "Apa zodiak saya?" → bertanya, "bulan Mei" → bertanya
+  lagi, "17 Mei 1990" → Taurus, lalu pertanyaan lanjutan dijawab tanpa interrupt.
 - **Squash title:** `feat(agents): add human-in-the-loop interrupt agent (F16)`
 
 ### F17: Supervisor agent
