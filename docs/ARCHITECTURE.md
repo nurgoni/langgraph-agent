@@ -22,7 +22,8 @@ Client dan UI (M2) berkomunikasi dengan service hanya lewat HTTP, dengan schema 
 src/agent_service/
 ├── core/      Settings, konstanta, configure_logging
 ├── llm/       ModelFactory, FakeModel
-├── agents/    BaseAgent, AgentRegistry, catalog, ChatbotAgent, ToolCallingAgent, InterruptAgent, tools/
+├── agents/    BaseAgent, AgentRegistry, catalog, ChatbotAgent, ToolCallingAgent, InterruptAgent,
+│              SupervisorAgent, tools/
 ├── memory/    CheckpointerProvider, ThreadMetadataRepository (SQLite)
 ├── schema/    Model Pydantic untuk API: request, response, event SSE, nama header
 ├── service/   create_app, lifespan, auth, route, StreamService, ThreadRepository
@@ -209,6 +210,21 @@ START ─► (data sudah ada?) ─ya─► respond ─► END
   sebagai token. Hasilnya juga tidak disimpan sebagai message.
 - **Data yang sudah valid** disimpan di state thread, sehingga giliran berikutnya langsung ke
   `respond`.
+
+## Multi-agent (Supervisor)
+
+`SupervisorAgent` (`agents/supervisor.py`) adalah graph `supervisor ⇄ delegate`:
+
+- **`supervisor`** adalah LLM dengan satu tool delegasi `ask_<expert>(task)` per `Expert`. Node ini
+  hanya melihat message tanpa penanda sub-agent, jadi urutan tool call dan hasilnya tetap valid.
+- **`delegate`** menjalankan graph stateless milik expert (`ToolCallingAgent.build_stateless`) dengan
+  model yang sama dari request (FR-4) dan tag run `subagent`. Setiap message expert ditandai
+  `additional_kwargs["subagent"]`, dikirim bertahap lewat `get_stream_writer()`, lalu disimpan.
+  Jawaban akhir expert dikembalikan ke supervisor sebagai `ToolMessage`.
+- **Converter** mengubah penanda itu menjadi `ChatMessage.agent`. `StreamService` tidak mengalirkan
+  token dari run bertag `subagent`, dan mengirim message expert sekali saja (dedupe per `id`).
+- **UI** merender message ber-`agent` di kontainer berbingkai bernama expert, baik saat live maupun
+  di riwayat.
 
 ## Menambah Agent
 

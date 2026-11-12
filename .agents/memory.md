@@ -13,15 +13,38 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** v0.2.0 sudah dirilis. M3 berjalan: F19 dan F15 sudah di `develop`. F16 selesai di
-  `feature/F16-interrupt-agent`, menunggu push dan PR.
-- **Berikutnya:** F17 (supervisor agent), lalu rilis v0.3.0.
+- **Fase:** M3 selesai di branch fitur. F19, F15, F16 sudah di `develop`. F17 selesai di
+  `feature/F17-supervisor-agent`, menunggu push dan PR. Setelah merge: rilis v0.3.0.
+- **Berikutnya:** rilis v0.3.0.
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Terakhir diperbarui:** 2026-11-12
 
 ## Decision Log
+
+### 2026-11-12: Supervisor agent dari F17
+
+- **Keputusan:**
+  - Tanpa `langgraph-supervisor`. `SupervisorAgent(experts: list[Expert])` dengan tool delegasi
+    `ask_<name>` (schema function eksplisit, argumen `task`), dan node `delegate` yang menjalankan
+    `ToolCallingAgent.build_stateless(model)` (`checkpointer=False`, supaya setiap delegasi mulai
+    bersih).
+  - Penanda eksplisit, bukan string matching: `additional_kwargs["subagent"]` pada message expert
+    (`mark_subagent_message`, selalu dengan `id`) → `ChatMessage.agent`. Run expert bertag
+    `subagent`. Supervisor memfilter message bertanda dari prompt-nya.
+  - Langkah expert dikirim lewat `get_stream_writer()` saat terjadi. `StreamService` mencatat
+    `id` message yang sudah dikirim (`_sent_message_ids`).
+  - UI memakai `st.container(border=True)` per expert (expander tidak bisa bersarang).
+- **Pelajaran:**
+  - `StreamMessagesHandler` LangGraph tidak mengalirkan token dari graph yang dijalankan di dalam
+    node saat `subgraphs=False` (dicek dari namespace). Tag `subagent` tetap difilter sebagai
+    pertahanan eksplisit.
+  - `metadata["tags"]` di mode `messages` hanya terisi jika run LLM punya tag user. Tag yang
+    dipasang di graph induk lewat `with_config` tidak muncul di sana.
+  - Model 9B sering mengirim beberapa delegasi sekaligus walaupun hasilnya saling bergantung.
+    Instruksi "delegasikan tugas yang bergantung secara berurutan" di prompt memperbaikinya.
+  - DuckDuckGo kadang gagal sementara (lima `ToolException` beruntun, lalu normal lagi).
 
 ### 2026-11-12: Interrupt agent dari F16
 
@@ -504,10 +527,10 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pe
 
 ## TODO Berikutnya
 
-- [ ] User: push `feature/F16-interrupt-agent`, lalu buka PR F16 ke `develop`.
+- [ ] User: push `feature/F17-supervisor-agent`, lalu buka PR F17 ke `develop`.
 - [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
       (CONTRIBUTING.md § Setup Awal Repo).
 - [ ] Usulkan ke user: batas token jawaban (misalnya `LLM_MAX_TOKENS`), karena model reasoning
       bisa berpikir sangat lama.
-- [ ] F17: supervisor agent (sub-agent memakai model dari request, tag `subagent` eksplisit untuk
-      streaming, render bertingkat di UI).
+- [ ] Rilis v0.3.0: `release/v0.3.0` dari `develop`, bump `version`, pindahkan `[Unreleased]`,
+      PR ke `main` (`--no-ff`), tag `v0.3.0`, back-merge ke `develop`.

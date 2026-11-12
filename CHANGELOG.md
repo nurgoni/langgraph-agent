@@ -17,6 +17,9 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 - Agent `interrupt-agent`: menanyakan tanggal lahir lewat `interrupt()` jika belum diketahui, lalu
   melanjutkan dari jawaban user (resume). Ulangan pertanyaan berjalan lewat edge graph, tanpa
   rekursi atau mutasi state (F16).
+- Agent `supervisor`: mendelegasikan tugas ke `math_expert` dan `research_expert`, dengan model
+  dari request. Message expert ditandai `ChatMessage.agent`, dikirim bertahap selama expert
+  bekerja, dan dirender bertingkat di UI (F17).
 
 ## [0.2.0] - 2026-11-05
 

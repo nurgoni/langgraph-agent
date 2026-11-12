@@ -33,7 +33,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F19 | Reasoning display | M3 | done |
 | F15 | Research assistant | M3 | done |
 | F16 | Interrupt agent | M3 | done |
-| F17 | Supervisor agent | M3 | todo |
+| F17 | Supervisor agent | M3 | done |
 
 ## Milestone & Rilis
 
@@ -786,8 +786,24 @@ F13 → F14 → *rilis v0.2.0* → F19 → F15 → F16 → F17 → *rilis v0.3.0
 - **Referensi lama:** `agents/langgraph_supervisor_agent.py` (`:8` model dibuat saat import),
   `service/service.py:282`.
 - **Rencana commit:**
-  1. `feat(agents): add SupervisorAgent with math and research sub-agents`
-  2. `feat(service): stream sub-agent events using explicit tags`
-  3. `feat(ui): render sub-agent handoffs as nested blocks`
+  1. `feat(agents): let ToolCallingAgent run as a stateless sub-agent`
+  2. `feat(agents): add SupervisorAgent with math and research sub-agents`
+  3. `feat(service): stream sub-agent events using explicit tags`
+  4. `feat(ui): render sub-agent handoffs as nested blocks`
+  5. `feat(agents): stream expert steps while the expert works`
+  6. `fix(agents): ask supervisor to delegate dependent tasks in order`
+  7. `docs: record F17 supervisor decisions`
+- **Penyesuaian saat implementasi:**
+  - Tanpa dependency `langgraph-supervisor`. Graph sendiri: `supervisor` (LLM dengan tool
+    delegasi `ask_<expert>`) ⇄ `delegate` (menjalankan `ToolCallingAgent.build_stateless(model)`
+    milik expert).
+  - Penanda eksplisit: message expert diberi `additional_kwargs["subagent"]` (tersimpan di
+    checkpoint) dan menjadi `ChatMessage.agent`. Run expert diberi tag `subagent`. Supervisor hanya
+    melihat message tanpa penanda.
+  - Langkah expert dikirim bertahap lewat `get_stream_writer()` (mode `custom`), dan
+    `StreamService` membuang duplikat berdasarkan `id` message.
+  - UI: kontainer berbingkai per expert, karena Streamlit tidak mengizinkan expander bersarang.
+  - Smoke test qwen3.5:9b + DuckDuckGo: research_expert → 1991, math_expert → `2026 - 1991 = 35`,
+    dengan langkah expert tiba bertahap.
 - **Squash title:** `feat(agents): add supervisor agent with nested streaming (F17)`
 - **Setelah merge:** rilis **v0.3.0**.
