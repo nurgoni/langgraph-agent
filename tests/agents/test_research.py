@@ -1,6 +1,3 @@
-from collections.abc import Mapping, Sequence
-from typing import Any
-
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
@@ -11,6 +8,7 @@ from agent_service.agents.research import (
     RESEARCH_SYSTEM_PROMPT,
     create_research_assistant,
 )
+from agent_service.agents.tools.web_search import SearchResult
 from agent_service.llm.fake import FakeModel
 
 
@@ -20,9 +18,9 @@ class FakeSearch:
     def __init__(self) -> None:
         self.queries: list[str] = []
 
-    def text(self, query: str, max_results: int) -> Sequence[Mapping[str, Any]]:
+    async def search(self, query: str, max_results: int) -> list[SearchResult]:
         self.queries.append(query)
-        return [{"title": "LangGraph 1.2", "href": "https://example.com/lg", "body": "Released"}]
+        return [SearchResult("LangGraph 1.2", "https://example.com/lg", "Released")]
 
 
 def call(name: str, args: dict[str, str], call_id: str) -> AIMessage:

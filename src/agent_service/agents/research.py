@@ -4,7 +4,11 @@ from typing import Final
 
 from agent_service.agents.tool_calling import ToolCallingAgent
 from agent_service.agents.tools.calculator import calculator
-from agent_service.agents.tools.web_search import SearchBackend, create_web_search_tool
+from agent_service.agents.tools.web_search import (
+    SearchBackend,
+    UnconfiguredSearch,
+    create_web_search_tool,
+)
 
 RESEARCH_ASSISTANT_ID: Final = "research-assistant"
 RESEARCH_ASSISTANT_DESCRIPTION: Final = (
@@ -30,7 +34,8 @@ def create_research_assistant(search_backend: SearchBackend | None = None) -> To
     Function, bukan class: factory konfigurasi untuk `ToolCallingAgent`, tanpa state sendiri.
 
     Args:
-        search_backend: Mesin pencari untuk tool web search. Default: DuckDuckGo.
+        search_backend: Mesin pencari untuk tool web search. Default: `UnconfiguredSearch`
+            (tool menjawab "not configured").
 
     Returns:
         Agent `research-assistant` yang siap didaftarkan.
@@ -39,7 +44,8 @@ def create_research_assistant(search_backend: SearchBackend | None = None) -> To
     >>> agent.agent_id
     'research-assistant'
     """
-    tools = [create_web_search_tool(search_backend), calculator]
+    backend = UnconfiguredSearch() if search_backend is None else search_backend
+    tools = [create_web_search_tool(backend), calculator]
     return ToolCallingAgent(
         agent_id=RESEARCH_ASSISTANT_ID,
         description=RESEARCH_ASSISTANT_DESCRIPTION,

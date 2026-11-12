@@ -15,6 +15,7 @@ from langgraph.types import interrupt
 from agent_service.agents.base import AgentGraph
 from agent_service.agents.chatbot import ChatbotAgent
 from agent_service.agents.supervisor import create_supervisor_agent
+from agent_service.agents.tools.web_search import SearchResult
 from agent_service.llm.fake import FakeModel
 from agent_service.schema.requests import UserInput
 from agent_service.schema.responses import ChatMessage
@@ -297,7 +298,7 @@ async def test_model_without_reasoning_sends_no_reasoning_frames() -> None:
 
 
 class NoSearch:
-    def text(self, query: str, max_results: int) -> list[dict[str, str]]:
+    async def search(self, query: str, max_results: int) -> list[SearchResult]:
         return []
 
 

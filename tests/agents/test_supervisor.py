@@ -1,4 +1,4 @@
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterator
 from typing import Any
 
 from langchain_core.callbacks import CallbackManagerForLLMRun
@@ -18,6 +18,7 @@ from agent_service.agents.supervisor import (
     subagent_name,
 )
 from agent_service.agents.tool_calling import STEP_LIMIT_MESSAGE
+from agent_service.agents.tools.web_search import SearchResult
 from agent_service.llm.fake import FakeModel
 
 
@@ -52,8 +53,8 @@ class RecordingModel(FakeModel):
 
 
 class FakeSearch:
-    def text(self, query: str, max_results: int) -> Sequence[Mapping[str, Any]]:
-        return [{"title": "Python", "href": "https://python.org", "body": "First released 1991"}]
+    async def search(self, query: str, max_results: int) -> list[SearchResult]:
+        return [SearchResult("Python", "https://python.org", "First released 1991")]
 
 
 def tool_call(name: str, args: dict[str, str], call_id: str) -> AIMessage:
