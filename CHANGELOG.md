@@ -8,6 +8,12 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 
 ### Added
 
+- Batas token jawaban `LLM_MAX_TOKENS` (default 8192) untuk model OpenAI-compatible, bisa ditimpa
+  lewat `ModelFactory.create(..., max_tokens=...)`. Jawaban yang berhenti karena batas
+  (`finish_reason = "length"`) ditandai `ChatMessage.truncated` di `/invoke`, `/stream`, dan
+  `/history`, dan UI menampilkan peringatan "jawaban terpotong". `LLM_MAX_TOKENS_PARAM` memilih nama
+  parameter di request (`max_tokens` untuk Ollama, `max_completion_tokens` untuk model reasoning
+  OpenAI) (F21).
 - Rencana Fase 2 (M4–M10, F21–F46): requirement FR-30–FR-58 dan NFR-9–NFR-12 di PRD, rincian
   fitur dan backlog di ROADMAP, serta ADR 0001–0005 (Postgres-only, harness sendiri, frontend
   React, Project sebagai agent deklaratif, format skill) di `docs/adr/`.

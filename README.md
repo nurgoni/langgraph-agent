@@ -94,6 +94,8 @@ menunjuk ke container itu sendiri.
 | `DEFAULT_MODEL` | ya* | Model default |
 | `AVAILABLE_MODELS` | tidak | Allowlist model, dipisah koma |
 | `USE_FAKE_MODEL` | tidak | `true` untuk dev/test tanpa LLM |
+| `LLM_MAX_TOKENS` | tidak | Batas token jawaban per giliran model, default `8192`. Pada model reasoning (Ollama), token reasoning ikut dihitung. Jawaban yang terpotong ditandai `truncated` |
+| `LLM_MAX_TOKENS_PARAM` | tidak | Nama parameter batas token di request: `max_tokens` (default, untuk Ollama/vLLM/llama.cpp) atau `max_completion_tokens` (model reasoning OpenAI seperti gpt-5/o-series) |
 | `SQLITE_DB_PATH` | tidak | Default `checkpoints.db` |
 | `AUTH_SECRET` | tidak | Jika diset, semua request butuh `Authorization: Bearer ...` |
 | `FIRECRAWL_API_KEY` | tidak | Key [Firecrawl](https://firecrawl.dev) untuk tool `web_search` (research-assistant, supervisor). Kosong = tanpa pencarian web |

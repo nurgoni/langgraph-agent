@@ -39,6 +39,10 @@ class ChatMessage(BaseModel):
         default=None,
         description="Untuk message `ai`: pemikiran model sebelum menjawab, jika model mengirimnya.",
     )
+    truncated: bool = Field(
+        default=False,
+        description="Untuk message `ai`: jawaban berhenti karena batas token (`LLM_MAX_TOKENS`).",
+    )
     response_metadata: dict[str, JsonValue] = Field(
         default_factory=dict,
         description="Metadata dari provider, misalnya jumlah token.",

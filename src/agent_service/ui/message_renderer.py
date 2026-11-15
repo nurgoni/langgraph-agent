@@ -1,4 +1,7 @@
-"""Menggambar `ChatMessage`, reasoning, dan token stream di Streamlit (FR-20, FR-24, FR-29)."""
+"""Menggambar `ChatMessage`, reasoning, token stream, dan peringatan di Streamlit.
+
+Mencakup FR-20, FR-24, FR-29 (reasoning), dan FR-30 (jawaban terpotong).
+"""
 
 import json
 from collections.abc import Callable
@@ -19,6 +22,10 @@ STREAMING_CURSOR: Final = "▌"
 THINKING_LIVE_LABEL: Final = ":material/psychology: Thinking…"
 THINKING_DONE_LABEL: Final = ":material/psychology: Thinking"
 EXPERT_LABEL_TEMPLATE: Final = ":material/support_agent: {agent}"
+TRUNCATED_WARNING: Final = (
+    "The answer was cut off because the model reached its token limit (LLM_MAX_TOKENS)."
+)
+TRUNCATED_ICON: Final = ":material/content_cut:"
 
 type StatusState = Literal["running", "complete", "error"]
 
@@ -112,6 +119,8 @@ class MessageRenderer:
             self._streamed_text = ""
         elif message.content:
             block.markdown(message.content)
+        if message.truncated:
+            block.warning(TRUNCATED_WARNING, icon=TRUNCATED_ICON)
         for tool_call in message.tool_calls:
             self._open_tool_status(block, tool_call)
 
@@ -192,3 +201,5 @@ if __name__ == "__main__":
     )
     demo.render(ChatMessage(type="tool", content="84", tool_call_id="c1"))
     demo.render(ChatMessage(type="ai", content="Hasilnya 84.", reasoning="Kalkulator memberi 84."))
+    demo.render(ChatMessage(type="human", content="Jelaskan panjang lebar."))
+    demo.render(ChatMessage(type="ai", content="Penjelasannya dimulai dari", truncated=True))

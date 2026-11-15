@@ -10,11 +10,16 @@ from collections.abc import Mapping
 from typing import Any, Final
 
 import openai
+from langchain_core.language_models import LanguageModelInput
 from langchain_core.messages import AIMessage, AIMessageChunk
 from langchain_core.outputs import ChatGenerationChunk, ChatResult
 from langchain_openai import ChatOpenAI
 
+from agent_service.core.constants import DEFAULT_LLM_MAX_TOKENS_PARAM, MaxTokensParam
+
 REASONING_KWARG: Final = "reasoning_content"
+# Nama yang selalu ditulis `ChatOpenAI` untuk batas token, apa pun nama field-nya di Python.
+OPENAI_MAX_TOKENS_FIELD: Final = "max_completion_tokens"
 # Nama field reasoning yang dipakai provider OpenAI-compatible: Ollama mengirim `reasoning`,
 # vLLM dan DeepSeek mengirim `reasoning_content`.
 PROVIDER_REASONING_FIELDS: Final = ("reasoning", "reasoning_content")
@@ -50,8 +55,24 @@ class ReasoningChatOpenAI(ChatOpenAI):
     """`ChatOpenAI` yang menyimpan reasoning provider di `additional_kwargs[REASONING_KWARG]`.
 
     Class karena memperluas model LangChain. Perilaku lain sama persis dengan `ChatOpenAI`, jadi
-    model tanpa reasoning tidak terpengaruh.
+    model tanpa reasoning tidak terpengaruh. Satu tambahan: batas token dikirim dengan nama
+    `max_tokens_param`, karena Ollama mengabaikan `max_completion_tokens` (FR-30).
     """
+
+    max_tokens_param: MaxTokensParam = DEFAULT_LLM_MAX_TOKENS_PARAM
+
+    def _get_request_payload(
+        self,
+        input_: LanguageModelInput,
+        *,
+        stop: list[str] | None = None,
+        **kwargs: Any,  # Any: signature induk
+    ) -> dict[str, Any]:  # Any: body JSON request
+        """Body request seperti induknya, dengan batas token memakai `max_tokens_param`."""
+        payload = super()._get_request_payload(input_, stop=stop, **kwargs)
+        if OPENAI_MAX_TOKENS_FIELD in payload:
+            payload[self.max_tokens_param] = payload.pop(OPENAI_MAX_TOKENS_FIELD)
+        return payload
 
     def _convert_chunk_to_generation_chunk(
         self,

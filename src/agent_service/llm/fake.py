@@ -34,6 +34,8 @@ class FakeModel(BaseChatModel):
     Setelah respons terakhir, urutan kembali ke awal. Respons boleh berisi `tool_calls`
     untuk menguji agent yang memanggil tool. `tool_calls` tetap utuh saat streaming. Reasoning
     di `additional_kwargs[REASONING_KWARG]` di-stream lebih dulu, seperti model reasoning.
+    `response_metadata` (misalnya `{"finish_reason": "length"}`) ikut terbawa, baik lewat
+    `invoke` maupun streaming.
 
     >>> model = FakeModel(responses=["Halo dunia"])
     >>> model.invoke("hi").content
@@ -113,6 +115,18 @@ class FakeModel(BaseChatModel):
             yield chunk
         if response.tool_calls:
             yield ChatGenerationChunk(message=self._tool_call_chunk(response))
+        if response.response_metadata:
+            yield ChatGenerationChunk(message=self._metadata_chunk(response))
+
+    @staticmethod
+    def _metadata_chunk(response: AIMessage) -> AIMessageChunk:
+        """Chunk penutup berisi `response_metadata`, seperti `finish_reason` dari provider.
+
+        Dikirim sekali saja, karena LangChain menggabungkan string metadata antar chunk.
+        """
+        return AIMessageChunk(
+            content="", id=response.id, response_metadata=dict(response.response_metadata)
+        )
 
     @staticmethod
     def _reasoning_chunks(

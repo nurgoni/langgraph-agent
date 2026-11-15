@@ -153,3 +153,20 @@ def test_subagent_marker_becomes_agent_field() -> None:
     assert langchain_to_chat_message(marked).agent == "math_expert"
     assert langchain_to_chat_message(tool_result).agent == "x"
     assert langchain_to_chat_message(AIMessage(content="Halo")).agent is None
+
+
+@pytest.mark.parametrize(
+    ("metadata", "truncated"),
+    [
+        ({"finish_reason": "length"}, True),
+        ({"finish_reason": "stop"}, False),
+        ({"finish_reason": "tool_calls"}, False),
+        ({}, False),
+    ],
+)
+def test_ai_message_truncation_follows_finish_reason(
+    metadata: dict[str, str], truncated: bool
+) -> None:
+    message = AIMessage(content="Jawaban", response_metadata=metadata)
+
+    assert langchain_to_chat_message(message).truncated is truncated

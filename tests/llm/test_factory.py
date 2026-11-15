@@ -2,6 +2,7 @@ import pytest
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
+from agent_service.core.constants import DEFAULT_LLM_MAX_TOKENS
 from agent_service.core.settings import Settings
 from agent_service.llm.factory import (
     DEFAULT_TEMPERATURE,
@@ -124,3 +125,37 @@ def test_resolve_name_maps_none_to_default_model(llm_settings: Settings) -> None
 def test_resolve_name_rejects_model_outside_allowlist(llm_settings: Settings) -> None:
     with pytest.raises(UnknownModelError):
         ModelFactory(llm_settings).resolve_name("gpt-unknown")
+
+
+def test_model_uses_llm_max_tokens_from_settings(llm_settings: Settings) -> None:
+    model = ModelFactory(llm_settings).create()
+
+    assert isinstance(model, ChatOpenAI)
+    assert model.max_tokens == DEFAULT_LLM_MAX_TOKENS
+
+
+def test_max_tokens_argument_overrides_settings(llm_settings: Settings) -> None:
+    model = ModelFactory(llm_settings).create(max_tokens=256)
+
+    assert isinstance(model, ChatOpenAI)
+    assert model.max_tokens == 256
+
+
+def test_cache_key_includes_max_tokens(llm_settings: Settings) -> None:
+    factory = ModelFactory(llm_settings)
+
+    assert factory.create(max_tokens=256) is factory.create(max_tokens=256)
+    assert factory.create(max_tokens=256) is not factory.create()
+    assert factory.create(max_tokens=DEFAULT_LLM_MAX_TOKENS) is factory.create()
+
+
+def test_model_uses_max_tokens_param_from_settings(llm_settings: Settings) -> None:
+    settings = llm_settings.model_copy(update={"llm_max_tokens_param": "max_completion_tokens"})
+
+    default_model = ModelFactory(llm_settings).create()
+    openai_model = ModelFactory(settings).create()
+
+    assert isinstance(default_model, ReasoningChatOpenAI)
+    assert isinstance(openai_model, ReasoningChatOpenAI)
+    assert default_model.max_tokens_param == "max_tokens"
+    assert openai_model.max_tokens_param == "max_completion_tokens"

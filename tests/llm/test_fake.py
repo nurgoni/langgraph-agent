@@ -128,3 +128,30 @@ def test_invoke_returns_reasoning_untouched() -> None:
     message = FakeModel(responses=[REASONED]).invoke("warna")
 
     assert message.additional_kwargs == {"reasoning_content": "Pilih tiga warna"}
+
+
+TRUNCATED_RESPONSE = AIMessage(
+    content="Jawaban terpo", response_metadata={"finish_reason": "length"}
+)
+
+
+def test_invoke_keeps_scripted_finish_reason() -> None:
+    message = FakeModel(responses=[TRUNCATED_RESPONSE]).invoke("hi")
+
+    assert message.response_metadata["finish_reason"] == "length"
+
+
+def test_stream_carries_finish_reason_once() -> None:
+    merged: AIMessageChunk | None = None
+    for chunk in FakeModel(responses=[TRUNCATED_RESPONSE]).stream("hi"):
+        merged = chunk if merged is None else merged + chunk
+
+    assert merged is not None
+    assert merged.content == "Jawaban terpo"
+    assert merged.response_metadata["finish_reason"] == "length"
+
+
+def test_response_without_metadata_streams_no_extra_chunk() -> None:
+    chunks = [chunk for chunk in FakeModel(responses=["Halo"]).stream("hi") if chunk.content]
+
+    assert [chunk.response_metadata for chunk in chunks] == [{}]

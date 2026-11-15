@@ -323,6 +323,23 @@ reasoning lengkap. Converter mengisi `ChatMessage.reasoning`, dan UI menampilkan
 "Thinking" (terbuka saat live, tertutup di riwayat). Hanya field standar yang dikirim balik ke
 model, jadi reasoning lama tidak ikut di prompt giliran berikutnya.
 
+## Batas Token Jawaban
+
+`ModelFactory.create(name, max_tokens=None)` membuat model dengan batas token jawaban
+`LLM_MAX_TOKENS` (`DEFAULT_LLM_MAX_TOKENS`), atau nilai `max_tokens` jika diberikan. Kunci cache
+adalah `(nama model, max_tokens)`, sehingga override per Project (F26) mendapat instance sendiri.
+`ChatOpenAI` selalu menulisnya sebagai `max_completion_tokens`, padahal Ollama hanya membaca
+`max_tokens`. Karena itu `ReasoningChatOpenAI._get_request_payload` mengganti namanya sesuai
+`LLM_MAX_TOKENS_PARAM` (default `max_tokens`; `max_completion_tokens` untuk model reasoning OpenAI
+yang menolak `max_tokens`). Pada Ollama, token reasoning ikut dihitung dalam batas ini, jadi batas
+yang terlalu kecil bisa menghasilkan jawaban kosong yang ditandai terpotong.
+
+Jika model berhenti karena batas, provider mengirim `finish_reason = "length"`, dan LangChain
+menyimpannya di `response_metadata` message AI. Converter (`is_truncated`) mengubahnya menjadi
+`ChatMessage.truncated = true`, jadi tanda ini muncul sama di `/invoke`, frame `message` `/stream`,
+dan `/history`. UI menampilkan peringatan di bawah jawaban. `FakeModel` meneruskan
+`response_metadata` hasil script, baik lewat `invoke` maupun streaming, untuk menguji jalur ini.
+
 ## Deployment
 
 `docker/Dockerfile` punya dua target dari base yang sama: `service`
