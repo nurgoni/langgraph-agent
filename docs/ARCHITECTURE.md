@@ -9,7 +9,7 @@ kontrak API ada di [PRD.md](../PRD.md).
 Service ini membungkus graph LangGraph dengan API FastAPI. Satu proses berisi:
 
 - **Registry agent.** Setiap agent dapat membangun graph untuk model mana pun yang diizinkan.
-- **Satu file SQLite.** File ini menyimpan checkpoint percakapan dan judul custom thread.
+- **Satu database Postgres.** Database ini menyimpan checkpoint percakapan dan judul custom thread.
 - **Endpoint HTTP.** Ada endpoint untuk menjalankan agent (`/invoke`, `/stream`), membaca riwayat
   (`/history`), dan mengelola thread (`/threads`).
 
@@ -28,7 +28,7 @@ src/agent_service/
 ├── llm/       ModelFactory, FakeModel
 ├── agents/    BaseAgent, AgentRegistry, catalog, ChatbotAgent, ToolCallingAgent, InterruptAgent,
 │              SupervisorAgent, tools/
-├── memory/    CheckpointerProvider, ThreadMetadataRepository (SQLite)
+├── memory/    DatabaseEngineProvider, migrator, CheckpointerProvider, ThreadMetadataRepository
 ├── schema/    Model Pydantic untuk API: request, response, event SSE, nama header
 ├── service/   create_app, lifespan, auth, route, StreamService, ThreadRepository
 ├── client/    AgentClient (sync + async), StreamRun, SseParser
@@ -61,12 +61,13 @@ sequenceDiagram
     A->>A: validasi agent default, pasang exception handler dan router
     U->>L: startup
     L->>L: ModelFactory(settings)
-    L->>L: buka CheckpointerProvider + ThreadMetadataRepository
+    L->>L: buka DatabaseEngineProvider + CheckpointerProvider (gagal cepat jika DB mati)
+    L->>L: ensure_database_migrated (gagal jika migrasi belum jalan)
     L->>L: AgentRegistry.register(...) lalu load_all()
     L->>L: simpan ke app.state
     Note over U,L: melayani request
     U->>L: shutdown
-    L->>L: tutup koneksi SQLite
+    L->>L: tutup engine dan pool koneksi Postgres
 ```
 
 - **Tidak ada side effect saat import.** `create_app()` tanpa argumen membaca `Settings()` saat
@@ -162,15 +163,30 @@ lewat MRO. Selain handler 500, satu-satunya `except Exception` yang diizinkan ad
 
 ## Persistence
 
-Satu file SQLite di `SQLITE_DB_PATH` berisi tiga tabel:
+Satu database Postgres di `DATABASE_URL` ([ADR 0001](adr/0001-postgres-only.md)):
 
 | Tabel | Pemilik | Isi |
 |---|---|---|
-| `checkpoints`, `writes` | `AsyncSqliteSaver` (via `CheckpointerProvider`) | State graph per langkah, termasuk metadata `user_id`/`agent_id` |
-| `thread_metadata` | `ThreadMetadataRepository` | Judul custom hasil rename |
+| `checkpoints`, `checkpoint_blobs`, `checkpoint_writes`, `checkpoint_migrations` | `AsyncPostgresSaver` (via `CheckpointerProvider`) | State graph per langkah, termasuk metadata `user_id`/`agent_id` |
+| `thread_metadata` | `ThreadMetadataRepository` (SQLAlchemy Core) | Judul custom hasil rename |
+| `alembic_version` | Alembic | Revisi skema tabel aplikasi |
 
-`ThreadMetadataRepository` memakai koneksi `aiosqlite` sendiri, karena transaksi saver dijaga oleh
-lock privat milik saver. Penghapusan thread memanggil `adelete_thread` lalu menghapus judulnya.
+- **Satu driver.** Checkpointer dan SQLAlchemy sama-sama memakai psycopg 3. `DATABASE_URL` ditulis
+  `postgresql://...`, dan `sqlalchemy_url()` menambahkan `+psycopg` untuk SQLAlchemy.
+- **Dua pool per proses.** `CheckpointerProvider` membuka `AsyncConnectionPool` psycopg (autocommit,
+  tanpa prepared statement, baris dict, sesuai syarat saver). `DatabaseEngineProvider` membuka
+  engine SQLAlchemy. Keduanya mengecek koneksi saat startup dengan `connect_timeout` 5 detik,
+  karena default psycopg adalah 130 detik.
+- **Migrasi terpisah dari service.** `python -m agent_service.run_migrate` (service compose
+  `migrate`) menjalankan `AsyncPostgresSaver.setup()` lalu `alembic upgrade head`. Lifespan hanya
+  memanggil `ensure_database_migrated`, yang membandingkan `alembic_version` dengan revisi terbaru.
+  Tabel aplikasi baru ditambahkan di `memory/tables.py` beserta revisi di `memory/migrations/`.
+- **Event loop.** psycopg async tidak bisa memakai `ProactorEventLoop`, loop default di Windows.
+  `run_service` memberi uvicorn `loop="asyncio:SelectorEventLoop"`, `run_migrate` memakai
+  `asyncio.run(..., loop_factory=asyncio.SelectorEventLoop)`, dan test memakai hook
+  `pytest_asyncio_loop_factories`.
+
+Penghapusan thread memanggil `adelete_thread` lalu menghapus judulnya.
 
 ## Agent dengan Tool
 
@@ -343,11 +359,13 @@ dan `/history`. UI menampilkan peringatan di bawah jawaban. `FakeModel` menerusk
 ## Deployment
 
 `docker/Dockerfile` punya dua target dari base yang sama: `service`
-(`python -m agent_service.run_service`, SQLite di volume `/data`) dan `ui` (`streamlit run`).
+(`python -m agent_service.run_service`, juga dipakai service `migrate`) dan `ui` (`streamlit run`).
 Setiap target meng-install hanya extra miliknya (`uv sync --frozen --no-dev --extra service` atau
 `--extra ui`), sehingga image service tanpa Streamlit dan image UI tanpa LangGraph. Test e2e
 `test_image_ships_only_its_extra` menjaga batas ini.
-`compose.yaml` menjalankan keduanya. Service memakai FakeModel secara default, dan UI menunggu
+`compose.yaml` menjalankan `postgres` (image `pgvector/pgvector`, volume `postgres-data`),
+`migrate` (sekali jalan), lalu keduanya. Service API menunggu `migrate` selesai dengan sukses
+(`service_completed_successfully`). Service memakai FakeModel secara default, dan UI menunggu
 healthcheck service, lalu menghubunginya di `http://agent-service:8080`. `compose.llm.yaml`
 menimpa konfigurasi model dengan LLM asli.
 
@@ -355,6 +373,11 @@ menimpa konfigurasi model dengan LLM asli.
 
 - **Tidak ada network di unit test.** Fixture autouse `block_network` (`tests/conftest.py`)
   menggagalkan koneksi selain loopback.
+- **Database test memakai Postgres asli.** Fixture sesi `postgres_database` membuat database
+  `agent_service_test_<acak>` dan memigrasinya, fixture `database_url` mengosongkan tabel sebelum
+  setiap test, dan database dihapus di akhir sesi. Fixture autouse `isolate_database_url`
+  mengarahkan `DATABASE_URL` ke host yang tidak ada, supaya test tidak pernah menulis ke database
+  dev. Test murni (agent dengan `InMemorySaver`) tidak butuh database.
 - **LLM diganti `FakeModel`.** Model ini men-stream per kata dan mengirim `tool_calls` utuh, dan
   setiap panggilan mengembalikan salinan message baru.
 - **Test endpoint memakai `httpx.AsyncClient` + `ASGITransport`.** Lifespan dijalankan manual

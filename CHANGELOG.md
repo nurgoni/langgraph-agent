@@ -18,6 +18,19 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
   extra `service` untuk API, dan extra `ui` untuk Streamlit. Image Docker hanya meng-install
   extra-nya: image `service` turun dari ±1 GB ke ±505 MB dan tanpa Streamlit, image `ui` ±881 MB
   dan tanpa LangGraph (F22).
+
+### Changed
+
+- **Persistence pindah ke Postgres** (ADR 0001): checkpointer `AsyncPostgresSaver` dan tabel
+  `thread_metadata` lewat SQLAlchemy Core async + Alembic, dengan satu env `DATABASE_URL` (default
+  Postgres compose lokal). `docker compose up` kini menjalankan `postgres` → `migrate` → service.
+  Service menolak start jika database tidak terjangkau atau migrasi belum dijalankan
+  (`python -m agent_service.run_migrate`) (F23).
+
+### Removed
+
+- SQLite: `SQLITE_DB_PATH`, `aiosqlite`, `langgraph-checkpoint-sqlite`, dan volume compose
+  `agent-data`. Data di `checkpoints.db` lama tidak dimigrasi (F23).
 - Rencana Fase 2 (M4–M10, F21–F46): requirement FR-30–FR-58 dan NFR-9–NFR-12 di PRD, rincian
   fitur dan backlog di ROADMAP, serta ADR 0001–0005 (Postgres-only, harness sendiri, frontend
   React, Project sebagai agent deklaratif, format skill) di `docs/adr/`.

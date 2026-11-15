@@ -391,7 +391,7 @@ Node yang LLM-nya diberi tag `skip_stream` tidak menghasilkan frame `token`.
 | `USE_FAKE_MODEL` | `false` | Pakai FakeModel (dev/test) |
 | `LLM_MAX_TOKENS` | `8192` | Batas token jawaban per giliran, termasuk reasoning pada provider yang menghitungnya bersama (FR-30) |
 | `LLM_MAX_TOKENS_PARAM` | `max_tokens` | Nama parameter batas token di request. `max_completion_tokens` untuk model reasoning OpenAI. Ollama hanya membaca `max_tokens` |
-| `SQLITE_DB_PATH` | `checkpoints.db` | Lokasi DB checkpointer |
+| `DATABASE_URL` | `postgresql://agent:agent@127.0.0.1:5432/agent_service` | Koneksi Postgres (FR-32). Menggantikan `SQLITE_DB_PATH` mulai F23 |
 | `AUTH_SECRET` | – | Bearer token. Kosong = tanpa auth |
 | `FIRECRAWL_API_KEY` | – | Key Firecrawl untuk tool `web_search`. Kosong = tool menjawab "not configured", agent tetap berjalan |
 | `HOST` / `PORT` | `0.0.0.0` / `8080` | Bind address service |
@@ -403,7 +403,7 @@ Node yang LLM-nya diberi tag `skip_stream` tidak menghasilkan frame `token`.
 | Variabel | Fitur | Keterangan |
 |---|---|---|
 | `LLM_MAX_TOKENS` | F21 | Batas token jawaban default |
-| `DATABASE_URL` | F23 | Koneksi Postgres. Menggantikan `SQLITE_DB_PATH` |
+| `DATABASE_URL` | F23 (selesai) | Koneksi Postgres. Menggantikan `SQLITE_DB_PATH` |
 | `JWT_SECRET`, `JWT_TTL_SECONDS` | F24 | Penandatanganan dan umur access token. Menggantikan `AUTH_SECRET` |
 | `CORS_ORIGINS` | F24 | Origin frontend yang diizinkan, dipisah koma |
 | `CONTEXT_MAX_TOKENS` | F29 | Anggaran token riwayat yang dikirim ke model |

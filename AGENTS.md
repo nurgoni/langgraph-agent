@@ -22,7 +22,7 @@ Streamlit.
 | Bahasa | Python 3.12+ |
 | Agent | LangGraph, LangChain |
 | API | FastAPI + Uvicorn, SSE |
-| Persistence | SQLite checkpointer (`langgraph-checkpoint-sqlite`). **Mulai F23:** Postgres-only ([ADR 0001](docs/adr/0001-postgres-only.md)) |
+| Persistence | Postgres-only ([ADR 0001](docs/adr/0001-postgres-only.md)): `AsyncPostgresSaver` + SQLAlchemy Core async + Alembic, driver psycopg 3 |
 | Client | httpx (sync + async) |
 | UI | Streamlit. **Mulai F32:** frontend React + TypeScript di `frontend/` ([ADR 0003](docs/adr/0003-frontend-stack.md)), Streamlit menjadi dev console |
 | Tooling | uv, ruff, pyrefly, pytest, pre-commit |
@@ -39,6 +39,8 @@ uv run pytest --cov=src --cov-report=term # test + coverage
 uv run ruff check . --fix                 # lint
 uv run ruff format .                      # format
 uv run pyrefly check                      # type check
+docker compose up -d postgres             # database untuk dev dan test
+uv run python -m agent_service.run_migrate   # migrasi skema (Alembic + checkpointer)
 uv run python -m agent_service.run_service   # jalankan API di :8080
 uv run streamlit run src/agent_service/ui/app.py  # jalankan UI di :8501
 ```
@@ -53,7 +55,7 @@ src/agent_service/
 ├── core/      # Settings, logging, konstanta global
 ├── llm/       # ModelFactory, FakeModel
 ├── agents/    # BaseAgent, AgentRegistry, implementasi agent, tools
-├── memory/    # CheckpointerProvider (SQLite)
+├── memory/    # Engine Postgres, migrasi Alembic, CheckpointerProvider, repository tabel
 ├── schema/    # Pydantic model untuk API (TANPA dependency UI)
 ├── service/   # FastAPI app, router, StreamService, auth
 ├── client/    # AgentClient
@@ -250,6 +252,9 @@ saling mengoper argumen yang sama (`settings`, `model`, `checkpointer`), satukan
 - Setiap class publik punya test di `tests/` dengan struktur yang mirror `src/`.
 - LLM dites dengan `FakeModel` dari `llm/`. **Tidak ada network call di unit test.**
 - Endpoint dites dengan `httpx.AsyncClient` + `ASGITransport` dan registry berisi agent fake.
+- Test yang menyentuh database memakai fixture `database_url` (Postgres asli, database test
+  terpisah per sesi). Butuh `docker compose up -d postgres`. Kode async yang memakai psycopg
+  harus berjalan di `SelectorEventLoop` (loop default Windows tidak didukung psycopg).
 - Test integrasi (Docker, API asli) diberi marker `@pytest.mark.integration` dan dilewati secara
   default.
 - Target coverage ≥ 80%.

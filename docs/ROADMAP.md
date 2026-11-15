@@ -37,7 +37,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F20 | Firecrawl web search | M3 | done |
 | F21 | LLM token limit | M4 | done |
 | F22 | Dependency extras | M4 | done |
-| F23 | Postgres migration | M4 | todo |
+| F23 | Postgres migration | M4 | done |
 | F24 | User auth & CORS | M4 | todo |
 | F25 | API contract export | M4 | todo |
 | F26 | Projects | M5 | todo |
@@ -1037,10 +1037,36 @@ F32 → F33 → F34 → *rilis v0.6.0* → F35 → F36 → F37 → F38 → *rili
   5. `feat(memory): move thread metadata to postgres`
   6. `ci: run database tests against a postgres service`
   7. `docs: record F23 postgres decisions`
+- **Penyesuaian saat implementasi:**
+  - **Commit 2–5 digabung** menjadi `feat(memory): migrate persistence to postgres`.
+    `settings.py`, `pyproject.toml`, dan `uv.lock` hanya punya satu isi akhir, jadi commit
+    perantara (misalnya setting baru sementara kode masih SQLite) akan gagal di hook pyrefly.
+    Commit compose dipindah ke setelah kode siap, supaya stack Docker tidak pernah rusak di tengah.
+  - Versi: `langgraph-checkpoint-postgres 3.2.0`, `psycopg 3.3.6` (+ binary, pool 3.3.3),
+    `sqlalchemy 2.1.5` (`postgresql+psycopg`, satu driver), `alembic 1.20.0`. Image
+    `pgvector/pgvector:0.8.1-pg18` (volume di-mount ke `/var/lib/postgresql`, aturan Postgres 18).
+  - Keputusan user: `DATABASE_URL` punya default Postgres compose lokal
+    (`postgresql://agent:agent@127.0.0.1:5432/agent_service`).
+  - **Windows:** psycopg async tidak bisa memakai `ProactorEventLoop`. Service: uvicorn
+    `loop="asyncio:SelectorEventLoop"`. Migrasi: `asyncio.run(..., loop_factory=...)`. Test: hook
+    `pytest_asyncio_loop_factories`.
+  - **`127.0.0.1`, bukan `localhost`:** di Docker Desktop Windows koneksi ke `::1` menggantung
+    sampai timeout (30 detik dengan `connect_timeout=30`, beberapa menit tanpa batas).
+  - **`connect_timeout` 5 detik** untuk engine, pool checkpointer, dan migrasi. Default psycopg
+    adalah 130 detik, dan di Windows koneksi yang ditolak pun baru terdeteksi setelah timeout.
+  - `ThreadMetadataRepository(engine)` tidak lagi berupa context manager. Engine dimiliki
+    `DatabaseEngineProvider`. `CheckpointerProvider(database_url)` tetap async context manager,
+    tapi tidak lagi memanggil `setup()` (dijalankan migrasi).
+  - Lifespan memanggil `ensure_database_migrated` (fail-fast dengan petunjuk `run_migrate`).
+  - Test: satu database `agent_service_test_<acak>` per sesi (dibuat, dimigrasi, dihapus),
+    `TRUNCATE` semua tabel kecuali tabel migrasi sebelum setiap test, dan `DATABASE_URL` diarahkan
+    ke host `.invalid` supaya test tidak menyentuh database dev.
+  - Test e2e baru: `migrate` selesai dengan exit code 0 sebelum service start. Port Postgres e2e
+    diacak (`POSTGRES_PORT`).
 - **Acceptance criteria:**
-  - [ ] `docker compose up` → `migrate` selesai → service healthy → chat berjalan.
-  - [ ] Semua test thread (FR-8, FR-9, FR-25, FR-26, FR-28) hijau di Postgres.
-  - [ ] Tidak ada lagi kode atau dependency SQLite.
+  - [x] `docker compose up` → `migrate` selesai → service healthy → chat berjalan (e2e, 8 test).
+  - [x] Semua test thread (FR-8, FR-9, FR-25, FR-26, FR-28) hijau di Postgres.
+  - [x] Tidak ada lagi kode atau dependency SQLite.
 - **Squash title:** `feat(memory): migrate persistence to postgres (F23)`
 
 ### F24: User auth & CORS

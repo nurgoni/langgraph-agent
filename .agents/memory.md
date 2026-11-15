@@ -13,15 +13,49 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** Fase 2 (M4). F21 sudah di-merge. **F22** (dependency extras) selesai di
-  `feature/F22-dependency-extras`, menunggu user commit, push, dan PR.
-- **Berikutnya:** **F23** (Postgres migration).
+- **Fase:** Fase 2 (M4). F21 dan F22 sudah di-merge. **F23** (Postgres) selesai di
+  `feature/F23-postgres`, menunggu user commit, push, dan PR.
+- **Berikutnya:** **F24** (user auth & CORS).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Terakhir diperbarui:** 2026-11-15
 
 ## Decision Log
+
+### 2026-11-15: Postgres dari F23
+
+- **Supersedes:** entri F03 (`CheckpointerProvider(db_path)` SQLite) dan F18 (tabel
+  `thread_metadata` lewat `aiosqlite`). Detail keputusan besar ada di ADR 0001.
+- **Keputusan user:** `DATABASE_URL` default ke Postgres compose lokal
+  (`postgresql://agent:agent@127.0.0.1:5432/agent_service`).
+- **Keputusan desain:**
+  - `memory/database.py`: `DatabaseEngineProvider` (async CM, cek `SELECT 1` saat masuk),
+    `sqlalchemy_url()` menambah `+psycopg`. `memory/tables.py`: `METADATA` untuk Alembic.
+  - `memory/migrator.py`: `upgrade_database()` = `AsyncPostgresSaver.setup()` dulu, lalu
+    `alembic upgrade head` (revisi Alembic terbaru = seluruh migrasi selesai).
+    `ensure_database_migrated(engine)` dipanggil lifespan. Konfigurasi Alembic dibuat di kode
+    (folder `memory/migrations/` di dalam package), `alembic.ini` di root hanya untuk CLI dev.
+  - `CheckpointerProvider(database_url)`: `AsyncConnectionPool` dengan `autocommit`,
+    `prepare_threshold=0`, `dict_row`. Tidak memanggil `setup()`.
+  - `ThreadMetadataRepository(engine)`: upsert `on_conflict_do_update`, bukan context manager.
+  - `--ignore=src/agent_service/memory/migrations` di pytest, karena `env.py` dieksekusi Alembic
+    (side effect di level modul adalah konvensi Alembic).
+- **Pelajaran:**
+  - **psycopg async + Windows:** `ProactorEventLoop` (default Windows) ditolak. Untuk uvicorn,
+    import string custom di `loop=` dipakai **langsung** sebagai loop factory tanpa argumen
+    (`"asyncio:SelectorEventLoop"`), berbeda dengan nama bawaan (`"asyncio"`) yang dipanggil dengan
+    `use_subprocess`. Test yang me-mock `uvicorn.run` tidak menangkap ini. Hanya e2e Docker yang
+    menangkapnya, jadi ada test `uvicorn.Config(...).get_loop_factory()`.
+  - **`localhost` di Docker Desktop Windows:** koneksi ke `::1` menggantung sampai timeout,
+    sedangkan `127.0.0.1` tersambung dalam 0,01 detik. Selalu pakai `127.0.0.1` untuk port yang
+    di-publish compose.
+  - **Default `connect_timeout` psycopg 130 detik**, dan di Windows penolakan koneksi baru
+    terdeteksi setelah timeout. Selalu set `connect_timeout` eksplisit.
+  - psycopg `sql.SQL()` mewajibkan `LiteralString`. Ketik parameter template sebagai
+    `LiteralString`, jangan `str`.
+  - Data `checkpoints.db` lama tidak dimigrasi (ADR 0001). Volume compose `agent-data` lama menjadi
+    yatim dan bisa dihapus dengan `docker volume rm agent-service_agent-data`.
 
 ### 2026-11-15: Dependency extras dari F22
 
@@ -640,9 +674,6 @@ Langkah 1 fitur terkait:
 
 - [ ] User: isi `FIRECRAWL_API_KEY` di `.env`, lalu minta agent menjalankan smoke test Firecrawl
       asli.
-- [ ] User: hapus folder `.venv/Lib/site-packages/lxml-6.1.3.dist-info` (sisa setengah terhapus,
-      tidak dikenal uv lagi setelah `uv sync` di F22). Folder ini memicu ±54 DeprecationWarning
-      di test UI.
 - [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
       (CONTRIBUTING.md § Setup Awal Repo).
 - [ ] **Ingatkan user: saatnya memakai dev-time skill** (skill untuk coding agent yang

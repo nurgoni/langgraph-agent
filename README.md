@@ -15,7 +15,7 @@ kode yang sederhana, eksplisit, dan mudah dites (Zen of Python).
 - **Streaming SSE**: token dan message (termasuk tool call dan sub-agent) dikirim secara real-time.
 - **Reasoning terlihat**: pemikiran model reasoning (misalnya Qwen3 lewat Ollama) di-stream
   sebelum jawaban dan tampil di blok "Thinking" UI.
-- **Percakapan persisten**: riwayat thread disimpan di SQLite via LangGraph checkpointer.
+- **Percakapan persisten**: riwayat thread disimpan di Postgres via LangGraph checkpointer.
 - **Human-in-the-loop**: agent bisa berhenti (`interrupt`) dan melanjutkan dengan input user.
 - **Python client**: `AgentClient` sync dan async.
 - **UI Streamlit**: chat, riwayat thread, pemilih agent dan model.
@@ -31,14 +31,14 @@ kode yang sederhana, eksplisit, dan mudah dites (Zen of Python).
        │ pakai              │              ▼                           │
 ┌──────▼───────┐            │  AgentRegistry ─► BaseAgent (graph)      │
 │ AgentClient  │            │                     │        │           │
-│ (client/)    │            │              ModelFactory  SQLite        │
+│ (client/)    │            │              ModelFactory  Postgres      │
 └──────────────┘            │              (llm/)        checkpointer  │
                             └──────────────────────────────────────────┘
 ```
 
 ## Quickstart
 
-Prasyarat: Python 3.12+ dan [uv](https://docs.astral.sh/uv/).
+Prasyarat: Python 3.12+, [uv](https://docs.astral.sh/uv/), dan Docker (untuk Postgres).
 
 ```bash
 # 1. Install dependency (semua extra + tool dev)
@@ -49,12 +49,19 @@ cp .env.example .env
 # isi LLM_BASE_URL, LLM_API_KEY, DEFAULT_MODEL
 # atau USE_FAKE_MODEL=true untuk mencoba tanpa API key
 
-# 3. Jalankan service (http://localhost:8080, docs di /docs)
+# 3. Jalankan Postgres dan siapkan skemanya
+docker compose up -d postgres
+uv run python -m agent_service.run_migrate
+
+# 4. Jalankan service (http://localhost:8080, docs di /docs)
 uv run python -m agent_service.run_service
 
-# 4. Jalankan UI di terminal lain (http://localhost:8501)
+# 5. Jalankan UI di terminal lain (http://localhost:8501)
 uv run streamlit run src/agent_service/ui/app.py
 ```
+
+Service menolak start jika Postgres tidak terjangkau atau migrasi belum dijalankan, dan pesan
+error-nya menyebut perintah yang perlu dijalankan.
 
 UI hanya client: service (langkah 3) harus sudah berjalan di `AGENT_URL`. Jika belum, UI
 menampilkan pesan "Cannot reach the agent service at ..." saat pesan dikirim.
@@ -65,7 +72,7 @@ dipasang lewat extra:
 | Extra | Untuk | Isi utama |
 |---|---|---|
 | (dasar) | `AgentClient` sebagai library | pydantic, httpx |
-| `service` | API FastAPI | fastapi, uvicorn, langgraph, langchain, SQLite checkpointer |
+| `service` | API FastAPI | fastapi, uvicorn, langgraph, langchain, Postgres (psycopg, SQLAlchemy, Alembic) |
 | `ui` | UI Streamlit | streamlit, pydantic-settings |
 
 `uv sync` untuk development meng-install semuanya, karena grup `dev` mereferensikan
@@ -77,15 +84,20 @@ percakapan. Siapa pun yang memegang URL tersebut bisa membaca thread-nya.
 ### Docker Compose
 
 ```bash
-docker compose up --build        # API di :8080, UI di :8501
-docker compose down              # hentikan (tambahkan -v untuk menghapus data SQLite)
+docker compose up --build        # Postgres, migrasi, API di :8080, UI di :8501
+docker compose down              # hentikan (tambahkan -v untuk menghapus data Postgres)
 ```
 
 - **Model:** stack memakai FakeModel secara default, jadi bisa jalan tanpa API key. Konfigurasi LLM
   di `.env` sengaja tidak dipakai di dalam container.
 - **Variabel yang diambil dari shell atau `.env`:** `AUTH_SECRET` (dipakai service dan UI) dan
   `LOG_LEVEL`. Port bisa dipindah dengan `SERVICE_PORT` dan `UI_PORT`.
-- **Data:** thread tersimpan di volume `agent-data`, jadi tetap ada setelah container di-restart.
+- **Urutan start:** `postgres` (healthy) → `migrate` (Alembic + tabel checkpointer, lalu selesai)
+  → `agent-service` → `ui`. Migrasi tidak dijalankan di lifespan, supaya beberapa replika tidak
+  menjalankannya bersamaan.
+- **Data:** thread tersimpan di volume `postgres-data`. Postgres hanya dibuka di `127.0.0.1`
+  (port `POSTGRES_PORT`, default 5432). Kredensial dev bisa diganti lewat `POSTGRES_USER`,
+  `POSTGRES_PASSWORD`, dan `POSTGRES_DB`.
 - **Image:** setiap image hanya membawa extra-nya. Image `service` sekitar 505 MB (tanpa
   Streamlit), dan image `ui` sekitar 881 MB (tanpa LangGraph). Sebelumnya keduanya sekitar 1 GB.
 
@@ -110,7 +122,7 @@ menunjuk ke container itu sendiri.
 | `USE_FAKE_MODEL` | tidak | `true` untuk dev/test tanpa LLM |
 | `LLM_MAX_TOKENS` | tidak | Batas token jawaban per giliran model, default `8192`. Pada model reasoning (Ollama), token reasoning ikut dihitung. Jawaban yang terpotong ditandai `truncated` |
 | `LLM_MAX_TOKENS_PARAM` | tidak | Nama parameter batas token di request: `max_tokens` (default, untuk Ollama/vLLM/llama.cpp) atau `max_completion_tokens` (model reasoning OpenAI seperti gpt-5/o-series) |
-| `SQLITE_DB_PATH` | tidak | Default `checkpoints.db` |
+| `DATABASE_URL` | tidak | Postgres, default `postgresql://agent:agent@127.0.0.1:5432/agent_service` (service `postgres` di compose). Pakai `127.0.0.1`, bukan `localhost`, di Docker Desktop Windows |
 | `AUTH_SECRET` | tidak | Jika diset, semua request butuh `Authorization: Bearer ...` |
 | `FIRECRAWL_API_KEY` | tidak | Key [Firecrawl](https://firecrawl.dev) untuk tool `web_search` (research-assistant, supervisor). Kosong = tanpa pencarian web |
 | `AGENT_URL` | tidak | URL service untuk UI/client, default `http://localhost:8080` |
@@ -171,13 +183,19 @@ dan UI otomatis menampilkan agent baru.
 ## Development
 
 ```bash
+docker compose up -d postgres # database untuk test (sekali per sesi kerja)
 uv run pytest                 # test (tanpa test integration)
 uv run pytest -m integration  # test e2e Docker Compose (butuh Docker)
+uv run alembic revision --autogenerate -m "add projects"   # migrasi baru dari memory/tables.py
 uv run ruff check . --fix     # lint
 uv run ruff format .          # format
 uv run pyrefly check          # type check
 pre-commit install            # pasang git hook
 ```
+
+Test database membuat database sementara `agent_service_test_<acak>` di server Postgres, menjalankan
+migrasi sekali per sesi, mengosongkan tabel sebelum setiap test, lalu menghapus database itu.
+Server lain bisa dipakai lewat `TEST_DATABASE_URL`.
 
 Aturan penulisan kode (prosedur 5 langkah, Class vs Function, checklist Zen) ada di
 [AGENTS.md](AGENTS.md). Wajib dibaca sebelum berkontribusi.
