@@ -1,7 +1,12 @@
 """Model response API: message chat, riwayat, thread, dan metadata service.
 
+Docstring class ikut menjadi deskripsi di kontrak OpenAPI (`contracts/`), jadi doctest ditaruh di
+docstring modul ini, bukan di docstring class.
+
 >>> ChatMessage(type="ai", content="Halo!").tool_calls
 []
+>>> HealthStatus().model_dump()
+{'status': 'ok'}
 """
 
 from datetime import datetime
@@ -95,11 +100,7 @@ class ServiceMetadata(BaseModel):
 
 
 class HealthStatus(BaseModel):
-    """Isi endpoint `/health`.
-
-    >>> HealthStatus().model_dump()
-    {'status': 'ok'}
-    """
+    """Isi endpoint `/health`."""
 
     status: Literal["ok"] = "ok"
 

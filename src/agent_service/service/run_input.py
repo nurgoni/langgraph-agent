@@ -17,6 +17,14 @@ from agent_service.schema.requests import UserInput
 from agent_service.service.thread_access import ensure_thread_owner, is_new_thread, run_metadata
 
 AGENT_CONFIG_LOCATION: Final = ("body", "agent_config")
+# Header respons run di OpenAPI, supaya tipe client hasil generate tahu cara membaca ID thread.
+# Any: bentuk bebas objek OpenAPI milik FastAPI.
+RUN_RESPONSE_HEADERS: Final[dict[str, dict[str, Any]]] = {
+    THREAD_ID_HEADER: {
+        "description": "Thread used by this run. Send it as `thread_id` to continue the thread.",
+        "schema": {"type": "string"},
+    }
+}
 
 # Any: bentuk input bergantung pada state agent. Command dipakai untuk melanjutkan interrupt.
 type GraphInput = dict[str, Any] | Command

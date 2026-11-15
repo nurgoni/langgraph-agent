@@ -1,6 +1,7 @@
 """Endpoint `/invoke`: jalankan agent sampai selesai dan kembalikan jawaban akhir (FR-6)."""
 
 import logging
+from typing import Any, Final
 
 from fastapi import APIRouter, Response
 
@@ -9,14 +10,17 @@ from agent_service.schema.requests import UserInput
 from agent_service.schema.responses import ChatMessage
 from agent_service.service.converters import final_chat_message
 from agent_service.service.dependencies import DefaultAgentIdDep, PrincipalDep, RegistryDep
-from agent_service.service.run_input import build_run_input
+from agent_service.service.run_input import RUN_RESPONSE_HEADERS, build_run_input
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["agents"])
 
+# Any: bentuk bebas objek OpenAPI milik FastAPI.
+INVOKE_RESPONSES: Final[dict[int | str, dict[str, Any]]] = {200: {"headers": RUN_RESPONSE_HEADERS}}
 
-@router.post("/invoke")
+
+@router.post("/invoke", responses=INVOKE_RESPONSES)
 async def invoke_default_agent(
     user_input: UserInput,
     response: Response,
@@ -28,7 +32,7 @@ async def invoke_default_agent(
     return await invoke(default_agent_id, user_input, principal.user_id, response, registry)
 
 
-@router.post("/{agent_id}/invoke")
+@router.post("/{agent_id}/invoke", responses=INVOKE_RESPONSES)
 async def invoke_agent(
     agent_id: str,
     user_input: UserInput,
