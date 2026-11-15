@@ -1,5 +1,4 @@
 from collections.abc import AsyncIterator
-from pathlib import Path
 
 import pytest
 from fastapi import APIRouter, Depends, FastAPI
@@ -31,11 +30,11 @@ async def open_client(app: FastAPI) -> AsyncIterator[AsyncClient]:
 
 
 @pytest.fixture
-async def secured_client(tmp_path: Path) -> AsyncIterator[AsyncClient]:
+async def secured_client(database_url: str) -> AsyncIterator[AsyncClient]:
     settings = Settings(
         _env_file=None,
         use_fake_model=True,
-        sqlite_db_path=tmp_path / "test.db",
+        database_url=database_url,
         auth_secret=SECRET,
     )
     app = create_app(settings)

@@ -4,7 +4,12 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from agent_service.core.constants import DEFAULT_LLM_MAX_TOKENS, DEFAULT_PORT, FAKE_MODEL_NAME
+from agent_service.core.constants import (
+    DEFAULT_DATABASE_URL,
+    DEFAULT_LLM_MAX_TOKENS,
+    DEFAULT_PORT,
+    FAKE_MODEL_NAME,
+)
 from agent_service.core.settings import Settings
 
 REAL_LLM_ENV = {
@@ -170,4 +175,28 @@ def test_unknown_llm_max_tokens_param_is_rejected(monkeypatch: pytest.MonkeyPatc
     set_env(monkeypatch, {"USE_FAKE_MODEL": "true", "LLM_MAX_TOKENS_PARAM": "num_predict"})
 
     with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+def test_database_url_defaults_to_compose_postgres() -> None:
+    settings = Settings(_env_file=None, use_fake_model=True)
+
+    assert settings.database_url.get_secret_value() == DEFAULT_DATABASE_URL
+
+
+def test_database_url_is_read_from_env_and_hidden(monkeypatch: pytest.MonkeyPatch) -> None:
+    url = "postgres://app:hunter2@db.internal:5432/agents"
+    set_env(monkeypatch, {"USE_FAKE_MODEL": "true", "DATABASE_URL": url})
+
+    settings = Settings(_env_file=None)
+
+    assert settings.database_url.get_secret_value() == url
+    assert "hunter2" not in repr(settings)
+
+
+@pytest.mark.parametrize("url", ["sqlite:///checkpoints.db", "mysql://u:p@h/db", "checkpoints.db"])
+def test_non_postgres_database_url_is_rejected(monkeypatch: pytest.MonkeyPatch, url: str) -> None:
+    set_env(monkeypatch, {"USE_FAKE_MODEL": "true", "DATABASE_URL": url})
+
+    with pytest.raises(ValidationError, match="postgresql://"):
         Settings(_env_file=None)

@@ -15,14 +15,17 @@ dependencies = [
 
 [project.optional-dependencies]
 service = [
-    "aiosqlite~=0.22",
+    "alembic~=1.20",
     "fastapi~=0.143",
     "langchain-core~=1.6",
     "langchain-openai~=1.7",
     "langgraph~=1.2",
-    "langgraph-checkpoint-sqlite~=3.1",
+    "langgraph-checkpoint-postgres~=3.2",
     "numexpr~=2.14",
+    "psycopg-pool~=3.3",
+    "psycopg[binary]~=3.3",
     "pydantic-settings~=2.16",
+    "sqlalchemy[asyncio]~=2.1",
     "uvicorn~=0.54",
 ]
 ui = [
@@ -64,7 +67,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "src"]
-addopts = "--doctest-modules --import-mode=importlib -m 'not integration'"
+addopts = "--doctest-modules --import-mode=importlib -m 'not integration' --ignore=src/agent_service/memory/migrations"
 markers = ["integration: needs external services (docker, real LLM); run with -m integration"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"

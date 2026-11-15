@@ -1,18 +1,18 @@
 """Konfigurasi service yang dibaca dari environment variable dan file `.env`."""
 
-from pathlib import Path
 from typing import Annotated, Final, Self
+from urllib.parse import urlsplit
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from agent_service.core.constants import (
+    DEFAULT_DATABASE_URL,
     DEFAULT_HOST,
     DEFAULT_LLM_MAX_TOKENS,
     DEFAULT_LLM_MAX_TOKENS_PARAM,
     DEFAULT_LOG_LEVEL,
     DEFAULT_PORT,
-    DEFAULT_SQLITE_DB_PATH,
     ENV_FILE,
     ENV_FILE_ENCODING,
     FAKE_MODEL_NAME,
@@ -20,6 +20,7 @@ from agent_service.core.constants import (
     MIN_LLM_MAX_TOKENS,
     MIN_PORT,
     MODEL_LIST_SEPARATOR,
+    POSTGRES_URL_SCHEMES,
     LogLevel,
     MaxTokensParam,
 )
@@ -58,7 +59,8 @@ class Settings(BaseSettings):
     llm_max_tokens: int = Field(default=DEFAULT_LLM_MAX_TOKENS, ge=MIN_LLM_MAX_TOKENS)
     llm_max_tokens_param: MaxTokensParam = DEFAULT_LLM_MAX_TOKENS_PARAM
 
-    sqlite_db_path: Path = DEFAULT_SQLITE_DB_PATH
+    # Secret karena berisi password. Default = Postgres dari compose.yaml untuk dev lokal.
+    database_url: SecretStr = SecretStr(DEFAULT_DATABASE_URL)
 
     # Kosong berarti tool web search menjawab "not configured", tanpa menggagalkan startup.
     firecrawl_api_key: SecretStr | None = None
@@ -88,6 +90,25 @@ class Settings(BaseSettings):
             if name:
                 names.append(name)
         return names
+
+    @field_validator("database_url")
+    @classmethod
+    def _require_postgres_url(cls, value: SecretStr) -> SecretStr:
+        """Tolak `DATABASE_URL` selain Postgres, misalnya `sqlite://` sisa konfigurasi lama.
+
+        Args:
+            value: URL database yang sudah dibungkus `SecretStr`.
+
+        Returns:
+            Nilai yang sama jika skemanya `postgresql://` atau `postgres://`.
+
+        Raises:
+            ValueError: Jika skema URL bukan Postgres.
+        """
+        scheme = urlsplit(value.get_secret_value()).scheme
+        if scheme not in POSTGRES_URL_SCHEMES:
+            raise ValueError(f"DATABASE_URL must start with postgresql:// (got scheme {scheme!r})")
+        return value
 
     @model_validator(mode="after")
     def _resolve_models(self) -> Self:

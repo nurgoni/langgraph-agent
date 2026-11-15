@@ -19,7 +19,10 @@ DEFAULT_PORT: Final = 8080
 MIN_PORT: Final = 1
 MAX_PORT: Final = 65535
 
-DEFAULT_SQLITE_DB_PATH: Final = Path("checkpoints.db")
+# Kredensial dev, sama dengan service `postgres` di compose.yaml (keputusan user, F23).
+# 127.0.0.1, bukan localhost: di Docker Desktop Windows koneksi ke ::1 menggantung sampai timeout.
+DEFAULT_DATABASE_URL: Final = "postgresql://agent:agent@127.0.0.1:5432/agent_service"
+POSTGRES_URL_SCHEMES: Final = ("postgresql", "postgres")
 
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 DEFAULT_LOG_LEVEL: Final[LogLevel] = "INFO"

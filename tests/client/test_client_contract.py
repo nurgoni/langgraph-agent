@@ -1,7 +1,6 @@
-"""Client asli terhadap service asli (in-process lewat ASGI, FakeModel, SQLite sementara)."""
+"""Client asli terhadap service asli (in-process lewat ASGI, FakeModel, database Postgres test)."""
 
 from collections.abc import AsyncIterator
-from pathlib import Path
 
 import httpx
 import pytest
@@ -36,11 +35,11 @@ class ThinkingAgent(ChatbotAgent):
 
 
 @pytest.fixture
-async def client(tmp_path: Path) -> AsyncIterator[AgentClient]:
+async def client(database_url: str) -> AsyncIterator[AgentClient]:
     settings = Settings(
         _env_file=None,
         use_fake_model=True,
-        sqlite_db_path=tmp_path / "contract.db",
+        database_url=database_url,
         auth_secret=SECRET,
     )
     app = create_app(settings, agents=[ChatbotAgent(), ThinkingAgent()])
@@ -100,9 +99,9 @@ async def test_service_errors_reach_client_with_status(client: AgentClient) -> N
     assert isinstance(invalid_config.value.detail, list)
 
 
-async def test_missing_token_is_401(tmp_path: Path) -> None:
+async def test_missing_token_is_401(database_url: str) -> None:
     settings = Settings(
-        _env_file=None, use_fake_model=True, sqlite_db_path=tmp_path / "x.db", auth_secret=SECRET
+        _env_file=None, use_fake_model=True, database_url=database_url, auth_secret=SECRET
     )
     app = create_app(settings)
     async with app.router.lifespan_context(app):

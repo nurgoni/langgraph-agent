@@ -1,5 +1,4 @@
 from collections.abc import AsyncIterator
-from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -9,11 +8,11 @@ from agent_service.service.app import create_app
 
 
 @pytest.fixture
-async def secured_client(tmp_path: Path) -> AsyncIterator[AsyncClient]:
+async def secured_client(database_url: str) -> AsyncIterator[AsyncClient]:
     settings = Settings(
         _env_file=None,
         use_fake_model=True,
-        sqlite_db_path=tmp_path / "test.db",
+        database_url=database_url,
         auth_secret="s3cret",
     )
     app = create_app(settings)

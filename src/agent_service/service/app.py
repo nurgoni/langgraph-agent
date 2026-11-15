@@ -14,6 +14,8 @@ from agent_service.agents.tools.web_search import SearchBackend, create_search_b
 from agent_service.core.settings import Settings
 from agent_service.llm.factory import ModelFactory
 from agent_service.memory.checkpointer import CheckpointerProvider
+from agent_service.memory.database import DatabaseEngineProvider
+from agent_service.memory.migrator import ensure_database_migrated
 from agent_service.memory.thread_metadata import ThreadMetadataRepository
 from agent_service.service.auth import verify_bearer
 from agent_service.service.errors import register_exception_handlers
@@ -93,11 +95,12 @@ def build_search_backend(settings: Settings) -> SearchBackend:
 
 
 def _build_lifespan(settings: Settings, agents: Sequence[BaseAgent]) -> Lifespan:
-    """Buat lifespan yang membuka checkpointer, mendaftarkan, dan memuat semua agent.
+    """Buat lifespan yang membuka database, mendaftarkan, dan memuat semua agent.
 
-    Urutan: `ModelFactory` → `CheckpointerProvider` → `AgentRegistry.load_all()`. Factory,
-    registry, dan `ThreadRepository` disimpan di `app.state`. Checkpointer dan penyimpanan judul
-    thread ditutup saat shutdown.
+    Urutan: `ModelFactory` → engine + `CheckpointerProvider` → cek migrasi →
+    `AgentRegistry.load_all()`. Factory, registry, dan `ThreadRepository` disimpan di
+    `app.state`. Engine dan pool checkpointer ditutup saat shutdown. Startup gagal jika Postgres
+    tidak terjangkau atau migrasi belum dijalankan.
     """
 
     @asynccontextmanager
@@ -105,10 +108,13 @@ def _build_lifespan(settings: Settings, agents: Sequence[BaseAgent]) -> Lifespan
         if settings.auth_secret is None:
             logger.warning("AUTH_SECRET is not set: every endpoint is unauthenticated")
         model_factory = ModelFactory(settings)
+        database_url = settings.database_url.get_secret_value()
         async with (
-            CheckpointerProvider(settings.sqlite_db_path) as checkpointer,
-            ThreadMetadataRepository(settings.sqlite_db_path) as titles,
+            DatabaseEngineProvider(database_url) as engine,
+            CheckpointerProvider(database_url) as checkpointer,
         ):
+            await ensure_database_migrated(engine)
+            titles = ThreadMetadataRepository(engine)
             registry = AgentRegistry(model_factory, checkpointer)
             for agent in agents:
                 registry.register(agent)

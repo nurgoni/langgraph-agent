@@ -2,7 +2,6 @@
 
 from collections.abc import AsyncIterator
 from datetime import date
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -40,8 +39,8 @@ class ScriptedInterruptAgent(InterruptAgent):
 
 
 @pytest.fixture
-async def client(tmp_path: Path) -> AsyncIterator[AsyncClient]:
-    settings = Settings(_env_file=None, use_fake_model=True, sqlite_db_path=tmp_path / "i.db")
+async def client(database_url: str) -> AsyncIterator[AsyncClient]:
+    settings = Settings(_env_file=None, use_fake_model=True, database_url=database_url)
     agents = [ChatbotAgent(), ScriptedInterruptAgent(today=lambda: date(2026, 11, 12))]
     app = create_app(settings, agents=agents)
     async with app.router.lifespan_context(app):

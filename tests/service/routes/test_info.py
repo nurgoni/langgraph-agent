@@ -1,5 +1,4 @@
 from collections.abc import AsyncIterator
-from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -29,11 +28,11 @@ class BrokenAgent(ChatbotAgent):
 
 
 @pytest.fixture
-async def multi_agent_client(tmp_path: Path) -> AsyncIterator[AsyncClient]:
+async def multi_agent_client(database_url: str) -> AsyncIterator[AsyncClient]:
     settings = Settings(
         _env_file=None,
         use_fake_model=True,
-        sqlite_db_path=tmp_path / "test.db",
+        database_url=database_url,
         llm_base_url="http://llm.test/v1",
         llm_api_key="sk-test",
         available_models=["fake", "gpt-test"],

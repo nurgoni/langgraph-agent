@@ -1,8 +1,10 @@
+import asyncio
 import logging
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+import uvicorn
 from fastapi import FastAPI
 
 from agent_service import run_service
@@ -37,4 +39,11 @@ def test_main_runs_uvicorn_with_settings_from_env(
     assert isinstance(app, FastAPI)
     assert kwargs["port"] == TEST_PORT
     assert kwargs["log_config"] is None
+    assert kwargs["loop"] == run_service.UVICORN_SELECTOR_LOOP
     assert logging.getLogger().level == logging.DEBUG
+
+
+def test_uvicorn_resolves_selector_event_loop() -> None:
+    config = uvicorn.Config(FastAPI(), loop=run_service.UVICORN_SELECTOR_LOOP)
+
+    assert config.get_loop_factory() is asyncio.SelectorEventLoop

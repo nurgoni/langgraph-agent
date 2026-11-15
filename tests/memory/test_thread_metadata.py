@@ -1,24 +1,22 @@
 from collections.abc import AsyncIterator
-from pathlib import Path
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent_service.memory.checkpointer import CheckpointerProvider
-from agent_service.memory.thread_metadata import (
-    ThreadMetadataNotOpenError,
-    ThreadMetadataRepository,
-)
+from agent_service.memory.database import DatabaseEngineProvider
+from agent_service.memory.thread_metadata import ThreadMetadataRepository
 
 
 @pytest.fixture
-def db_path(tmp_path: Path) -> Path:
-    return tmp_path / "data" / "checkpoints.db"
+async def engine(database_url: str) -> AsyncIterator[AsyncEngine]:
+    async with DatabaseEngineProvider(database_url) as database_engine:
+        yield database_engine
 
 
 @pytest.fixture
-async def titles(db_path: Path) -> AsyncIterator[ThreadMetadataRepository]:
-    async with ThreadMetadataRepository(db_path) as repository:
-        yield repository
+def titles(engine: AsyncEngine) -> ThreadMetadataRepository:
+    return ThreadMetadataRepository(engine)
 
 
 async def test_set_then_get_title(titles: ThreadMetadataRepository) -> None:
@@ -47,32 +45,20 @@ async def test_delete_removes_title(titles: ThreadMetadataRepository) -> None:
     assert await titles.get_titles(["t1"]) == {}
 
 
-async def test_titles_persist_across_connections(db_path: Path) -> None:
-    async with ThreadMetadataRepository(db_path) as first:
-        await first.set_title("t1", "Tetap ada")
-    async with ThreadMetadataRepository(db_path) as second:
-        assert await second.get_titles(["t1"]) == {"t1": "Tetap ada"}
+async def test_titles_persist_across_engines(database_url: str) -> None:
+    async with DatabaseEngineProvider(database_url) as first_engine:
+        await ThreadMetadataRepository(first_engine).set_title("t1", "Tetap ada")
+    async with DatabaseEngineProvider(database_url) as second_engine:
+        titles = await ThreadMetadataRepository(second_engine).get_titles(["t1"])
+
+    assert titles == {"t1": "Tetap ada"}
 
 
-async def test_shares_database_file_with_checkpointer(db_path: Path) -> None:
-    async with (
-        CheckpointerProvider(db_path) as saver,
-        ThreadMetadataRepository(db_path) as titles,
-    ):
+async def test_shares_database_with_checkpointer(
+    database_url: str, titles: ThreadMetadataRepository
+) -> None:
+    async with CheckpointerProvider(database_url) as saver:
         await titles.set_title("t1", "Berdampingan")
+
         assert await saver.aget_tuple({"configurable": {"thread_id": "t1"}}) is None
-        assert await titles.get_titles(["t1"]) == {"t1": "Berdampingan"}
-
-
-async def test_use_before_open_is_rejected(db_path: Path) -> None:
-    with pytest.raises(ThreadMetadataNotOpenError):
-        await ThreadMetadataRepository(db_path).get_titles(["t1"])
-
-
-async def test_entering_twice_is_rejected(titles: ThreadMetadataRepository) -> None:
-    with pytest.raises(ThreadMetadataNotOpenError):
-        await titles.__aenter__()
-
-
-async def test_exit_without_enter_is_noop(db_path: Path) -> None:
-    await ThreadMetadataRepository(db_path).__aexit__(None, None, None)
+    assert await titles.get_titles(["t1"]) == {"t1": "Berdampingan"}

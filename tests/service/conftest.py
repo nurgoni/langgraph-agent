@@ -1,7 +1,6 @@
-"""Fixture service: app dengan FakeModel, SQLite di `tmp_path`, lifespan, dan agent fake."""
+"""Fixture service: app dengan FakeModel, database Postgres test, lifespan, dan agent fake."""
 
 from collections.abc import AsyncIterator
-from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
@@ -74,8 +73,8 @@ def tone_agent() -> BaseAgent:
 
 
 @pytest.fixture
-def settings(tmp_path: Path) -> Settings:
-    return Settings(_env_file=None, use_fake_model=True, sqlite_db_path=tmp_path / "test.db")
+def settings(database_url: str) -> Settings:
+    return Settings(_env_file=None, use_fake_model=True, database_url=database_url)
 
 
 @pytest.fixture
