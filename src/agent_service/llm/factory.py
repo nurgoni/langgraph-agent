@@ -38,16 +38,18 @@ class ModelNotConfiguredError(ModelError):
 
 
 class ModelFactory:
-    """Membuat chat model berdasarkan nama, dan menyimpan instance per nama untuk di-reuse.
+    """Membuat chat model berdasarkan nama dan batas token, lalu menyimpannya untuk di-reuse.
 
     Nama `fake` menghasilkan `FakeModel`. Nama lain menghasilkan `ChatOpenAI` yang diarahkan
-    ke endpoint OpenAI-compatible di `LLM_BASE_URL`.
+    ke endpoint OpenAI-compatible di `LLM_BASE_URL`, dengan batas token jawaban (FR-30).
 
     >>> factory = ModelFactory(Settings(_env_file=None, use_fake_model=True))
     >>> type(factory.create()).__name__
     'FakeModel'
     >>> factory.create("fake") is factory.create()
     True
+    >>> factory.create(max_tokens=256) is factory.create()
+    False
     """
 
     def __init__(self, settings: Settings) -> None:
@@ -64,7 +66,7 @@ class ModelFactory:
             raise ModelNotConfiguredError("Settings.default_model is not resolved")
         self._settings = settings
         self._default_model = settings.default_model
-        self._models: dict[str, BaseChatModel] = {}
+        self._models: dict[tuple[str, int], BaseChatModel] = {}
 
     def resolve_name(self, model_name: str | None = None) -> str:
         """Tentukan nama model final untuk request, tanpa membuat model.
@@ -86,11 +88,13 @@ class ModelFactory:
             raise UnknownModelError(name, self._settings.available_models)
         return name
 
-    def create(self, model_name: str | None = None) -> BaseChatModel:
-        """Kembalikan chat model untuk `model_name`, dibuat sekali lalu di-reuse.
+    def create(self, model_name: str | None = None, max_tokens: int | None = None) -> BaseChatModel:
+        """Kembalikan chat model untuk `model_name` dan `max_tokens`, dibuat sekali lalu di-reuse.
 
         Args:
             model_name: Nama model dari request. `None` berarti `DEFAULT_MODEL`.
+            max_tokens: Batas token jawaban, termasuk token reasoning pada provider yang
+                menghitungnya bersama. `None` berarti `LLM_MAX_TOKENS`.
 
         Returns:
             Chat model yang siap dipakai agent.
@@ -101,19 +105,24 @@ class ModelFactory:
                 model non-fake.
         """
         name = self.resolve_name(model_name)
-        model = self._models.get(name)
+        token_limit = self._settings.llm_max_tokens if max_tokens is None else max_tokens
+        cache_key = (name, token_limit)
+        model = self._models.get(cache_key)
         if model is None:
-            model = self._build(name)
-            self._models[name] = model
+            model = self._build(name, token_limit)
+            self._models[cache_key] = model
         return model
 
-    def _build(self, model_name: str) -> BaseChatModel:
-        """Buat instance model baru tanpa cek allowlist dan tanpa cache."""
+    def _build(self, model_name: str, max_tokens: int) -> BaseChatModel:
+        """Buat instance model baru tanpa cek allowlist dan tanpa cache.
+
+        `FakeModel` mengabaikan `max_tokens`, karena responsnya sudah di-script.
+        """
         if model_name == FAKE_MODEL_NAME:
             return FakeModel()
-        return self._build_openai_compatible(model_name)
+        return self._build_openai_compatible(model_name, max_tokens)
 
-    def _build_openai_compatible(self, model_name: str) -> ReasoningChatOpenAI:
+    def _build_openai_compatible(self, model_name: str, max_tokens: int) -> ReasoningChatOpenAI:
         """Buat `ReasoningChatOpenAI` (reasoning provider ikut terbawa) dari `Settings`.
 
         Raises:
@@ -133,6 +142,8 @@ class ModelFactory:
             temperature=DEFAULT_TEMPERATURE,
             timeout=LLM_TIMEOUT_SECONDS,
             max_retries=LLM_MAX_RETRIES,
+            max_tokens=max_tokens,
+            max_tokens_param=self._settings.llm_max_tokens_param,
             # Tanpa ini, stream_mode="messages" LangGraph hanya menerima satu chunk berisi seluruh
             # jawaban, sehingga /stream tidak mengirim token satu per satu.
             streaming=True,
