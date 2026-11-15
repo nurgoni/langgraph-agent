@@ -1,6 +1,7 @@
 # Stack lokal: Postgres, migrasi, service API (:8080), dan UI Streamlit (:8501).
 #   docker compose up --build
 #   docker compose up -d postgres     # hanya database, untuk dev lokal dan test
+#   docker compose exec agent-service python -m agent_service.manage create-user demo
 # Default-nya FakeModel, jadi stack berjalan tanpa API key. Untuk LLM asli, tambahkan
 # compose.llm.yaml (lihat README).
 name: agent-service
@@ -8,6 +9,8 @@ name: agent-service
 # Kredensial dev. Nilainya sama dengan DEFAULT_DATABASE_URL di core/constants.py, jadi
 # `uv run python -m agent_service.run_service` di host langsung terhubung ke service postgres.
 x-database-url: &database-url "postgresql://${POSTGRES_USER:-agent}:${POSTGRES_PASSWORD:-agent}@postgres:5432/${POSTGRES_DB:-agent_service}"
+# Hanya untuk stack lokal/demo. Di luar mesin dev, set JWT_SECRET sendiri (lihat .env.example).
+x-jwt-secret: &jwt-secret "${JWT_SECRET:-dev-only-insecure-jwt-secret-change-me}"
 
 services:
   postgres:
@@ -41,6 +44,7 @@ services:
     command: ["python", "-m", "agent_service.run_migrate"]
     environment:
       DATABASE_URL: *database-url
+      JWT_SECRET: *jwt-secret
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       USE_FAKE_MODEL: "true"
     depends_on:
@@ -58,13 +62,15 @@ services:
       - "${SERVICE_PORT:-8080}:8080"
     environment:
       # Ditulis eksplisit, bukan env_file: konfigurasi LLM di .env (misalnya LLM_BASE_URL ke
-      # localhost) tidak berlaku dari dalam container. Yang diambil dari .env hanya AUTH_SECRET,
-      # LOG_LEVEL, FIRECRAWL_API_KEY, dan kredensial POSTGRES_*.
+      # localhost) tidak berlaku dari dalam container. Yang diambil dari .env hanya JWT_SECRET,
+      # JWT_TTL_SECONDS, CORS_ORIGINS, LOG_LEVEL, FIRECRAWL_API_KEY, dan kredensial POSTGRES_*.
       USE_FAKE_MODEL: "true"
       DEFAULT_MODEL: fake
       AVAILABLE_MODELS: fake
       DATABASE_URL: *database-url
-      AUTH_SECRET: ${AUTH_SECRET:-}
+      JWT_SECRET: *jwt-secret
+      JWT_TTL_SECONDS: ${JWT_TTL_SECONDS:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       # Kosong: tool web_search menjawab "not configured", agent tetap berjalan.
       FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
@@ -83,7 +89,6 @@ services:
       - "${UI_PORT:-8501}:8501"
     environment:
       AGENT_URL: http://agent-service:8080
-      AUTH_SECRET: ${AUTH_SECRET:-}
     depends_on:
       agent-service:
         condition: service_healthy
