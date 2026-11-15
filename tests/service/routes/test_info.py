@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict
 from agent_service.agents.base import AgentGraph, Checkpointer
 from agent_service.agents.chatbot import ChatbotAgent
 from agent_service.core.settings import Settings
+from agent_service.memory.users import UserRecord
 from agent_service.schema.responses import ServiceMetadata
 from agent_service.service.app import create_app
 
@@ -44,8 +45,13 @@ async def multi_agent_client(database_url: str) -> AsyncIterator[AsyncClient]:
     ]
     app = create_app(settings, agents=agents, default_agent_id="styled")
     async with app.router.lifespan_context(app):
+        user = UserRecord(user_id="user-a", username="user-a", password_hash="", role="user")
+        token = app.state.authenticator.issue_token(user).access_token
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        headers = {"Authorization": f"Bearer {token}"}
+        async with AsyncClient(
+            transport=transport, base_url="http://testserver", headers=headers
+        ) as client:
             yield client
 
 

@@ -6,6 +6,7 @@ from pydantic import ValidationError
 
 from agent_service.core.constants import (
     DEFAULT_DATABASE_URL,
+    DEFAULT_JWT_TTL_SECONDS,
     DEFAULT_LLM_MAX_TOKENS,
     DEFAULT_PORT,
     FAKE_MODEL_NAME,
@@ -20,10 +21,14 @@ REAL_LLM_ENV = {
 
 
 @pytest.fixture(autouse=True)
-def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Hapus semua env var milik Settings agar test tidak dipengaruhi mesin developer."""
+def clean_env(monkeypatch: pytest.MonkeyPatch, test_jwt_secret: str) -> None:
+    """Hapus semua env var milik Settings agar test tidak dipengaruhi mesin developer.
+
+    `JWT_SECRET` diisi ulang dengan nilai test karena wajib. Test validasinya menghapusnya sendiri.
+    """
     for field_name in Settings.model_fields:
         monkeypatch.delenv(field_name.upper(), raising=False)
+    monkeypatch.setenv("JWT_SECRET", test_jwt_secret)
 
 
 def set_env(monkeypatch: pytest.MonkeyPatch, values: dict[str, str]) -> None:
@@ -200,3 +205,44 @@ def test_non_postgres_database_url_is_rejected(monkeypatch: pytest.MonkeyPatch, 
 
     with pytest.raises(ValidationError, match="postgresql://"):
         Settings(_env_file=None)
+
+
+def test_jwt_secret_is_required(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("JWT_SECRET")
+
+    with pytest.raises(ValidationError, match="jwt_secret"):
+        Settings(_env_file=None, use_fake_model=True)
+
+
+def test_short_jwt_secret_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JWT_SECRET", "too-short")
+
+    with pytest.raises(ValidationError, match="jwt_secret"):
+        Settings(_env_file=None, use_fake_model=True)
+
+
+def test_jwt_secret_is_hidden_and_ttl_defaults_to_twelve_hours(test_jwt_secret: str) -> None:
+    settings = Settings(_env_file=None, use_fake_model=True)
+
+    assert settings.jwt_ttl_seconds == DEFAULT_JWT_TTL_SECONDS == 12 * 3600
+    assert test_jwt_secret not in repr(settings)
+
+
+def test_too_short_jwt_ttl_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    set_env(monkeypatch, {"USE_FAKE_MODEL": "true", "JWT_TTL_SECONDS": "5"})
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+def test_cors_origins_are_split_on_commas(monkeypatch: pytest.MonkeyPatch) -> None:
+    origins = "http://localhost:5173, https://demo.example ,"
+    set_env(monkeypatch, {"USE_FAKE_MODEL": "true", "CORS_ORIGINS": origins})
+
+    settings = Settings(_env_file=None)
+
+    assert settings.cors_origins == ["http://localhost:5173", "https://demo.example"]
+
+
+def test_cors_origins_default_to_none_allowed() -> None:
+    assert Settings(_env_file=None, use_fake_model=True).cors_origins == []

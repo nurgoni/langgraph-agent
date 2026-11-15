@@ -1,23 +1,19 @@
 """InterruptAgent lewat endpoint asli: pertanyaan interrupt, resume, dan riwayat (FR-12, FR-24)."""
 
-from collections.abc import AsyncIterator
 from datetime import date
 from typing import Any
 
 import pytest
-from httpx import ASGITransport, AsyncClient
+from httpx import AsyncClient
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
 
-from agent_service.agents.base import AgentGraph, Checkpointer
+from agent_service.agents.base import AgentGraph, BaseAgent, Checkpointer
 from agent_service.agents.chatbot import ChatbotAgent
 from agent_service.agents.interrupt import InterruptAgent
-from agent_service.core.settings import Settings
 from agent_service.llm.fake import FakeModel
 from agent_service.schema.stream import STREAM_EVENT_ADAPTER, MessageEvent, TokenEvent
-from agent_service.service.app import create_app
 
-OWNER = "user-a"
 QUESTION = "Kapan tanggal lahirmu?"
 
 
@@ -39,18 +35,12 @@ class ScriptedInterruptAgent(InterruptAgent):
 
 
 @pytest.fixture
-async def client(database_url: str) -> AsyncIterator[AsyncClient]:
-    settings = Settings(_env_file=None, use_fake_model=True, database_url=database_url)
-    agents = [ChatbotAgent(), ScriptedInterruptAgent(today=lambda: date(2026, 11, 12))]
-    app = create_app(settings, agents=agents)
-    async with app.router.lifespan_context(app):
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://testserver") as http_client:
-            yield http_client
+def agents() -> list[BaseAgent]:
+    return [ChatbotAgent(), ScriptedInterruptAgent(today=lambda: date(2026, 11, 12))]
 
 
 async def invoke(client: AsyncClient, message: str) -> dict[str, Any]:  # Any: body JSON
-    body = {"message": message, "thread_id": "t1", "user_id": OWNER}
+    body = {"message": message, "thread_id": "t1"}
     response = await client.post("/interrupt-agent/invoke", json=body)
     assert response.status_code == 200, response.text
     return response.json()
@@ -68,9 +58,7 @@ async def test_history_keeps_question_flow_without_extraction_calls(client: Asyn
     await invoke(client, "Apa zodiakku?")
     await invoke(client, "17 Mei 1990")
 
-    response = await client.post(
-        "/interrupt-agent/history", json={"thread_id": "t1", "user_id": OWNER}
-    )
+    response = await client.post("/interrupt-agent/history", json={"thread_id": "t1"})
 
     messages = response.json()["messages"]
     assert [(m["type"], m["content"]) for m in messages] == [
@@ -82,7 +70,7 @@ async def test_history_keeps_question_flow_without_extraction_calls(client: Asyn
 
 async def test_interrupt_and_resume_through_stream(client: AsyncClient) -> None:
     async def stream(message: str) -> list[object]:
-        body = {"message": message, "thread_id": "t2", "user_id": OWNER}
+        body = {"message": message, "thread_id": "t2"}
         async with client.stream("POST", "/interrupt-agent/stream", json=body) as response:
             lines = [line async for line in response.aiter_lines() if line]
         assert lines[-1] == "data: [DONE]"

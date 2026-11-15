@@ -1,8 +1,10 @@
 """Model request API (body dan query) yang dipakai bersama service, client, dan UI.
 
+`user_id` tidak ada di request mana pun: service mengambilnya dari access token (FR-33).
+
 >>> UserInput(message="Halo").agent_config
 {}
->>> ChatHistoryInput(thread_id="t-1", user_id="u-1").thread_id
+>>> ChatHistoryInput(thread_id="t-1").thread_id
 't-1'
 """
 
@@ -39,10 +41,6 @@ class UserInput(BaseModel):
     thread_id: str | None = Field(
         default=None,
         description="Thread yang dilanjutkan. Kosong berarti thread baru.",
-    )
-    user_id: str | None = Field(
-        default=None,
-        description="Pemilik thread. Kosong berarti user baru.",
     )
     agent_config: dict[str, JsonValue] = Field(
         default_factory=dict,
@@ -83,13 +81,11 @@ class ChatHistoryInput(BaseModel):
     """Input untuk membaca riwayat satu thread. Hanya pemilik thread yang boleh membaca."""
 
     thread_id: str = Field(min_length=1)
-    user_id: str = Field(min_length=1)
 
 
 class UserThreadsQuery(BaseModel):
-    """Query untuk mendaftar thread milik user."""
+    """Query untuk mendaftar thread milik user pemegang token."""
 
-    user_id: str = Field(min_length=1)
     limit: int = Field(
         default=THREADS_LIMIT_DEFAULT,
         ge=THREADS_LIMIT_MIN,
@@ -100,7 +96,6 @@ class UserThreadsQuery(BaseModel):
 class ThreadRenameInput(BaseModel):
     """Body untuk mengganti judul thread."""
 
-    user_id: str = Field(min_length=1)
     title: ThreadTitle = Field(description="Judul baru. Spasi di awal dan akhir dibuang.")
 
 

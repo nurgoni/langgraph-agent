@@ -103,9 +103,7 @@ async def collect(
     graph: AgentGraph, agent_id: str = "test", message: str = "Hai", stream_tokens: bool = True
 ) -> list[str]:
     agent = ChatbotAgent(agent_id=agent_id)
-    run = await build_run_input(
-        UserInput(message=message, thread_id="t1", user_id="u1"), agent, graph
-    )
+    run = await build_run_input(UserInput(message=message, thread_id="t1"), "u1", agent, graph)
     return [frame async for frame in StreamService(graph, run, stream_tokens).stream()]
 
 
@@ -238,7 +236,7 @@ async def test_error_mid_stream_sends_error_then_done(caplog: pytest.LogCaptureF
 async def test_client_disconnect_closes_without_done() -> None:
     graph = ChatbotAgent().build(FakeModel(responses=["satu dua tiga"]), InMemorySaver())
     agent = ChatbotAgent()
-    run = await build_run_input(UserInput(message="Hai"), agent, graph)
+    run = await build_run_input(UserInput(message="Hai"), "u1", agent, graph)
     stream = StreamService(graph, run, stream_tokens=True).stream()
 
     first = await anext(stream)

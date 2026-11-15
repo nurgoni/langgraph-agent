@@ -7,7 +7,7 @@ from agent_service.agents.registry import AgentRegistry
 from agent_service.schema.requests import ChatHistoryInput
 from agent_service.schema.responses import ChatHistory
 from agent_service.service.converters import state_to_chat_messages
-from agent_service.service.dependencies import DefaultAgentIdDep, RegistryDep
+from agent_service.service.dependencies import DefaultAgentIdDep, PrincipalDep, RegistryDep
 from agent_service.service.thread_access import ensure_thread_owner
 
 router = APIRouter(tags=["agents"])
@@ -15,28 +15,32 @@ router = APIRouter(tags=["agents"])
 
 @router.post("/history")
 async def history_default_agent(
-    history_input: ChatHistoryInput, registry: RegistryDep, default_agent_id: DefaultAgentIdDep
+    history_input: ChatHistoryInput,
+    principal: PrincipalDep,
+    registry: RegistryDep,
+    default_agent_id: DefaultAgentIdDep,
 ) -> ChatHistory:
     """Sama dengan `POST /{agent_id}/history` untuk agent default."""
-    return await read_history(default_agent_id, history_input, registry)
+    return await read_history(default_agent_id, history_input, principal.user_id, registry)
 
 
 @router.post("/{agent_id}/history")
 async def history_agent(
-    agent_id: str, history_input: ChatHistoryInput, registry: RegistryDep
+    agent_id: str, history_input: ChatHistoryInput, principal: PrincipalDep, registry: RegistryDep
 ) -> ChatHistory:
     """Kembalikan semua message thread, urut kronologis. Thread milik user lain → 404."""
-    return await read_history(agent_id, history_input, registry)
+    return await read_history(agent_id, history_input, principal.user_id, registry)
 
 
 async def read_history(
-    agent_id: str, history_input: ChatHistoryInput, registry: AgentRegistry
+    agent_id: str, history_input: ChatHistoryInput, user_id: str, registry: AgentRegistry
 ) -> ChatHistory:
     """Baca state terakhir thread dan ubah channel `messages` menjadi `ChatMessage`.
 
     Args:
         agent_id: Agent pemilik thread.
-        history_input: ID thread dan user yang meminta.
+        history_input: ID thread yang diminta.
+        user_id: User yang meminta, dari access token.
         registry: Registry agent milik app.
 
     Returns:
@@ -51,5 +55,5 @@ async def read_history(
     graph = registry.get_graph(agent_id)
     config = RunnableConfig(configurable={"thread_id": history_input.thread_id})
     snapshot = await graph.aget_state(config)
-    ensure_thread_owner(snapshot.metadata, history_input.thread_id, history_input.user_id, agent_id)
+    ensure_thread_owner(snapshot.metadata, history_input.thread_id, user_id, agent_id)
     return ChatHistory(messages=state_to_chat_messages(snapshot.values))

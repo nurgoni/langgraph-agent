@@ -7,11 +7,11 @@ import pytest
 
 from agent_service.client import AgentClient, AgentClientError
 from agent_service.client.stream import StreamNotStartedError
-from agent_service.schema.headers import THREAD_ID_HEADER, USER_ID_HEADER
+from agent_service.schema.headers import THREAD_ID_HEADER
 from agent_service.schema.stream import ErrorEvent, MessageEvent, TokenEvent
 
 BASE_URL = "http://agent.test"
-ID_HEADERS = {THREAD_ID_HEADER: "t1", USER_ID_HEADER: "u1"}
+ID_HEADERS = {THREAD_ID_HEADER: "t1"}
 AI_MESSAGE = {"type": "ai", "content": "Halo!"}
 INFO = {
     "agents": [{"key": "chatbot", "description": "Bot", "config_schema": {}}],
@@ -74,7 +74,7 @@ async def test_ainvoke_returns_reply_with_ids() -> None:
         "thread_id": "t1",
         "agent_config": {},
     }
-    assert (reply.message.content, reply.thread_id, reply.user_id) == ("Halo!", "t1", "u1")
+    assert (reply.message.content, reply.thread_id) == ("Halo!", "t1")
 
 
 async def test_async_thread_operations() -> None:
@@ -91,10 +91,10 @@ async def test_async_thread_operations() -> None:
 
     requests: list[httpx.Request] = []
     async with make_client(respond, requests) as client:
-        history = await client.aget_history("t1", "u1")
-        threads = await client.aget_threads("u1")
-        summary = await client.arename_thread("t1", "u1", "Baru")
-        await client.adelete_thread("t1", "u1")
+        history = await client.aget_history("t1")
+        threads = await client.aget_threads()
+        summary = await client.arename_thread("t1", "Baru")
+        await client.adelete_thread("t1")
 
     assert [r.method for r in requests] == ["POST", "GET", "PATCH", "DELETE"]
     assert (history.messages, threads.threads, summary.title) == ([], [], "Baru")
@@ -106,7 +106,7 @@ async def test_async_http_error_is_wrapped() -> None:
 
     async with make_client(handler, requests) as client:
         with pytest.raises(AgentClientError) as error_info:
-            await client.aget_history("t1", "u1")
+            await client.aget_history("t1")
 
     assert (error_info.value.status_code, error_info.value.detail) == (404, "Thread 't1' not found")
 
@@ -128,9 +128,9 @@ async def test_astream_yields_events_including_error_frame() -> None:
 
     async with make_client(handler, requests) as client, client.astream("Hai") as run:
         events = [event async for event in run]
-        ids = (run.thread_id, run.user_id)
+        thread_id = run.thread_id
 
-    assert ids == ("t1", "u1")
+    assert thread_id == "t1"
     assert [type(event) for event in events] == [TokenEvent, MessageEvent, ErrorEvent]
 
 
@@ -186,4 +186,4 @@ async def test_astream_ids_require_async_with() -> None:
     async with make_client(lambda request: httpx.Response(200), []) as client:
         run = client.astream("Hai")
         with pytest.raises(StreamNotStartedError):
-            _ = run.user_id
+            _ = run.thread_id

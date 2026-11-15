@@ -12,7 +12,7 @@ from agent_service.client.requests import (
     RequestSpec,
     raise_for_status,
     request_error,
-    run_ids,
+    run_thread_id,
 )
 from agent_service.client.sse import SseParser
 from agent_service.schema.stream import StreamEvent
@@ -45,17 +45,11 @@ class StreamRun:
         self._exit_stack = ExitStack()
         self._response: httpx.Response | None = None
         self._thread_id: str | None = None
-        self._user_id: str | None = None
 
     @property
     def thread_id(self) -> str:
         """ID thread yang dipakai run, termasuk ID yang dibuat service."""
         return _require_started(self._thread_id)
-
-    @property
-    def user_id(self) -> str:
-        """ID user yang dipakai run, termasuk ID yang dibuat service."""
-        return _require_started(self._user_id)
 
     def __enter__(self) -> Self:
         """Kirim request dan baca header ID.
@@ -106,7 +100,7 @@ class StreamRun:
         """Simpan respons dan ID run, atau tutup koneksi jika status error."""
         try:
             raise_for_status(response)
-            self._thread_id, self._user_id = run_ids(response)
+            self._thread_id = run_thread_id(response)
         except AgentClientError:
             self._exit_stack.close()
             raise
@@ -144,17 +138,11 @@ class AsyncStreamRun:
         self._exit_stack = AsyncExitStack()
         self._response: httpx.Response | None = None
         self._thread_id: str | None = None
-        self._user_id: str | None = None
 
     @property
     def thread_id(self) -> str:
         """ID thread yang dipakai run, termasuk ID yang dibuat service."""
         return _require_started(self._thread_id)
-
-    @property
-    def user_id(self) -> str:
-        """ID user yang dipakai run, termasuk ID yang dibuat service."""
-        return _require_started(self._user_id)
 
     async def __aenter__(self) -> Self:
         """Kirim request dan baca header ID.
@@ -205,7 +193,7 @@ class AsyncStreamRun:
         """Simpan respons dan ID run, atau tutup koneksi jika status error."""
         try:
             raise_for_status(response)
-            self._thread_id, self._user_id = run_ids(response)
+            self._thread_id = run_thread_id(response)
         except AgentClientError:
             await self._exit_stack.aclose()
             raise

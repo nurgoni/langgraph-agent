@@ -83,8 +83,9 @@ sequenceDiagram
 ## Alur Request
 
 Setiap route agent punya dua varian: `/{agent_id}/...` dan `/...` (memakai `DEFAULT_AGENT_ID` =
-`chatbot`). Keduanya memanggil helper yang sama. Semua route kecuali `/health` melewati
-`verify_bearer` jika `AUTH_SECRET` diset.
+`chatbot`). Keduanya memanggil helper yang sama. Semua route kecuali `/health` dan `/auth/login`
+melewati dependency `current_principal` (lihat [Auth](#auth)), dan `user_id` selalu berasal dari
+token.
 
 ### `/invoke` dan `/stream`
 
@@ -99,13 +100,13 @@ sequenceDiagram
     C->>R: POST /{agent_id}/stream
     R->>G: get_agent, get_graph(agent_id, model)
     G-->>R: graph (di-cache per agent + model)
-    R->>B: build_run_input(input, agent, graph)
-    B->>B: validasi agent_config, isi thread_id/user_id, run_id uuid7
+    R->>B: build_run_input(input, principal.user_id, agent, graph)
+    B->>B: validasi agent_config, isi thread_id, run_id uuid7
     B->>X: aget_state(thread)
     X->>S: baca checkpoint terakhir
     B->>B: cek pemilik thread, pilih message atau Command(resume)
     B-->>R: RunInput
-    R-->>C: 200 + X-Thread-Id/X-User-Id (stream dimulai)
+    R-->>C: 200 + X-Thread-Id (stream dimulai)
     R->>X: StreamService.stream() → astream(...)
     X->>S: tulis checkpoint per langkah
     X-->>C: data: token / message ... data: [DONE]
@@ -161,6 +162,29 @@ Pemetaan ini ada di `service/errors.py` (`DOMAIN_ERROR_STATUS`), dan subclass ik
 lewat MRO. Selain handler 500, satu-satunya `except Exception` yang diizinkan ada di
 `AgentRegistry._load` (batas plugin agent) dan `StreamService.stream` (batas SSE).
 
+## Auth
+
+Auth per user dengan JWT (FR-33), tanpa mode anonim: `JWT_SECRET` wajib diisi.
+
+- **Akun** ada di tabel `users` (`UserRepository`), dan dibuat hanya lewat CLI
+  `python -m agent_service.manage create-user <username> [--role service]`. Username dinormalisasi
+  ke huruf kecil (`[a-z0-9._-]`, 3–32 karakter). Password di-hash dengan argon2id.
+- **`POST /auth/login`** memanggil `Authenticator.login`. Username yang tidak ada tetap diverifikasi
+  terhadap hash tiruan, supaya waktu respons tidak membocorkan username mana yang terdaftar. Kedua
+  kegagalan menjawab 401 dengan pesan yang sama.
+- **Token** JWT HS256 berisi `sub` (= `user_id`), `role` (`user` atau `service`), `iat`, dan `exp`
+  (`JWT_TTL_SECONDS`, default 12 jam). Tidak ada refresh token. Verifikasinya stateless: tanpa query
+  database per request, jadi akun yang dihapus tetap bisa memakai tokennya sampai kedaluwarsa.
+- **`current_principal`** (`service/dependencies.py`) dipasang per router di `create_app`, dan diminta
+  lagi oleh route yang butuh `user_id` (`PrincipalDep`). FastAPI meng-cache dependency per request,
+  jadi token diverifikasi sekali. Header yang tidak ada, token rusak, salah tanda tangan,
+  kedaluwarsa, atau klaim tidak dikenal menjawab 401 dengan `WWW-Authenticate: Bearer`.
+- **Role `service`** disiapkan untuk worker (F41) dan eval (F31). Saat ini aksesnya sama dengan
+  `user`.
+- **CORS** (FR-34): `CORSMiddleware` hanya mengizinkan origin di `CORS_ORIGINS`, method yang dipakai
+  API, header `Authorization`/`Content-Type`, dan mengekspos `X-Thread-Id`. Token dikirim lewat
+  header, bukan cookie, jadi `allow_credentials` tidak dipakai.
+
 ## Persistence
 
 Satu database Postgres di `DATABASE_URL` ([ADR 0001](adr/0001-postgres-only.md)):
@@ -169,6 +193,7 @@ Satu database Postgres di `DATABASE_URL` ([ADR 0001](adr/0001-postgres-only.md))
 |---|---|---|
 | `checkpoints`, `checkpoint_blobs`, `checkpoint_writes`, `checkpoint_migrations` | `AsyncPostgresSaver` (via `CheckpointerProvider`) | State graph per langkah, termasuk metadata `user_id`/`agent_id` |
 | `thread_metadata` | `ThreadMetadataRepository` (SQLAlchemy Core) | Judul custom hasil rename |
+| `users` | `UserRepository` (SQLAlchemy Core) | Akun login: username, hash argon2, role |
 | `alembic_version` | Alembic | Revisi skema tabel aplikasi |
 
 - **Satu driver.** Checkpointer dan SQLAlchemy sama-sama memakai psycopg 3. `DATABASE_URL` ditulis
@@ -315,14 +340,19 @@ oleh `tests/client/test_layering.py`.
 `tests/ui/test_layering.py`.
 
 - **`app.py`** dijalankan ulang oleh Streamlit pada setiap interaksi. `UiSettings` membaca
-  `AGENT_URL`/`AUTH_SECRET`. Setiap session browser punya `AgentClient` sendiri, karena
-  `agent_id`-nya mengikuti pilihan agent session tersebut.
-- **`UrlState`** menyimpan `user_id`, `thread_id`, dan `agent` di query param. `ChatSession` dibangun
-  dari URL saat session dimulai, lalu ditulis kembali ke URL di akhir setiap run.
-- **`ChatSession`** (`st.session_state`) menyimpan user, thread, agent, model, opsi token, dan message
+  `AGENT_URL`. Setiap session browser punya `AgentClient` sendiri, karena `agent_id` dan access
+  token-nya milik session tersebut. Tanpa login, hanya `LoginView` yang tampil.
+- **`login_view.py`** berisi form login, tombol logout di sidebar, dan `end_expired_session`: respons
+  401 di tengah sesi mengembalikan user ke form login dengan pesan. Logout menghapus token, username,
+  dan `ChatSession`.
+- **`UrlState`** menyimpan `thread_id` dan `agent` di query param (param `user_id` lama dihapus saat
+  URL ditulis). `ChatSession` dibangun dari URL saat session dimulai, lalu ditulis kembali ke URL di
+  akhir setiap run.
+- **`ChatSession`** (`st.session_state`) menyimpan thread, agent, model, opsi token, dan message
   yang sudah tampil. Thread dari URL dimuat riwayatnya sekali.
 - **`SidebarView`** berisi tombol chat baru, pemilih agent dan model dari `/info`, toggle streaming,
-  dan daftar thread (`st.cache_data` dengan `THREAD_LIST_CACHE_TTL_SECONDS`) beserta aksi rename dan
+  dan daftar thread (`st.cache_data` dengan `THREAD_LIST_CACHE_TTL_SECONDS`, dengan username sebagai
+  bagian kunci cache, karena cache Streamlit berlaku untuk seluruh proses) beserta aksi rename dan
   hapus. Pilihan disimpan lewat callback widget sebelum script diulang.
 - **`ChatView`** memutar ulang riwayat, lalu men-stream jawaban baru. Pesan user baru disimpan
   setelah service menerima request.

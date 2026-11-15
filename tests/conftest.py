@@ -28,6 +28,8 @@ KEPT_TABLES = ("alembic_version", "checkpoint_migrations")
 # Settings dari test yang lupa memakai fixture `database_url` gagal di sini, bukan menulis ke
 # database dev.
 UNCONFIGURED_DATABASE_URL = "postgresql://test-database-not-configured.invalid/none"
+# JWT_SECRET wajib di Settings. Test yang membuat Settings tanpa argumen memakai nilai ini.
+TEST_JWT_SECRET = "test-jwt-secret-with-at-least-32-chars"
 
 
 class NetworkAccessError(RuntimeError):
@@ -89,6 +91,13 @@ def pytest_asyncio_loop_factories(config: pytest.Config, item: pytest.Item) -> M
 def isolate_database_url(monkeypatch: pytest.MonkeyPatch) -> None:
     """Arahkan `DATABASE_URL` ke host yang tidak ada, supaya test tidak pernah menyentuh DB dev."""
     monkeypatch.setenv("DATABASE_URL", UNCONFIGURED_DATABASE_URL)
+
+
+@pytest.fixture(autouse=True)
+def test_jwt_secret(monkeypatch: pytest.MonkeyPatch) -> str:
+    """Isi `JWT_SECRET` dengan nilai test, supaya `Settings()` di test tidak membaca `.env` dev."""
+    monkeypatch.setenv("JWT_SECRET", TEST_JWT_SECRET)
+    return TEST_JWT_SECRET
 
 
 @pytest.fixture(scope="session")

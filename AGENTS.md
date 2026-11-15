@@ -41,6 +41,7 @@ uv run ruff format .                      # format
 uv run pyrefly check                      # type check
 docker compose up -d postgres             # database untuk dev dan test
 uv run python -m agent_service.run_migrate   # migrasi skema (Alembic + checkpointer)
+uv run python -m agent_service.manage create-user demo   # buat akun login
 uv run python -m agent_service.run_service   # jalankan API di :8080
 uv run streamlit run src/agent_service/ui/app.py  # jalankan UI di :8501
 ```
@@ -208,7 +209,7 @@ harus jelas termasuk salah satu kategori ini:
 | **Node LangGraph** murni | LangGraph memanggil node sebagai `callable(state) -> dict`. Function murni bisa dites dengan satu baris (`assert node(state) == {...}`). Membungkusnya dalam class hanya menambah boilerplate tanpa state. Node yang butuh dependency (model, tools) dijadikan **method** pada class agent builder, bukan class terpisah. |
 | **Tool LangChain (`@tool`)** | Decorator `@tool` membaca signature dan docstring function untuk membuat schema tool yang dikirim ke LLM. Method instance membuat `self` ikut terbaca dan merusak schema. |
 | **Transformasi murni** tanpa state | Contoh: `langchain_to_chat_message(msg) -> ChatMessage`. Class di sini hanya jadi namespace. *"Simple is better than complex."* Modul sudah berfungsi sebagai namespace. |
-| **Dependency FastAPI & entrypoint** | `Depends(verify_bearer)` dan `main()` adalah konvensi framework/CLI, dan function adalah bentuk yang diharapkan. |
+| **Dependency FastAPI & entrypoint** | `Depends(current_principal)` dan `main()` adalah konvensi framework/CLI, dan function adalah bentuk yang diharapkan. |
 | **Fixture pytest** | Pytest mendefinisikan fixture sebagai function. |
 
 **Aturan praktis:** jika sebuah class hanya berisi `__init__` + **satu** method publik dan tidak

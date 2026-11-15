@@ -9,6 +9,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from agent_service.core.constants import (
     DEFAULT_DATABASE_URL,
     DEFAULT_HOST,
+    DEFAULT_JWT_TTL_SECONDS,
     DEFAULT_LLM_MAX_TOKENS,
     DEFAULT_LLM_MAX_TOKENS_PARAM,
     DEFAULT_LOG_LEVEL,
@@ -16,10 +17,12 @@ from agent_service.core.constants import (
     ENV_FILE,
     ENV_FILE_ENCODING,
     FAKE_MODEL_NAME,
+    LIST_SEPARATOR,
     MAX_PORT,
+    MIN_JWT_SECRET_LENGTH,
+    MIN_JWT_TTL_SECONDS,
     MIN_LLM_MAX_TOKENS,
     MIN_PORT,
-    MODEL_LIST_SEPARATOR,
     POSTGRES_URL_SCHEMES,
     LogLevel,
     MaxTokensParam,
@@ -38,7 +41,7 @@ class Settings(BaseSettings):
         pydantic.ValidationError: Jika konfigurasi LLM tidak lengkap (dan `USE_FAKE_MODEL`
             tidak aktif), `DEFAULT_MODEL` tidak ada di allowlist, atau nilai env tidak valid.
 
-    >>> settings = Settings(_env_file=None, use_fake_model=True)
+    >>> settings = Settings(_env_file=None, use_fake_model=True, jwt_secret="x" * 32)
     >>> settings.default_model, settings.available_models
     ('fake', ['fake'])
     """
@@ -65,14 +68,18 @@ class Settings(BaseSettings):
     # Kosong berarti tool web search menjawab "not configured", tanpa menggagalkan startup.
     firecrawl_api_key: SecretStr | None = None
 
-    auth_secret: SecretStr | None = None
+    # Wajib (keputusan user): tidak ada mode tanpa auth. Dipakai menandatangani access token.
+    jwt_secret: SecretStr = Field(min_length=MIN_JWT_SECRET_LENGTH)
+    jwt_ttl_seconds: int = Field(default=DEFAULT_JWT_TTL_SECONDS, ge=MIN_JWT_TTL_SECONDS)
+    # Kosong berarti tidak ada origin browser lain yang diizinkan (FR-34).
+    cors_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
     host: str = DEFAULT_HOST
     port: int = Field(default=DEFAULT_PORT, ge=MIN_PORT, le=MAX_PORT)
     log_level: LogLevel = DEFAULT_LOG_LEVEL
 
-    @field_validator("available_models", mode="before")
+    @field_validator("available_models", "cors_origins", mode="before")
     @classmethod
-    def _split_model_list(cls, value: object) -> object:
+    def _split_comma_list(cls, value: object) -> object:
         """Pisahkan string `"a, b"` menjadi `["a", "b"]`.
 
         Args:
@@ -85,7 +92,7 @@ class Settings(BaseSettings):
         if not isinstance(value, str):
             return value
         names: list[str] = []
-        for raw_name in value.split(MODEL_LIST_SEPARATOR):
+        for raw_name in value.split(LIST_SEPARATOR):
             name = raw_name.strip()
             if name:
                 names.append(name)
@@ -151,4 +158,4 @@ class Settings(BaseSettings):
 
 
 if __name__ == "__main__":
-    print(Settings(_env_file=None, use_fake_model=True))
+    print(Settings(_env_file=None, use_fake_model=True, jwt_secret="x" * 32))

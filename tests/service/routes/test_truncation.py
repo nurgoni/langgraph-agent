@@ -11,7 +11,6 @@ from agent_service.llm.fake import FakeModel
 from agent_service.schema.responses import ChatHistory, ChatMessage
 from agent_service.schema.stream import STREAM_EVENT_ADAPTER, MessageEvent
 
-OWNER = "user-a"
 AGENT_PATH = "/truncating"
 PARTIAL_ANSWER = "Jawaban ini terpo"
 
@@ -53,12 +52,10 @@ async def test_stream_message_frame_marks_truncated_answer(client: AsyncClient) 
 
 
 async def test_history_keeps_truncated_flag(client: AsyncClient) -> None:
-    body = {"message": "Halo", "thread_id": "t1", "user_id": OWNER}
+    body = {"message": "Halo", "thread_id": "t1"}
     await client.post(f"{AGENT_PATH}/invoke", json=body)
 
-    response = await client.post(
-        f"{AGENT_PATH}/history", json={"thread_id": "t1", "user_id": OWNER}
-    )
+    response = await client.post(f"{AGENT_PATH}/history", json={"thread_id": "t1"})
 
     history = ChatHistory.model_validate(response.json())
     assert [(m.type, m.truncated) for m in history.messages] == [("human", False), ("ai", True)]

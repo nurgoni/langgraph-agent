@@ -19,8 +19,19 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
   extra-nya: image `service` turun dari ±1 GB ke ±505 MB dan tanpa Streamlit, image `ui` ±881 MB
   dan tanpa LangGraph (F22).
 
+- Login per user (FR-33): `POST /auth/login` menukar username dan password (hash argon2id) dengan
+  access token JWT HS256 (`JWT_SECRET`, `JWT_TTL_SECONDS`, default 12 jam, tanpa refresh token).
+  Akun dibuat lewat `python -m agent_service.manage create-user <username> [--role service]`.
+  `AgentClient.login()`/`alogin()`, dan form login + logout di UI Streamlit (F24).
+- CORS untuk origin di `CORS_ORIGINS` (FR-34), dengan header `X-Thread-Id` diekspos ke browser
+  (F24).
+
 ### Changed
 
+- **Breaking:** `user_id` diambil dari access token. Field `user_id` dihapus dari semua request
+  (`UserInput`, `ChatHistoryInput`, `ThreadRenameInput`, query `/threads` dan `DELETE`), header
+  `X-User-Id` dihapus, dan method `AgentClient` tidak lagi menerima `user_id`. URL UI tidak lagi
+  berisi `user_id`. Semua endpoint selain `/health` dan `/auth/login` butuh token (F24).
 - **Persistence pindah ke Postgres** (ADR 0001): checkpointer `AsyncPostgresSaver` dan tabel
   `thread_metadata` lewat SQLAlchemy Core async + Alembic, dengan satu env `DATABASE_URL` (default
   Postgres compose lokal). `docker compose up` kini menjalankan `postgres` → `migrate` → service.
@@ -29,6 +40,8 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 
 ### Removed
 
+- `AUTH_SECRET` (shared bearer token) dan opsi `auth_secret` di `AgentClient`, diganti JWT per user
+  (F24).
 - SQLite: `SQLITE_DB_PATH`, `aiosqlite`, `langgraph-checkpoint-sqlite`, dan volume compose
   `agent-data`. Data di `checkpoints.db` lama tidak dimigrasi (F23).
 - Rencana Fase 2 (M4–M10, F21–F46): requirement FR-30–FR-58 dan NFR-9–NFR-12 di PRD, rincian

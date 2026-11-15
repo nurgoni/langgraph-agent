@@ -6,6 +6,7 @@ from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Final
 
 from fastapi import Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from agent_service.agents.base import BaseAgent
 from agent_service.agents.catalog import DEFAULT_AGENT_ID, create_default_agents
@@ -17,14 +18,20 @@ from agent_service.memory.checkpointer import CheckpointerProvider
 from agent_service.memory.database import DatabaseEngineProvider
 from agent_service.memory.migrator import ensure_database_migrated
 from agent_service.memory.thread_metadata import ThreadMetadataRepository
-from agent_service.service.auth import verify_bearer
+from agent_service.memory.users import UserRepository
+from agent_service.schema.headers import THREAD_ID_HEADER
+from agent_service.service.auth import Authenticator
+from agent_service.service.dependencies import current_principal
 from agent_service.service.errors import register_exception_handlers
-from agent_service.service.routes import health, history, info, invoke, stream, threads
+from agent_service.service.routes import auth, health, history, info, invoke, stream, threads
 from agent_service.service.threads import ThreadRepository
 
 logger = logging.getLogger(__name__)
 
 APP_TITLE: Final = "Agent Service"
+# Token dikirim lewat header Authorization, bukan cookie, jadi credentials CORS tidak dibutuhkan.
+CORS_ALLOWED_METHODS: Final = ["GET", "POST", "PATCH", "DELETE"]
+CORS_ALLOWED_HEADERS: Final = ["Authorization", "Content-Type"]
 
 type Lifespan = Callable[[FastAPI], AbstractAsyncContextManager[None]]
 
@@ -55,7 +62,8 @@ def create_app(
     Raises:
         DefaultAgentNotRegisteredError: Jika `default_agent_id` tidak ada di `agents`.
 
-    >>> app = create_app(Settings(_env_file=None, use_fake_model=True))
+    >>> settings = Settings(_env_file=None, use_fake_model=True, jwt_secret="x" * 32)
+    >>> app = create_app(settings)
     >>> app.title, app.state.default_agent_id
     ('Agent Service', 'chatbot')
     """
@@ -72,8 +80,16 @@ def create_app(
 
     app = FastAPI(title=APP_TITLE, lifespan=_build_lifespan(resolved_settings, resolved_agents))
     register_exception_handlers(app)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=resolved_settings.cors_origins,
+        allow_methods=CORS_ALLOWED_METHODS,
+        allow_headers=CORS_ALLOWED_HEADERS,
+        expose_headers=[THREAD_ID_HEADER],
+    )
     app.include_router(health.router)
-    protected = [Depends(verify_bearer)]
+    app.include_router(auth.router)
+    protected = [Depends(current_principal)]
     app.include_router(info.router, dependencies=protected)
     app.include_router(invoke.router, dependencies=protected)
     app.include_router(stream.router, dependencies=protected)
@@ -87,7 +103,8 @@ def create_app(
 def build_search_backend(settings: Settings) -> SearchBackend:
     """Mesin pencari untuk tool web search, dari `FIRECRAWL_API_KEY` di `Settings`.
 
-    >>> type(build_search_backend(Settings(_env_file=None, use_fake_model=True))).__name__
+    >>> settings = Settings(_env_file=None, use_fake_model=True, jwt_secret="x" * 32)
+    >>> type(build_search_backend(settings)).__name__
     'UnconfiguredSearch'
     """
     secret = settings.firecrawl_api_key
@@ -98,15 +115,13 @@ def _build_lifespan(settings: Settings, agents: Sequence[BaseAgent]) -> Lifespan
     """Buat lifespan yang membuka database, mendaftarkan, dan memuat semua agent.
 
     Urutan: `ModelFactory` → engine + `CheckpointerProvider` → cek migrasi →
-    `AgentRegistry.load_all()`. Factory, registry, dan `ThreadRepository` disimpan di
-    `app.state`. Engine dan pool checkpointer ditutup saat shutdown. Startup gagal jika Postgres
-    tidak terjangkau atau migrasi belum dijalankan.
+    `AgentRegistry.load_all()`. Factory, registry, `ThreadRepository`, dan `Authenticator`
+    disimpan di `app.state`. Engine dan pool checkpointer ditutup saat shutdown. Startup gagal
+    jika Postgres tidak terjangkau atau migrasi belum dijalankan.
     """
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
-        if settings.auth_secret is None:
-            logger.warning("AUTH_SECRET is not set: every endpoint is unauthenticated")
         model_factory = ModelFactory(settings)
         database_url = settings.database_url.get_secret_value()
         async with (
@@ -115,6 +130,11 @@ def _build_lifespan(settings: Settings, agents: Sequence[BaseAgent]) -> Lifespan
         ):
             await ensure_database_migrated(engine)
             titles = ThreadMetadataRepository(engine)
+            app.state.authenticator = Authenticator(
+                UserRepository(engine),
+                settings.jwt_secret.get_secret_value(),
+                settings.jwt_ttl_seconds,
+            )
             registry = AgentRegistry(model_factory, checkpointer)
             for agent in agents:
                 registry.register(agent)
