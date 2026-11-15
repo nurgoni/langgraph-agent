@@ -8,6 +8,8 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from agent_service.core.constants import (
     DEFAULT_HOST,
+    DEFAULT_LLM_MAX_TOKENS,
+    DEFAULT_LLM_MAX_TOKENS_PARAM,
     DEFAULT_LOG_LEVEL,
     DEFAULT_PORT,
     DEFAULT_SQLITE_DB_PATH,
@@ -15,9 +17,11 @@ from agent_service.core.constants import (
     ENV_FILE_ENCODING,
     FAKE_MODEL_NAME,
     MAX_PORT,
+    MIN_LLM_MAX_TOKENS,
     MIN_PORT,
     MODEL_LIST_SEPARATOR,
     LogLevel,
+    MaxTokensParam,
 )
 
 REQUIRED_LLM_FIELDS: Final = ("llm_base_url", "llm_api_key", "default_model")
@@ -51,6 +55,8 @@ class Settings(BaseSettings):
     # NoDecode: nilai env dibiarkan string agar dipisah koma, bukan di-parse sebagai JSON.
     available_models: Annotated[list[str], NoDecode] = Field(default_factory=list)
     use_fake_model: bool = False
+    llm_max_tokens: int = Field(default=DEFAULT_LLM_MAX_TOKENS, ge=MIN_LLM_MAX_TOKENS)
+    llm_max_tokens_param: MaxTokensParam = DEFAULT_LLM_MAX_TOKENS_PARAM
 
     sqlite_db_path: Path = DEFAULT_SQLITE_DB_PATH
 

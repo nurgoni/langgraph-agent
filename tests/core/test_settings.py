@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from agent_service.core.constants import DEFAULT_PORT, FAKE_MODEL_NAME
+from agent_service.core.constants import DEFAULT_LLM_MAX_TOKENS, DEFAULT_PORT, FAKE_MODEL_NAME
 from agent_service.core.settings import Settings
 
 REAL_LLM_ENV = {
@@ -137,3 +137,37 @@ def test_firecrawl_api_key_is_optional_and_secret(monkeypatch: pytest.MonkeyPatc
     assert settings.firecrawl_api_key is not None
     assert settings.firecrawl_api_key.get_secret_value() == "fc-test"
     assert "fc-test" not in repr(settings)
+
+
+def test_llm_max_tokens_has_default_and_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert Settings(_env_file=None, use_fake_model=True).llm_max_tokens == DEFAULT_LLM_MAX_TOKENS
+
+    monkeypatch.setenv("LLM_MAX_TOKENS", "512")
+
+    assert Settings(_env_file=None, use_fake_model=True).llm_max_tokens == 512
+
+
+@pytest.mark.parametrize("max_tokens", ["0", "-1", "many"])
+def test_invalid_llm_max_tokens_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, max_tokens: str
+) -> None:
+    set_env(monkeypatch, {"USE_FAKE_MODEL": "true", "LLM_MAX_TOKENS": max_tokens})
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+def test_llm_max_tokens_param_defaults_to_max_tokens(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert Settings(_env_file=None, use_fake_model=True).llm_max_tokens_param == "max_tokens"
+
+    monkeypatch.setenv("LLM_MAX_TOKENS_PARAM", "max_completion_tokens")
+
+    settings = Settings(_env_file=None, use_fake_model=True)
+    assert settings.llm_max_tokens_param == "max_completion_tokens"
+
+
+def test_unknown_llm_max_tokens_param_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    set_env(monkeypatch, {"USE_FAKE_MODEL": "true", "LLM_MAX_TOKENS_PARAM": "num_predict"})
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
