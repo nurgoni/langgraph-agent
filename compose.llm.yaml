@@ -11,6 +11,8 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:?Set LLM_API_KEY}
       DEFAULT_MODEL: ${DEFAULT_MODEL:?Set DEFAULT_MODEL}
       AVAILABLE_MODELS: ${AVAILABLE_MODELS:-}
+      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-}
+      LLM_MAX_TOKENS_PARAM: ${LLM_MAX_TOKENS_PARAM:-}
     extra_hosts:
       # Supaya host.docker.internal juga tersedia di Docker Engine Linux.
       - "host.docker.internal:host-gateway"

@@ -92,3 +92,13 @@ def test_chat_message_reasoning_is_optional() -> None:
 def test_chat_message_agent_is_optional() -> None:
     assert ChatMessage(type="ai", content="x").agent is None
     assert ChatMessage(type="ai", content="x", agent="math_expert").agent == "math_expert"
+
+
+def test_chat_message_is_not_truncated_by_default() -> None:
+    assert ChatMessage(type="ai", content="Halo").truncated is False
+
+
+def test_chat_message_truncated_round_trips_through_json() -> None:
+    message = ChatMessage(type="ai", content="Jawaban terpo", truncated=True)
+
+    assert ChatMessage.model_validate_json(message.model_dump_json()).truncated is True

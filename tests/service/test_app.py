@@ -1,6 +1,4 @@
-import logging
-from pathlib import Path
-
+import psycopg
 import pytest
 from fastapi import FastAPI
 from langchain_core.language_models import BaseChatModel
@@ -11,11 +9,13 @@ from agent_service.agents.chatbot import ChatbotAgent
 from agent_service.agents.registry import AgentRegistry
 from agent_service.agents.tools.web_search import FirecrawlSearch, UnconfiguredSearch
 from agent_service.core.settings import Settings
+from agent_service.memory.migrator import DatabaseNotMigratedError, expected_heads
 from agent_service.service.app import (
     DefaultAgentNotRegisteredError,
     build_search_backend,
     create_app,
 )
+from agent_service.service.threads import ThreadRepository
 
 
 class BrokenAgent(ChatbotAgent):
@@ -32,12 +32,26 @@ def test_unknown_default_agent_is_rejected(settings: Settings) -> None:
         create_app(settings, default_agent_id="missing")
 
 
-async def test_lifespan_loads_agents_and_creates_database(app: FastAPI, settings: Settings) -> None:
+async def test_lifespan_loads_agents_and_thread_repository(app: FastAPI) -> None:
     async with app.router.lifespan_context(app):
         registry = app.state.registry
         assert isinstance(registry, AgentRegistry)
         assert registry.is_available("chatbot")
-        assert Path(settings.sqlite_db_path).exists()
+        assert isinstance(app.state.thread_repository, ThreadRepository)
+
+
+async def test_lifespan_refuses_unmigrated_database(app: FastAPI, database_url: str) -> None:
+    with psycopg.connect(database_url, autocommit=True) as connection:
+        connection.execute("UPDATE alembic_version SET version_num = 'stale'")
+    try:
+        with pytest.raises(DatabaseNotMigratedError):
+            async with app.router.lifespan_context(app):
+                pass
+    finally:
+        with psycopg.connect(database_url, autocommit=True) as connection:
+            connection.execute(
+                "UPDATE alembic_version SET version_num = %s", list(expected_heads())
+            )
 
 
 async def test_failed_agent_does_not_stop_startup(settings: Settings) -> None:
@@ -47,16 +61,6 @@ async def test_failed_agent_does_not_stop_startup(settings: Settings) -> None:
     async with app.router.lifespan_context(app):
         assert app.state.registry.is_available("chatbot")
         assert not app.state.registry.is_available("broken")
-
-
-async def test_missing_auth_secret_logs_warning(
-    app: FastAPI, caplog: pytest.LogCaptureFixture
-) -> None:
-    with caplog.at_level(logging.WARNING):
-        async with app.router.lifespan_context(app):
-            pass
-
-    assert "AUTH_SECRET is not set" in caplog.text
 
 
 def test_search_backend_follows_firecrawl_key(settings: Settings) -> None:

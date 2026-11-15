@@ -8,6 +8,7 @@ import streamlit as st
 from agent_service.client import AgentClient, AgentClientError
 from agent_service.schema.requests import THREADS_LIMIT_DEFAULT, TITLE_MAX_LENGTH
 from agent_service.schema.responses import ServiceMetadata, ThreadSummary
+from agent_service.ui.login_view import end_expired_session, render_account
 from agent_service.ui.session import ChatSession
 
 logger = logging.getLogger(__name__)
@@ -49,14 +50,16 @@ THREAD_LIST_CACHE_TTL_SECONDS: Final = 300
 
 @st.cache_data(ttl=THREAD_LIST_CACHE_TTL_SECONDS, show_spinner=False)
 def load_threads(
-    _client: AgentClient, base_url: str, agent_id: str | None, user_id: str
+    _client: AgentClient, base_url: str, agent_id: str | None, username: str
 ) -> list[ThreadSummary]:
     """Thread milik user untuk agent terpilih, di-cache per URL service, agent, dan user.
 
     Function, bukan class: cache Streamlit membungkus function. `_client` tidak ikut di-hash
-    (awalan `_`), dan agent-nya harus sama dengan `agent_id`.
+    (awalan `_`), dan agent-nya harus sama dengan `agent_id`. Cache Streamlit berlaku untuk
+    seluruh proses, jadi `username` wajib ikut menjadi kunci, supaya daftar thread satu user tidak
+    tampil di browser user lain.
     """
-    return _client.get_threads(user_id, limit=THREADS_LIMIT_DEFAULT).threads
+    return _client.get_threads(limit=THREADS_LIMIT_DEFAULT).threads
 
 
 def clear_thread_list_cache() -> None:
@@ -71,19 +74,22 @@ class SidebarView:
     berikutnya tanpa `st.rerun()`.
     """
 
-    def __init__(self, client: AgentClient, session: ChatSession) -> None:
+    def __init__(self, client: AgentClient, session: ChatSession, username: str) -> None:
         """Inisialisasi view.
 
         Args:
             client: Client ke agent service, untuk `/info`.
             session: State percakapan browser ini.
+            username: User yang sedang login.
         """
         self._client = client
         self._session = session
+        self._username = username
 
     def render(self) -> None:
         """Gambar isi sidebar. Pemilih disembunyikan jika `/info` tidak bisa diambil."""
         with st.sidebar:
+            render_account(self._client, self._username)
             st.button(
                 NEW_CHAT_LABEL,
                 key=NEW_CHAT_KEY,
@@ -110,6 +116,7 @@ class SidebarView:
             return self._client.get_info()
         except AgentClientError as error:
             logger.warning("Loading service info failed: %s", error)
+            end_expired_session(self._client, error)
             st.caption(INFO_UNAVAILABLE_TEMPLATE.format(error=error))
             return None
 
@@ -146,10 +153,11 @@ class SidebarView:
         st.subheader(THREADS_HEADING)
         try:
             threads = load_threads(
-                self._client, self._client.base_url, self._session.agent_id, self._session.user_id
+                self._client, self._client.base_url, self._session.agent_id, self._username
             )
         except AgentClientError as error:
             logger.warning("Loading threads failed: %s", error)
+            end_expired_session(self._client, error)
             st.caption(THREADS_UNAVAILABLE_TEMPLATE.format(error=error))
             return
         if not threads:
@@ -197,7 +205,7 @@ class SidebarView:
     def _open_thread(self, thread_id: str) -> None:
         """Muat riwayat thread yang diklik ke layar."""
         try:
-            history = self._client.get_history(thread_id, self._session.user_id)
+            history = self._client.get_history(thread_id)
         except AgentClientError as error:
             logger.warning("Opening thread %s failed: %s", thread_id, error)
             st.toast(OPEN_FAILED_TEMPLATE.format(error=error))
@@ -212,7 +220,7 @@ class SidebarView:
             st.toast(EMPTY_TITLE_TEXT)
             return
         try:
-            self._client.rename_thread(thread_id, self._session.user_id, title)
+            self._client.rename_thread(thread_id, title)
         except AgentClientError as error:
             logger.warning("Renaming thread %s failed: %s", thread_id, error)
             st.toast(RENAME_FAILED_TEMPLATE.format(error=error))
@@ -224,7 +232,7 @@ class SidebarView:
     def _delete_thread(self, thread_id: str) -> None:
         """Hapus thread. Jika thread itu sedang dibuka, layar diganti chat baru."""
         try:
-            self._client.delete_thread(thread_id, self._session.user_id)
+            self._client.delete_thread(thread_id)
         except AgentClientError as error:
             logger.warning("Deleting thread %s failed: %s", thread_id, error)
             st.toast(DELETE_FAILED_TEMPLATE.format(error=error))

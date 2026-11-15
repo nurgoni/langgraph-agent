@@ -9,12 +9,16 @@ kontrak API ada di [PRD.md](../PRD.md).
 Service ini membungkus graph LangGraph dengan API FastAPI. Satu proses berisi:
 
 - **Registry agent.** Setiap agent dapat membangun graph untuk model mana pun yang diizinkan.
-- **Satu file SQLite.** File ini menyimpan checkpoint percakapan dan judul custom thread.
+- **Satu database Postgres.** Database ini menyimpan checkpoint percakapan dan judul custom thread.
 - **Endpoint HTTP.** Ada endpoint untuk menjalankan agent (`/invoke`, `/stream`), membaca riwayat
   (`/history`), dan mengelola thread (`/threads`).
 
 Client dan UI (M2) berkomunikasi dengan service hanya lewat HTTP, dengan schema dari
 `agent_service.schema`.
+
+Dokumen ini menjelaskan arsitektur yang **sudah dibangun** (`v0.3.0`). Arah Fase 2 (Postgres,
+harness, Project, frontend React, sandbox) ada di [ADR](adr/README.md) dan
+[ROADMAP](ROADMAP.md). Bagian dokumen ini diperbarui oleh fitur yang mengubahnya.
 
 ## Layer
 
@@ -24,7 +28,7 @@ src/agent_service/
 ├── llm/       ModelFactory, FakeModel
 ├── agents/    BaseAgent, AgentRegistry, catalog, ChatbotAgent, ToolCallingAgent, InterruptAgent,
 │              SupervisorAgent, tools/
-├── memory/    CheckpointerProvider, ThreadMetadataRepository (SQLite)
+├── memory/    DatabaseEngineProvider, migrator, CheckpointerProvider, ThreadMetadataRepository
 ├── schema/    Model Pydantic untuk API: request, response, event SSE, nama header
 ├── service/   create_app, lifespan, auth, route, StreamService, ThreadRepository
 ├── client/    AgentClient (sync + async), StreamRun, SseParser
@@ -57,12 +61,13 @@ sequenceDiagram
     A->>A: validasi agent default, pasang exception handler dan router
     U->>L: startup
     L->>L: ModelFactory(settings)
-    L->>L: buka CheckpointerProvider + ThreadMetadataRepository
+    L->>L: buka DatabaseEngineProvider + CheckpointerProvider (gagal cepat jika DB mati)
+    L->>L: ensure_database_migrated (gagal jika migrasi belum jalan)
     L->>L: AgentRegistry.register(...) lalu load_all()
     L->>L: simpan ke app.state
     Note over U,L: melayani request
     U->>L: shutdown
-    L->>L: tutup koneksi SQLite
+    L->>L: tutup engine dan pool koneksi Postgres
 ```
 
 - **Tidak ada side effect saat import.** `create_app()` tanpa argumen membaca `Settings()` saat
@@ -78,8 +83,9 @@ sequenceDiagram
 ## Alur Request
 
 Setiap route agent punya dua varian: `/{agent_id}/...` dan `/...` (memakai `DEFAULT_AGENT_ID` =
-`chatbot`). Keduanya memanggil helper yang sama. Semua route kecuali `/health` melewati
-`verify_bearer` jika `AUTH_SECRET` diset.
+`chatbot`). Keduanya memanggil helper yang sama. Semua route kecuali `/health` dan `/auth/login`
+melewati dependency `current_principal` (lihat [Auth](#auth)), dan `user_id` selalu berasal dari
+token.
 
 ### `/invoke` dan `/stream`
 
@@ -94,13 +100,13 @@ sequenceDiagram
     C->>R: POST /{agent_id}/stream
     R->>G: get_agent, get_graph(agent_id, model)
     G-->>R: graph (di-cache per agent + model)
-    R->>B: build_run_input(input, agent, graph)
-    B->>B: validasi agent_config, isi thread_id/user_id, run_id uuid7
+    R->>B: build_run_input(input, principal.user_id, agent, graph)
+    B->>B: validasi agent_config, isi thread_id, run_id uuid7
     B->>X: aget_state(thread)
     X->>S: baca checkpoint terakhir
     B->>B: cek pemilik thread, pilih message atau Command(resume)
     B-->>R: RunInput
-    R-->>C: 200 + X-Thread-Id/X-User-Id (stream dimulai)
+    R-->>C: 200 + X-Thread-Id (stream dimulai)
     R->>X: StreamService.stream() → astream(...)
     X->>S: tulis checkpoint per langkah
     X-->>C: data: token / message ... data: [DONE]
@@ -156,17 +162,76 @@ Pemetaan ini ada di `service/errors.py` (`DOMAIN_ERROR_STATUS`), dan subclass ik
 lewat MRO. Selain handler 500, satu-satunya `except Exception` yang diizinkan ada di
 `AgentRegistry._load` (batas plugin agent) dan `StreamService.stream` (batas SSE).
 
+## Auth
+
+Auth per user dengan JWT (FR-33), tanpa mode anonim: `JWT_SECRET` wajib diisi.
+
+- **Akun** ada di tabel `users` (`UserRepository`), dan dibuat hanya lewat CLI
+  `python -m agent_service.manage create-user <username> [--role service]`. Username dinormalisasi
+  ke huruf kecil (`[a-z0-9._-]`, 3–32 karakter). Password di-hash dengan argon2id.
+- **`POST /auth/login`** memanggil `Authenticator.login`. Username yang tidak ada tetap diverifikasi
+  terhadap hash tiruan, supaya waktu respons tidak membocorkan username mana yang terdaftar. Kedua
+  kegagalan menjawab 401 dengan pesan yang sama.
+- **Token** JWT HS256 berisi `sub` (= `user_id`), `role` (`user` atau `service`), `iat`, dan `exp`
+  (`JWT_TTL_SECONDS`, default 12 jam). Tidak ada refresh token. Verifikasinya stateless: tanpa query
+  database per request, jadi akun yang dihapus tetap bisa memakai tokennya sampai kedaluwarsa.
+- **`current_principal`** (`service/dependencies.py`) dipasang per router di `create_app`, dan diminta
+  lagi oleh route yang butuh `user_id` (`PrincipalDep`). FastAPI meng-cache dependency per request,
+  jadi token diverifikasi sekali. Header yang tidak ada, token rusak, salah tanda tangan,
+  kedaluwarsa, atau klaim tidak dikenal menjawab 401 dengan `WWW-Authenticate: Bearer`.
+- **Role `service`** disiapkan untuk worker (F41) dan eval (F31). Saat ini aksesnya sama dengan
+  `user`.
+- **CORS** (FR-34): `CORSMiddleware` hanya mengizinkan origin di `CORS_ORIGINS`, method yang dipakai
+  API, header `Authorization`/`Content-Type`, dan mengekspos `X-Thread-Id`. Token dikirim lewat
+  header, bukan cookie, jadi `allow_credentials` tidak dipakai.
+
+## Kontrak API
+
+`service/contracts.py` membuat dua file di `contracts/` (FR-35):
+
+- **`openapi.json`** dari `create_app(...).openapi()` dengan `Settings` tiruan (tanpa `.env`, tanpa
+  lifespan, jadi tanpa database atau LLM) dan hanya `ChatbotAgent`. Route agent memakai path
+  generik `/{agent_id}/...`, jadi daftar agent tidak memengaruhi kontrak. `info.version` diambil
+  dari versi package. Header `X-Thread-Id` didokumentasikan di respons `/invoke` dan `/stream`
+  (`RUN_RESPONSE_HEADERS`), dan route terlindungi mendeklarasikan skema `HTTPBearer`.
+- **`stream-event.schema.json`** dari `STREAM_EVENT_ADAPTER.json_schema()`, ditambah `$schema`
+  (draft 2020-12), judul `StreamEvent`, dan penjelasan penanda akhir `[DONE]` yang bukan JSON.
+
+Serialisasinya deterministik: key terurut, indentasi 2, UTF-8, LF, dan newline di akhir.
+`python -m agent_service.export_contracts` menulis file. Opsi `--check` hanya membandingkan dan
+keluar dengan kode 1 jika ada file yang usang atau hilang (dipakai CI dan hook pre-commit
+`api-contracts`).
+
+Docstring model dan route menjadi deskripsi di OpenAPI, jadi doctest-nya ditaruh di docstring
+modul. Test `test_contracts_carry_no_internal_docstrings` menjaga aturan ini.
+
 ## Persistence
 
-Satu file SQLite di `SQLITE_DB_PATH` berisi tiga tabel:
+Satu database Postgres di `DATABASE_URL` ([ADR 0001](adr/0001-postgres-only.md)):
 
 | Tabel | Pemilik | Isi |
 |---|---|---|
-| `checkpoints`, `writes` | `AsyncSqliteSaver` (via `CheckpointerProvider`) | State graph per langkah, termasuk metadata `user_id`/`agent_id` |
-| `thread_metadata` | `ThreadMetadataRepository` | Judul custom hasil rename |
+| `checkpoints`, `checkpoint_blobs`, `checkpoint_writes`, `checkpoint_migrations` | `AsyncPostgresSaver` (via `CheckpointerProvider`) | State graph per langkah, termasuk metadata `user_id`/`agent_id` |
+| `thread_metadata` | `ThreadMetadataRepository` (SQLAlchemy Core) | Judul custom hasil rename |
+| `users` | `UserRepository` (SQLAlchemy Core) | Akun login: username, hash argon2, role |
+| `alembic_version` | Alembic | Revisi skema tabel aplikasi |
 
-`ThreadMetadataRepository` memakai koneksi `aiosqlite` sendiri, karena transaksi saver dijaga oleh
-lock privat milik saver. Penghapusan thread memanggil `adelete_thread` lalu menghapus judulnya.
+- **Satu driver.** Checkpointer dan SQLAlchemy sama-sama memakai psycopg 3. `DATABASE_URL` ditulis
+  `postgresql://...`, dan `sqlalchemy_url()` menambahkan `+psycopg` untuk SQLAlchemy.
+- **Dua pool per proses.** `CheckpointerProvider` membuka `AsyncConnectionPool` psycopg (autocommit,
+  tanpa prepared statement, baris dict, sesuai syarat saver). `DatabaseEngineProvider` membuka
+  engine SQLAlchemy. Keduanya mengecek koneksi saat startup dengan `connect_timeout` 5 detik,
+  karena default psycopg adalah 130 detik.
+- **Migrasi terpisah dari service.** `python -m agent_service.run_migrate` (service compose
+  `migrate`) menjalankan `AsyncPostgresSaver.setup()` lalu `alembic upgrade head`. Lifespan hanya
+  memanggil `ensure_database_migrated`, yang membandingkan `alembic_version` dengan revisi terbaru.
+  Tabel aplikasi baru ditambahkan di `memory/tables.py` beserta revisi di `memory/migrations/`.
+- **Event loop.** psycopg async tidak bisa memakai `ProactorEventLoop`, loop default di Windows.
+  `run_service` memberi uvicorn `loop="asyncio:SelectorEventLoop"`, `run_migrate` memakai
+  `asyncio.run(..., loop_factory=asyncio.SelectorEventLoop)`, dan test memakai hook
+  `pytest_asyncio_loop_factories`.
+
+Penghapusan thread memanggil `adelete_thread` lalu menghapus judulnya.
 
 ## Agent dengan Tool
 
@@ -295,14 +360,19 @@ oleh `tests/client/test_layering.py`.
 `tests/ui/test_layering.py`.
 
 - **`app.py`** dijalankan ulang oleh Streamlit pada setiap interaksi. `UiSettings` membaca
-  `AGENT_URL`/`AUTH_SECRET`. Setiap session browser punya `AgentClient` sendiri, karena
-  `agent_id`-nya mengikuti pilihan agent session tersebut.
-- **`UrlState`** menyimpan `user_id`, `thread_id`, dan `agent` di query param. `ChatSession` dibangun
-  dari URL saat session dimulai, lalu ditulis kembali ke URL di akhir setiap run.
-- **`ChatSession`** (`st.session_state`) menyimpan user, thread, agent, model, opsi token, dan message
+  `AGENT_URL`. Setiap session browser punya `AgentClient` sendiri, karena `agent_id` dan access
+  token-nya milik session tersebut. Tanpa login, hanya `LoginView` yang tampil.
+- **`login_view.py`** berisi form login, tombol logout di sidebar, dan `end_expired_session`: respons
+  401 di tengah sesi mengembalikan user ke form login dengan pesan. Logout menghapus token, username,
+  dan `ChatSession`.
+- **`UrlState`** menyimpan `thread_id` dan `agent` di query param (param `user_id` lama dihapus saat
+  URL ditulis). `ChatSession` dibangun dari URL saat session dimulai, lalu ditulis kembali ke URL di
+  akhir setiap run.
+- **`ChatSession`** (`st.session_state`) menyimpan thread, agent, model, opsi token, dan message
   yang sudah tampil. Thread dari URL dimuat riwayatnya sekali.
 - **`SidebarView`** berisi tombol chat baru, pemilih agent dan model dari `/info`, toggle streaming,
-  dan daftar thread (`st.cache_data` dengan `THREAD_LIST_CACHE_TTL_SECONDS`) beserta aksi rename dan
+  dan daftar thread (`st.cache_data` dengan `THREAD_LIST_CACHE_TTL_SECONDS`, dengan username sebagai
+  bagian kunci cache, karena cache Streamlit berlaku untuk seluruh proses) beserta aksi rename dan
   hapus. Pilihan disimpan lewat callback widget sebelum script diulang.
 - **`ChatView`** memutar ulang riwayat, lalu men-stream jawaban baru. Pesan user baru disimpan
   setelah service menerima request.
@@ -319,11 +389,33 @@ reasoning lengkap. Converter mengisi `ChatMessage.reasoning`, dan UI menampilkan
 "Thinking" (terbuka saat live, tertutup di riwayat). Hanya field standar yang dikirim balik ke
 model, jadi reasoning lama tidak ikut di prompt giliran berikutnya.
 
+## Batas Token Jawaban
+
+`ModelFactory.create(name, max_tokens=None)` membuat model dengan batas token jawaban
+`LLM_MAX_TOKENS` (`DEFAULT_LLM_MAX_TOKENS`), atau nilai `max_tokens` jika diberikan. Kunci cache
+adalah `(nama model, max_tokens)`, sehingga override per Project (F26) mendapat instance sendiri.
+`ChatOpenAI` selalu menulisnya sebagai `max_completion_tokens`, padahal Ollama hanya membaca
+`max_tokens`. Karena itu `ReasoningChatOpenAI._get_request_payload` mengganti namanya sesuai
+`LLM_MAX_TOKENS_PARAM` (default `max_tokens`; `max_completion_tokens` untuk model reasoning OpenAI
+yang menolak `max_tokens`). Pada Ollama, token reasoning ikut dihitung dalam batas ini, jadi batas
+yang terlalu kecil bisa menghasilkan jawaban kosong yang ditandai terpotong.
+
+Jika model berhenti karena batas, provider mengirim `finish_reason = "length"`, dan LangChain
+menyimpannya di `response_metadata` message AI. Converter (`is_truncated`) mengubahnya menjadi
+`ChatMessage.truncated = true`, jadi tanda ini muncul sama di `/invoke`, frame `message` `/stream`,
+dan `/history`. UI menampilkan peringatan di bawah jawaban. `FakeModel` meneruskan
+`response_metadata` hasil script, baik lewat `invoke` maupun streaming, untuk menguji jalur ini.
+
 ## Deployment
 
 `docker/Dockerfile` punya dua target dari base yang sama: `service`
-(`python -m agent_service.run_service`, SQLite di volume `/data`) dan `ui` (`streamlit run`).
-`compose.yaml` menjalankan keduanya. Service memakai FakeModel secara default, dan UI menunggu
+(`python -m agent_service.run_service`, juga dipakai service `migrate`) dan `ui` (`streamlit run`).
+Setiap target meng-install hanya extra miliknya (`uv sync --frozen --no-dev --extra service` atau
+`--extra ui`), sehingga image service tanpa Streamlit dan image UI tanpa LangGraph. Test e2e
+`test_image_ships_only_its_extra` menjaga batas ini.
+`compose.yaml` menjalankan `postgres` (image `pgvector/pgvector`, volume `postgres-data`),
+`migrate` (sekali jalan), lalu keduanya. Service API menunggu `migrate` selesai dengan sukses
+(`service_completed_successfully`). Service memakai FakeModel secara default, dan UI menunggu
 healthcheck service, lalu menghubunginya di `http://agent-service:8080`. `compose.llm.yaml`
 menimpa konfigurasi model dengan LLM asli.
 
@@ -331,6 +423,11 @@ menimpa konfigurasi model dengan LLM asli.
 
 - **Tidak ada network di unit test.** Fixture autouse `block_network` (`tests/conftest.py`)
   menggagalkan koneksi selain loopback.
+- **Database test memakai Postgres asli.** Fixture sesi `postgres_database` membuat database
+  `agent_service_test_<acak>` dan memigrasinya, fixture `database_url` mengosongkan tabel sebelum
+  setiap test, dan database dihapus di akhir sesi. Fixture autouse `isolate_database_url`
+  mengarahkan `DATABASE_URL` ke host yang tidak ada, supaya test tidak pernah menulis ke database
+  dev. Test murni (agent dengan `InMemorySaver`) tidak butuh database.
 - **LLM diganti `FakeModel`.** Model ini men-stream per kata dan mengirim `tool_calls` utuh, dan
   setiap panggilan mengembalikan salinan message baru.
 - **Test endpoint memakai `httpx.AsyncClient` + `ASGITransport`.** Lifespan dijalankan manual

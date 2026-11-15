@@ -1,0 +1,1355 @@
+{
+  "components": {
+    "schemas": {
+      "AgentInfo": {
+        "description": "Informasi publik satu agent.",
+        "properties": {
+          "config_schema": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "description": "JSON Schema untuk `agent_config` agent ini.",
+            "title": "Config Schema",
+            "type": "object"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "key": {
+            "examples": [
+              "research-assistant"
+            ],
+            "title": "Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "description"
+        ],
+        "title": "AgentInfo",
+        "type": "object"
+      },
+      "ChatHistory": {
+        "description": "Seluruh message dalam satu thread, urut kronologis.",
+        "properties": {
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ChatMessage"
+            },
+            "title": "Messages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "messages"
+        ],
+        "title": "ChatHistory",
+        "type": "object"
+      },
+      "ChatHistoryInput": {
+        "description": "Input untuk membaca riwayat satu thread. Hanya pemilik thread yang boleh membaca.",
+        "properties": {
+          "thread_id": {
+            "minLength": 1,
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "thread_id"
+        ],
+        "title": "ChatHistoryInput",
+        "type": "object"
+      },
+      "ChatMessage": {
+        "description": "Satu message dalam percakapan, dalam bentuk netral (bukan objek LangChain).",
+        "properties": {
+          "agent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sub-agent (expert) yang membuat message ini, atau kosong untuk agent utama.",
+            "title": "Agent"
+          },
+          "content": {
+            "examples": [
+              "Hasilnya 84."
+            ],
+            "title": "Content",
+            "type": "string"
+          },
+          "custom_data": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "description": "Payload untuk message `custom` (event khusus agent).",
+            "title": "Custom Data",
+            "type": "object"
+          },
+          "reasoning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Untuk message `ai`: pemikiran model sebelum menjawab, jika model mengirimnya.",
+            "title": "Reasoning"
+          },
+          "response_metadata": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "description": "Metadata dari provider, misalnya jumlah token.",
+            "title": "Response Metadata",
+            "type": "object"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ID run agent yang menghasilkan message.",
+            "title": "Run Id"
+          },
+          "tool_call_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Untuk message `tool`: ID tool call yang dijawab.",
+            "title": "Tool Call Id"
+          },
+          "tool_calls": {
+            "items": {
+              "$ref": "#/components/schemas/ToolCall"
+            },
+            "title": "Tool Calls",
+            "type": "array"
+          },
+          "truncated": {
+            "default": false,
+            "description": "Untuk message `ai`: jawaban berhenti karena batas token (`LLM_MAX_TOKENS`).",
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "type": {
+            "description": "Peran message.",
+            "enum": [
+              "human",
+              "ai",
+              "tool",
+              "custom"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "content"
+        ],
+        "title": "ChatMessage",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthStatus": {
+        "description": "Isi endpoint `/health`.",
+        "properties": {
+          "status": {
+            "const": "ok",
+            "default": "ok",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "HealthStatus",
+        "type": "object"
+      },
+      "JsonValue": {},
+      "LoginRequest": {
+        "description": "Body `POST /auth/login`.",
+        "properties": {
+          "password": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          },
+          "username": {
+            "examples": [
+              "demo"
+            ],
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "LoginRequest",
+        "type": "object"
+      },
+      "ServiceMetadata": {
+        "description": "Isi endpoint `/info`: agent dan model yang tersedia.",
+        "properties": {
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/AgentInfo"
+            },
+            "title": "Agents",
+            "type": "array"
+          },
+          "default_agent": {
+            "title": "Default Agent",
+            "type": "string"
+          },
+          "default_model": {
+            "title": "Default Model",
+            "type": "string"
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Models",
+            "type": "array"
+          }
+        },
+        "required": [
+          "agents",
+          "models",
+          "default_agent",
+          "default_model"
+        ],
+        "title": "ServiceMetadata",
+        "type": "object"
+      },
+      "StreamInput": {
+        "description": "Input user untuk `/stream`.",
+        "properties": {
+          "agent_config": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "description": "Konfigurasi khusus agent, divalidasi dengan config_schema milik agent.",
+            "examples": [
+              {
+                "temperature": 0.2
+              }
+            ],
+            "title": "Agent Config",
+            "type": "object"
+          },
+          "message": {
+            "description": "Pesan user, atau jawaban untuk agent yang sedang interrupt.",
+            "examples": [
+              "Berapa 12 * 7?"
+            ],
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Nama model dari allowlist. Kosong berarti memakai model default service.",
+            "examples": [
+              "gpt-5-mini"
+            ],
+            "title": "Model"
+          },
+          "stream_tokens": {
+            "default": true,
+            "description": "Kirim token LLM satu per satu, bukan hanya message utuh.",
+            "title": "Stream Tokens",
+            "type": "boolean"
+          },
+          "thread_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Thread yang dilanjutkan. Kosong berarti thread baru.",
+            "title": "Thread Id"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "StreamInput",
+        "type": "object"
+      },
+      "ThreadRenameInput": {
+        "description": "Body untuk mengganti judul thread.",
+        "properties": {
+          "title": {
+            "description": "Judul baru. Spasi di awal dan akhir dibuang.",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "ThreadRenameInput",
+        "type": "object"
+      },
+      "ThreadSummary": {
+        "description": "Ringkasan satu thread untuk daftar riwayat percakapan.",
+        "properties": {
+          "agent_id": {
+            "description": "Agent yang menjalankan thread ini.",
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          },
+          "title": {
+            "description": "Judul custom (jika di-rename) atau dari pesan human pertama.",
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Waktu checkpoint terakhir.",
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "thread_id",
+          "agent_id",
+          "title"
+        ],
+        "title": "ThreadSummary",
+        "type": "object"
+      },
+      "TokenResponse": {
+        "description": "Access token JWT. Kirim sebagai `Authorization: Bearer <access_token>`.",
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "expires_in": {
+            "description": "Umur token dalam detik.",
+            "examples": [
+              43200
+            ],
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "role": {
+            "$ref": "#/components/schemas/TokenRole",
+            "default": "user"
+          },
+          "token_type": {
+            "const": "bearer",
+            "default": "bearer",
+            "title": "Token Type",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "expires_in",
+          "user_id",
+          "username"
+        ],
+        "title": "TokenResponse",
+        "type": "object"
+      },
+      "TokenRole": {
+        "enum": [
+          "user",
+          "service"
+        ],
+        "type": "string"
+      },
+      "ToolCall": {
+        "description": "Permintaan model untuk memanggil satu tool.",
+        "properties": {
+          "args": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "examples": [
+              {
+                "expression": "12 * 7"
+              }
+            ],
+            "title": "Args",
+            "type": "object"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ID dari provider, dipakai oleh ToolMessage.",
+            "title": "Id"
+          },
+          "name": {
+            "examples": [
+              "calculator"
+            ],
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ToolCall",
+        "type": "object"
+      },
+      "UserInput": {
+        "description": "Input user untuk satu run agent (`/invoke`).",
+        "properties": {
+          "agent_config": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "description": "Konfigurasi khusus agent, divalidasi dengan config_schema milik agent.",
+            "examples": [
+              {
+                "temperature": 0.2
+              }
+            ],
+            "title": "Agent Config",
+            "type": "object"
+          },
+          "message": {
+            "description": "Pesan user, atau jawaban untuk agent yang sedang interrupt.",
+            "examples": [
+              "Berapa 12 * 7?"
+            ],
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Nama model dari allowlist. Kosong berarti memakai model default service.",
+            "examples": [
+              "gpt-5-mini"
+            ],
+            "title": "Model"
+          },
+          "thread_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Thread yang dilanjutkan. Kosong berarti thread baru.",
+            "title": "Thread Id"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "UserInput",
+        "type": "object"
+      },
+      "UserThreads": {
+        "description": "Daftar thread milik satu user, terbaru lebih dulu.",
+        "properties": {
+          "threads": {
+            "items": {
+              "$ref": "#/components/schemas/ThreadSummary"
+            },
+            "title": "Threads",
+            "type": "array"
+          }
+        },
+        "required": [
+          "threads"
+        ],
+        "title": "UserThreads",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "description": "Access token dari `POST /auth/login`.",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "Agent Service",
+    "version": "0.4.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/auth/login": {
+      "post": {
+        "description": "Terbitkan access token JWT. Username atau password salah → 401 dengan pesan yang sama.\n\nAkun dibuat lewat CLI: `uv run python -m agent_service.manage create-user <username>`.",
+        "operationId": "login_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "Tanda service hidup. Tidak menyentuh agent atau database.",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/history": {
+      "post": {
+        "description": "Sama dengan `POST /{agent_id}/history` untuk agent default.",
+        "operationId": "history_default_agent_history_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatHistoryInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatHistory"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "History Default Agent",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/info": {
+      "get": {
+        "description": "Daftar agent yang siap dipakai beserta JSON Schema config-nya, dan daftar model.\n\nAgent yang gagal dimuat tidak ditampilkan, supaya client tidak menawarkan agent yang pasti\nmenjawab 503.",
+        "operationId": "info_info_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceMetadata"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Info",
+        "tags": [
+          "info"
+        ]
+      }
+    },
+    "/invoke": {
+      "post": {
+        "description": "Sama dengan `POST /{agent_id}/invoke` untuk agent default.",
+        "operationId": "invoke_default_agent_invoke_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatMessage"
+                }
+              }
+            },
+            "description": "Successful Response",
+            "headers": {
+              "X-Thread-Id": {
+                "description": "Thread used by this run. Send it as `thread_id` to continue the thread.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Invoke Default Agent",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/stream": {
+      "post": {
+        "description": "Sama dengan `POST /{agent_id}/stream` untuk agent default.",
+        "operationId": "stream_default_agent_stream_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {}
+            },
+            "description": "SSE frames, see contracts/stream-event.schema.json.",
+            "headers": {
+              "X-Thread-Id": {
+                "description": "Thread used by this run. Send it as `thread_id` to continue the thread.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Stream Default Agent",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/threads": {
+      "get": {
+        "description": "Sama dengan `GET /{agent_id}/threads` untuk agent default.",
+        "operationId": "threads_default_agent_threads_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserThreads"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Threads Default Agent",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
+    "/threads/{thread_id}": {
+      "delete": {
+        "description": "Sama dengan `DELETE /{agent_id}/threads/{thread_id}` untuk agent default.",
+        "operationId": "delete_thread_default_agent_threads__thread_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Thread Default Agent",
+        "tags": [
+          "threads"
+        ]
+      },
+      "patch": {
+        "description": "Sama dengan `PATCH /{agent_id}/threads/{thread_id}` untuk agent default.",
+        "operationId": "rename_thread_default_agent_threads__thread_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreadRenameInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Rename Thread Default Agent",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
+    "/{agent_id}/history": {
+      "post": {
+        "description": "Kembalikan semua message thread, urut kronologis. Thread milik user lain → 404.",
+        "operationId": "history_agent__agent_id__history_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatHistoryInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatHistory"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "History Agent",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/{agent_id}/invoke": {
+      "post": {
+        "description": "Jalankan agent dan kembalikan message terakhirnya, atau pertanyaan interrupt.\n\nHeader `X-Thread-Id` berisi ID thread yang dipakai run, untuk melanjutkan thread.",
+        "operationId": "invoke_agent__agent_id__invoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatMessage"
+                }
+              }
+            },
+            "description": "Successful Response",
+            "headers": {
+              "X-Thread-Id": {
+                "description": "Thread used by this run. Send it as `thread_id` to continue the thread.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Invoke Agent",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/{agent_id}/stream": {
+      "post": {
+        "description": "Alirkan frame `token`, `message`, dan `error`, selalu diakhiri `data: [DONE]`.\n\nHeader `X-Thread-Id` berisi ID thread yang dipakai run, sama seperti `/invoke`.",
+        "operationId": "stream_agent__agent_id__stream_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {}
+            },
+            "description": "SSE frames, see contracts/stream-event.schema.json.",
+            "headers": {
+              "X-Thread-Id": {
+                "description": "Thread used by this run. Send it as `thread_id` to continue the thread.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Stream Agent",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/{agent_id}/threads": {
+      "get": {
+        "description": "Thread milik pemegang token untuk agent ini, yang terakhir di-update lebih dulu.\n\n`limit` berada di rentang 1–100 (default 20). Nilai di luar rentang menghasilkan 422.",
+        "operationId": "threads_agent__agent_id__threads_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserThreads"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Threads Agent",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
+    "/{agent_id}/threads/{thread_id}": {
+      "delete": {
+        "description": "Hapus thread beserta seluruh riwayatnya. Thread milik user lain → 404.",
+        "operationId": "delete_thread_agent__agent_id__threads__thread_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Thread Agent",
+        "tags": [
+          "threads"
+        ]
+      },
+      "patch": {
+        "description": "Ganti judul thread. Hanya pemilik thread yang boleh. Thread milik user lain → 404.",
+        "operationId": "rename_thread_agent__agent_id__threads__thread_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreadRenameInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Rename Thread Agent",
+        "tags": [
+          "threads"
+        ]
+      }
+    }
+  }
+}

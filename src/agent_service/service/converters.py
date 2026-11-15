@@ -21,6 +21,9 @@ CUSTOM_MESSAGE_ROLE: Final = "custom"
 TEXT_BLOCK_TYPE: Final = "text"
 INTERRUPT_KEY: Final = "__interrupt__"
 MESSAGES_KEY: Final = "messages"
+FINISH_REASON_KEY: Final = "finish_reason"
+# Nilai `finish_reason` OpenAI-compatible saat jawaban berhenti karena `max_tokens` (FR-30).
+TOKEN_LIMIT_FINISH_REASON: Final = "length"
 
 
 class UnsupportedMessageError(ValueError):
@@ -167,7 +170,19 @@ def _ai_to_chat_message(message: AIMessage) -> ChatMessage:
         tool_calls=tool_calls,
         response_metadata=message.response_metadata,
         reasoning=message_reasoning(message) or None,
+        truncated=is_truncated(message),
     )
+
+
+def is_truncated(message: AIMessage) -> bool:
+    """Apakah jawaban model berhenti karena batas token, menurut `finish_reason` provider.
+
+    >>> is_truncated(AIMessage(content="Jawa", response_metadata={"finish_reason": "length"}))
+    True
+    >>> is_truncated(AIMessage(content="Jawaban.", response_metadata={"finish_reason": "stop"}))
+    False
+    """
+    return message.response_metadata.get(FINISH_REASON_KEY) == TOKEN_LIMIT_FINISH_REASON
 
 
 def _custom_to_chat_message(message: LangChainChatMessage) -> ChatMessage:

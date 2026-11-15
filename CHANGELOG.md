@@ -6,6 +6,64 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-15
+
+M4 Foundation: Postgres, login per user, batas token jawaban, image lebih kecil, dan kontrak API
+yang dipublikasikan.
+
+**Catatan upgrade (breaking):**
+
+1. Jalankan Postgres (`docker compose up -d postgres`), lalu
+   `uv run python -m agent_service.run_migrate`. Data `checkpoints.db` lama tidak dimigrasi.
+2. Isi `JWT_SECRET` (minimal 32 karakter) dan hapus `AUTH_SECRET` dari `.env`.
+3. Buat akun: `uv run python -m agent_service.manage create-user <username>`.
+4. Client harus login (`AgentClient.login()` atau `POST /auth/login`) dan tidak lagi mengirim
+   `user_id`.
+
+### Added
+
+- Batas token jawaban `LLM_MAX_TOKENS` (default 8192) untuk model OpenAI-compatible, bisa ditimpa
+  lewat `ModelFactory.create(..., max_tokens=...)`. Jawaban yang berhenti karena batas
+  (`finish_reason = "length"`) ditandai `ChatMessage.truncated` di `/invoke`, `/stream`, dan
+  `/history`, dan UI menampilkan peringatan "jawaban terpotong". `LLM_MAX_TOKENS_PARAM` memilih nama
+  parameter di request (`max_tokens` untuk Ollama, `max_completion_tokens` untuk model reasoning
+  OpenAI) (F21).
+- Dependency dipisah menjadi extras: install dasar hanya `schema` + `client` (pydantic, httpx),
+  extra `service` untuk API, dan extra `ui` untuk Streamlit. Image Docker hanya meng-install
+  extra-nya: image `service` turun dari ±1 GB ke ±505 MB dan tanpa Streamlit, image `ui` ±881 MB
+  dan tanpa LangGraph (F22).
+- Login per user (FR-33): `POST /auth/login` menukar username dan password (hash argon2id) dengan
+  access token JWT HS256 (`JWT_SECRET`, `JWT_TTL_SECONDS`, default 12 jam, tanpa refresh token).
+  Akun dibuat lewat `python -m agent_service.manage create-user <username> [--role service]`.
+  `AgentClient.login()`/`alogin()`, dan form login + logout di UI Streamlit (F24).
+- CORS untuk origin di `CORS_ORIGINS` (FR-34), dengan header `X-Thread-Id` diekspos ke browser
+  (F24).
+- Kontrak API dipublikasikan di `contracts/openapi.json` dan `contracts/stream-event.schema.json`
+  (FR-35), dihasilkan oleh `python -m agent_service.export_contracts`. CI dan hook pre-commit gagal
+  jika file tidak sinkron dengan kode. Header `X-Thread-Id` kini tercatat di OpenAPI (F25).
+- Rencana Fase 2 (M4–M10, F21–F46): requirement FR-30–FR-58 dan NFR-9–NFR-12 di PRD, rincian
+  fitur dan backlog di ROADMAP, serta ADR 0001–0005 (Postgres-only, harness sendiri, frontend
+  React, Project sebagai agent deklaratif, format skill) di `docs/adr/`.
+
+### Changed
+
+- **Breaking:** `user_id` diambil dari access token. Field `user_id` dihapus dari semua request
+  (`UserInput`, `ChatHistoryInput`, `ThreadRenameInput`, query `/threads` dan `DELETE`), header
+  `X-User-Id` dihapus, dan method `AgentClient` tidak lagi menerima `user_id`. URL UI tidak lagi
+  berisi `user_id`. Semua endpoint selain `/health` dan `/auth/login` butuh token (F24).
+- **Breaking:** persistence pindah ke Postgres (ADR 0001): checkpointer `AsyncPostgresSaver` dan
+  tabel `thread_metadata` lewat SQLAlchemy Core async + Alembic, dengan satu env `DATABASE_URL`
+  (default Postgres compose lokal). `docker compose up` kini menjalankan `postgres` → `migrate` →
+  service. Service menolak start jika database tidak terjangkau atau migrasi belum dijalankan
+  (`python -m agent_service.run_migrate`) (F23).
+
+### Removed
+
+- `AUTH_SECRET` (shared bearer token) dan opsi `auth_secret` di `AgentClient`, diganti JWT per user
+  (F24).
+- SQLite: `SQLITE_DB_PATH`, `aiosqlite`, `langgraph-checkpoint-sqlite`, dan volume compose
+  `agent-data`. Data di `checkpoints.db` lama tidak dimigrasi (F23).
+
 ## [0.3.0] - 2026-11-12
 
 ### Added
@@ -80,7 +138,8 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 - `docs/ARCHITECTURE.md`: lifespan, alur request, kepemilikan thread, error, persistence, dan cara
   menambah agent (F10).
 
-[Unreleased]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/nurgoni/langgraph-boilerplate-agent/releases/tag/v0.1.0

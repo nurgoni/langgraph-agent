@@ -13,16 +13,181 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** M3 selesai (F19, F15, F16, F17, F20 di `develop`). `release/v0.3.0` disiapkan,
-  menunggu push, PR ke `main` (`--no-ff`), tag `v0.3.0`, dan back-merge ke `develop`.
-- **Berikutnya:** belum ada milestone setelah M3. Tanyakan ke user (kandidat: batas token
-  jawaban `LLM_MAX_TOKENS`, pemisahan dependency image Docker).
+- **Fase:** M4 selesai (F21–F25). Rilis **v0.4.0** disiapkan di `release/v0.4.0` (versi,
+  changelog dengan catatan upgrade breaking, lock, kontrak), menunggu user merge ke `main`, tag,
+  dan back-merge.
+- **Berikutnya:** **F26** (Projects), awal M5 Harness Core.
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
-- **Terakhir diperbarui:** 2026-11-12
+- **Terakhir diperbarui:** 2026-11-15
 
 ## Decision Log
+
+### 2026-11-15: Kontrak API dari F25
+
+- **Keputusan desain:**
+  - `service/contracts.py` + entrypoint `export_contracts` (`--check`, `--output-dir`). OpenAPI dari
+    `create_app` dengan `Settings` tiruan dan hanya `ChatbotAgent`. `info.version` = versi package.
+  - Tiga lapis penjaga: hook pre-commit `api-contracts` (file di `schema/`, `service/`,
+    `contracts/`), test `test_published_contracts_match_the_code`, dan langkah CI `--check`.
+  - `RUN_RESPONSE_HEADERS` (`service/run_input.py`) mendokumentasikan `X-Thread-Id` di OpenAPI.
+- **Pelajaran:**
+  - Docstring class Pydantic dan function route menjadi `description` di OpenAPI, termasuk doctest.
+    Doctest untuk model/route ditaruh di docstring modul.
+  - `configure_logging` mengganti handler root logger, jadi `caplog` tidak menangkap log dari
+    entrypoint. Pakai `capsys` (stderr).
+  - `cmd | tail` menyembunyikan exit code `cmd`. Cek exit code tanpa pipe.
+
+### 2026-11-15: Auth per user dari F24
+
+- **Supersedes:** "AUTH_SECRET" bersama (F06) dan keputusan F13 "`user_id` disimpan di URL".
+- **Keputusan user:** tanpa refresh token, TTL 12 jam. `JWT_SECRET` wajib (service gagal start).
+  Login dengan username. Token stateless (tanpa query DB per request).
+- **Keputusan desain:**
+  - JWT HS256 (`pyjwt`), klaim `sub`/`role`/`iat`/`exp`, semuanya wajib saat decode. Hash password
+    argon2id (`argon2-cffi`). `Authenticator` di `service/auth.py`. `UserRepository` di
+    `memory/users.py` tidak bergantung pada library kripto.
+  - `current_principal` di `service/dependencies.py` (dipasang per router, dan sebagai
+    `PrincipalDep` di route). Kebocoran keberadaan username dicegah dengan pesan yang sama dan hash
+    tiruan untuk username yang tidak ada.
+  - Kontrak breaking: `user_id` dihapus dari semua request dan header `X-User-Id` dihapus.
+    `RESERVED_AGENT_CONFIG_KEYS` tetap berisi `user_id`, karena nilainya diisi service di
+    `configurable`.
+  - Akun hanya lewat CLI `python -m agent_service.manage create-user`. Role `service` disiapkan
+    untuk F31/F41, dan saat ini aksesnya sama dengan `user`.
+  - CORS: `allow_credentials` tidak dipakai (token di header, bukan cookie). `X-Thread-Id`
+    diekspos.
+- **Pelajaran:**
+  - Pydantic `StringConstraints(pattern=..., to_lower=True)` mengecek pola **sebelum** `to_lower`
+    dan `strip_whitespace`. Normalisasi harus memakai `BeforeValidator`.
+  - pyrefly tidak menuntut argumen untuk field wajib `BaseSettings` (nilainya bisa dari env), jadi
+    `Settings()` tanpa `jwt_secret` lolos type check. Doctest di `src/` harus mengisinya eksplisit,
+    sedangkan test mendapatkannya dari fixture autouse `test_jwt_secret`.
+  - pytest-asyncio 1.x tidak mengizinkan test sync memakai fixture async. Jadikan test-nya async.
+  - `st.rerun()` bertipe `NoReturn`, jadi kode setelahnya ditandai unreachable oleh pyrefly.
+  - `HTTPBearer()` default menjawab 403 untuk header yang hilang. Pakai `auto_error=False` dan raise
+    sendiri agar 401 konsisten.
+  - `st.cache_data` berlaku untuk seluruh proses Streamlit: kunci cache data milik user wajib
+    menyertakan identitas user.
+  - `.env` developer harus ditambah `JWT_SECRET` setelah F24, kalau tidak service gagal start.
+
+### 2026-11-15: Postgres dari F23
+
+- **Supersedes:** entri F03 (`CheckpointerProvider(db_path)` SQLite) dan F18 (tabel
+  `thread_metadata` lewat `aiosqlite`). Detail keputusan besar ada di ADR 0001.
+- **Keputusan user:** `DATABASE_URL` default ke Postgres compose lokal
+  (`postgresql://agent:agent@127.0.0.1:5432/agent_service`).
+- **Keputusan desain:**
+  - `memory/database.py`: `DatabaseEngineProvider` (async CM, cek `SELECT 1` saat masuk),
+    `sqlalchemy_url()` menambah `+psycopg`. `memory/tables.py`: `METADATA` untuk Alembic.
+  - `memory/migrator.py`: `upgrade_database()` = `AsyncPostgresSaver.setup()` dulu, lalu
+    `alembic upgrade head` (revisi Alembic terbaru = seluruh migrasi selesai).
+    `ensure_database_migrated(engine)` dipanggil lifespan. Konfigurasi Alembic dibuat di kode
+    (folder `memory/migrations/` di dalam package), `alembic.ini` di root hanya untuk CLI dev.
+  - `CheckpointerProvider(database_url)`: `AsyncConnectionPool` dengan `autocommit`,
+    `prepare_threshold=0`, `dict_row`. Tidak memanggil `setup()`.
+  - `ThreadMetadataRepository(engine)`: upsert `on_conflict_do_update`, bukan context manager.
+  - `--ignore=src/agent_service/memory/migrations` di pytest, karena `env.py` dieksekusi Alembic
+    (side effect di level modul adalah konvensi Alembic).
+- **Pelajaran:**
+  - **psycopg async + Windows:** `ProactorEventLoop` (default Windows) ditolak. Untuk uvicorn,
+    import string custom di `loop=` dipakai **langsung** sebagai loop factory tanpa argumen
+    (`"asyncio:SelectorEventLoop"`), berbeda dengan nama bawaan (`"asyncio"`) yang dipanggil dengan
+    `use_subprocess`. Test yang me-mock `uvicorn.run` tidak menangkap ini. Hanya e2e Docker yang
+    menangkapnya, jadi ada test `uvicorn.Config(...).get_loop_factory()`.
+  - **`localhost` di Docker Desktop Windows:** koneksi ke `::1` menggantung sampai timeout,
+    sedangkan `127.0.0.1` tersambung dalam 0,01 detik. Selalu pakai `127.0.0.1` untuk port yang
+    di-publish compose.
+  - **Default `connect_timeout` psycopg 130 detik**, dan di Windows penolakan koneksi baru
+    terdeteksi setelah timeout. Selalu set `connect_timeout` eksplisit.
+  - psycopg `sql.SQL()` mewajibkan `LiteralString`. Ketik parameter template sebagai
+    `LiteralString`, jangan `str`.
+  - Data `checkpoints.db` lama tidak dimigrasi (ADR 0001). Volume compose `agent-data` lama menjadi
+    yatim dan bisa dihapus dengan `docker volume rm agent-service_agent-data`.
+
+### 2026-11-15: Dependency extras dari F22
+
+- **Supersedes:** "Utang" di entri F14 (image ±1 GB karena dependency belum dipisah).
+- **Keputusan desain:**
+  - Dependency dasar `httpx` + `pydantic`. Extra `service` (fastapi, uvicorn, langgraph,
+    langchain-*, checkpoint SQLite, aiosqlite, numexpr, pydantic-settings) dan `ui` (streamlit,
+    pydantic-settings). Pembagian dari pemetaan import per layer, bukan tebakan.
+  - Grup `dev` mereferensikan `agent-service[service,ui]`, bukan `uv sync --all-extras`. Alasan:
+    `uv sync` bersifat exact, jadi tanpa flag ia menghapus extras dari `.venv`.
+  - Dockerfile: `base` hanya berisi uv, user, dan file lock. Target `service`/`ui` masing-masing
+    menjalankan `uv sync --frozen --no-dev --extra <nama>`.
+  - Test e2e `test_image_ships_only_its_extra` memastikan modul terlarang tidak ada di image.
+- **Hasil ukur (Docker 29, disk / venv):** `service` ±1.000 / 551 MB → 505 / 187 MB, `ui`
+  ±1.000 / 551 MB → 881 / 458 MB. Paket terbesar di UI: pyarrow (167 MB) dan pandas (72 MB),
+  keduanya dependency Streamlit.
+- **Pelajaran:**
+  - Streamlit 1.66 bergantung pada `uvicorn` (`uv tree --invert --package uvicorn`).
+  - Dengan containerd image store (Docker 29), `docker images` menampilkan ukuran disk (`1e+03MB`
+    untuk ±1 GB), sedangkan `docker image inspect --format '{{.Size}}'` memberi ukuran konten
+    terkompresi. Untuk perbandingan, ukur juga `du -sm /opt/venv` di dalam image.
+  - `uv tree` di uv 0.12 tidak menerima `--extra`. Pakai `uv export --no-dev --extra <nama>`
+    untuk melihat isi satu extra.
+
+### 2026-11-15: Batas token jawaban dari F21
+
+- **Aturan kerja baru dari user:** **semua command git dijalankan oleh user**, termasuk yang
+  read-only (`git status`, `git log`). Agent hanya menulis daftar command yang akan dieksekusi.
+  Setiap branch yang dibuat langsung dihapus (lokal dan remote) setelah selesai di-merge.
+- **Keputusan desain:**
+  - `LLM_MAX_TOKENS` (`Settings.llm_max_tokens`, `ge=1`), default `DEFAULT_LLM_MAX_TOKENS = 8192`
+    di `core/constants.py`. Batas ini berlaku **per panggilan model** (satu giliran LLM), bukan per
+    thread, dan tidak membatasi input/konteks.
+  - Hasil ukur (Ollama 0.40.2, `qwen3.5:9b`): reasoning ikut dihitung. Tanpa batas, 442–3265
+    token per jawaban (10–58 detik). Batas 200–300 → jawaban kosong, `finish_reason = "length"`.
+  - **Keputusan user:** env `LLM_MAX_TOKENS_PARAM` (`max_tokens` default, atau
+    `max_completion_tokens`). `ReasoningChatOpenAI._get_request_payload` mengganti nama field.
+  - `ModelFactory.create(name, max_tokens=None)`: `None` berarti `LLM_MAX_TOKENS`. Cache per
+    `(nama, max_tokens)`. `AgentRegistry` belum meneruskan override (baru dibutuhkan di F26).
+  - `truncated` diturunkan dari `response_metadata["finish_reason"] == "length"` di converter
+    (`is_truncated`), jadi `/invoke`, `/stream`, dan `/history` memakai satu jalur.
+  - `FakeModel` tidak mendapat field baru: `finish_reason` di-script lewat `response_metadata`
+    `AIMessage`, lalu dikirim sebagai satu chunk penutup saat streaming.
+  - UI: `st.warning` di bawah jawaban (teks Inggris), juga untuk riwayat.
+- **Pelajaran:**
+  - `ChatOpenAI` di langchain-openai 1.7 selalu mengirim `max_completion_tokens`, dan Ollama
+    0.40.2 diam-diam mengabaikannya. Hanya smoke test dengan provider asli yang menangkap ini,
+    karena test `MockTransport` hanya memeriksa body yang dikirim. Model reasoning OpenAI justru
+    menolak `max_tokens`, jadi nama field harus bisa dikonfigurasi.
+  - `generation_info` (berisi `finish_reason`) digabung LangChain ke `response_metadata`, baik di
+    jalur `invoke` maupun streaming. String di `response_metadata` digabung antar chunk, jadi
+    metadata hanya boleh ada di satu chunk.
+
+### 2026-11-15: Rencana Fase 2 (M4–M10)
+
+- **Keputusan user:**
+  - **Postgres-only**, dijalankan sebagai service di Docker Compose
+    ([ADR 0001](../docs/adr/0001-postgres-only.md)).
+  - **Harness dibangun sendiri**, tanpa `deepagents` atau package `langchain`
+    ([ADR 0002](../docs/adr/0002-own-harness.md)). Alasan: belum ada waktu meriset perilakunya.
+  - **Frontend React + TypeScript** dengan komponen standar (shadcn/ui, assistant-ui), tanpa
+    komponen buatan sendiri, dan layout ala Claude dengan Projects
+    ([ADR 0003](../docs/adr/0003-frontend-stack.md)). Streamlit menjadi dev console.
+  - **Project = agent deklaratif** ([ADR 0004](../docs/adr/0004-project-as-declarative-agent.md)).
+  - **Skill runtime built-in dulu** (`SKILL.md`, spesifikasi agentskills.io), untuk demo
+    showcase. Skill lewat UI = backlog B1, tetapi setiap desain wajib menyediakan titik
+    ekstensinya ([ADR 0005](../docs/adr/0005-skill-format-and-sources.md)).
+  - Cron job: hasil analisa dikirim sebagai PDF di thread chat. Sumber data: database relasional.
+- **Keputusan desain:**
+  - Urutan: M4 Foundation → M5 Harness Core → M6 Frontend (demo) → M7 Files & Execution → M8 Data
+    Analytics → M9 Knowledge → M10 Interop. Auth per user (F24) naik ke M4 karena frontend
+    browser tidak boleh memegang `AUTH_SECRET`.
+  - Fitur "general tools" (read/write/bash) dilebur ke F36 (workspace) dan F37 (sandbox). "Review"
+    adalah skill/sub-agent, bukan tool.
+  - Kode buatan model tidak pernah dijalankan di proses service (NFR-10). Referensi
+    `charting_agent.py` (abh2050/langgraph_data_analytics_agents) memakai `exec()` tanpa sandbox,
+    dan pola itu tidak ditiru.
+  - Worker menjalankan agent lewat `AgentClient` dengan service account. Jendela waktu job dihitung
+    dari waktu jadwal (UTC), dan `(job_id, window_start)` unik.
+- **Di luar roadmap (ide user, jangan dijadwalkan):** memisahkan produk chat dari dev-time harness,
+  seperti Claude memisahkan Claude Code dari chat biasa.
+- **Pelajaran:** heredoc bash yang sangat panjang gagal dengan `ENAMETOOLONG`. Tulis konten ke file
+  scratchpad, lalu `cat >>`.
 
 ### 2026-11-12: Web search pindah ke Firecrawl (F20)
 
@@ -545,18 +710,28 @@ melakukan port.
 
 ## Pertanyaan Terbuka
 
-Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pertanyaan terbuka.
+Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Pertanyaan Fase 2 (no. 6–10) dijawab di
+Langkah 1 fitur terkait:
+
+- No. 6: sumber data analisa, user read-only, dan masking PII (F39).
+- No. 7: backend tracing (F31).
+- No. 8: bentuk route chat berbasis Project (F26).
+- No. 9: library PDF (F42).
+- No. 10: parser dokumen ingestion (F43).
 
 ## TODO Berikutnya
 
 - [ ] User: isi `FIRECRAWL_API_KEY` di `.env`, lalu minta agent menjalankan smoke test Firecrawl
       asli.
-- [ ] User: hentikan service/UI yang sedang berjalan, lalu `uv sync` untuk membuang `ddgs`/`lxml`
-      dari `.venv` (`lxml-6.1.3.dist-info` setengah terhapus memicu 51 DeprecationWarning di test
-      UI).
 - [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
       (CONTRIBUTING.md § Setup Awal Repo).
-- [ ] Usulkan ke user: batas token jawaban (misalnya `LLM_MAX_TOKENS`), karena model reasoning
-      bisa berpikir sangat lama.
-- [ ] User: push `release/v0.3.0`, PR ke `main` (merge commit `--no-ff`), tag annotated `v0.3.0`,
-      lalu back-merge `main` → `develop`.
+- [ ] **Ingatkan user: saatnya memakai dev-time skill** (skill untuk coding agent yang
+      mengembangkan repo ini, bukan skill runtime produk). Sampaikan saat salah satu pemicu ini
+      terjadi:
+  1. Prosedur yang sama dijalankan berulang dengan banyak langkah. Kandidat pertama: rilis
+     `v0.4.0` (setelah F25), lalu "ubah schema → export kontrak → generate tipe TS" setelah F32.
+  2. `AGENTS.md` + `.agents/memory.md` terasa terlalu panjang untuk dimuat setiap sesi.
+  3. Sebelum mulai F28 (`SkillRegistry`): membuat satu dev-time skill (misalnya `release`) adalah
+     latihan paling murah untuk memahami format `SKILL.md`.
+- [ ] Ringkas `.agents/memory.md` (±600 baris, melewati batas ±300): pindahkan entri Decision Log
+      Fase 1 yang sudah stabil ke `docs/adr/` atau arsip.

@@ -1,23 +1,31 @@
 """Konfigurasi service yang dibaca dari environment variable dan file `.env`."""
 
-from pathlib import Path
 from typing import Annotated, Final, Self
+from urllib.parse import urlsplit
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from agent_service.core.constants import (
+    DEFAULT_DATABASE_URL,
     DEFAULT_HOST,
+    DEFAULT_JWT_TTL_SECONDS,
+    DEFAULT_LLM_MAX_TOKENS,
+    DEFAULT_LLM_MAX_TOKENS_PARAM,
     DEFAULT_LOG_LEVEL,
     DEFAULT_PORT,
-    DEFAULT_SQLITE_DB_PATH,
     ENV_FILE,
     ENV_FILE_ENCODING,
     FAKE_MODEL_NAME,
+    LIST_SEPARATOR,
     MAX_PORT,
+    MIN_JWT_SECRET_LENGTH,
+    MIN_JWT_TTL_SECONDS,
+    MIN_LLM_MAX_TOKENS,
     MIN_PORT,
-    MODEL_LIST_SEPARATOR,
+    POSTGRES_URL_SCHEMES,
     LogLevel,
+    MaxTokensParam,
 )
 
 REQUIRED_LLM_FIELDS: Final = ("llm_base_url", "llm_api_key", "default_model")
@@ -33,7 +41,7 @@ class Settings(BaseSettings):
         pydantic.ValidationError: Jika konfigurasi LLM tidak lengkap (dan `USE_FAKE_MODEL`
             tidak aktif), `DEFAULT_MODEL` tidak ada di allowlist, atau nilai env tidak valid.
 
-    >>> settings = Settings(_env_file=None, use_fake_model=True)
+    >>> settings = Settings(_env_file=None, use_fake_model=True, jwt_secret="x" * 32)
     >>> settings.default_model, settings.available_models
     ('fake', ['fake'])
     """
@@ -51,20 +59,27 @@ class Settings(BaseSettings):
     # NoDecode: nilai env dibiarkan string agar dipisah koma, bukan di-parse sebagai JSON.
     available_models: Annotated[list[str], NoDecode] = Field(default_factory=list)
     use_fake_model: bool = False
+    llm_max_tokens: int = Field(default=DEFAULT_LLM_MAX_TOKENS, ge=MIN_LLM_MAX_TOKENS)
+    llm_max_tokens_param: MaxTokensParam = DEFAULT_LLM_MAX_TOKENS_PARAM
 
-    sqlite_db_path: Path = DEFAULT_SQLITE_DB_PATH
+    # Secret karena berisi password. Default = Postgres dari compose.yaml untuk dev lokal.
+    database_url: SecretStr = SecretStr(DEFAULT_DATABASE_URL)
 
     # Kosong berarti tool web search menjawab "not configured", tanpa menggagalkan startup.
     firecrawl_api_key: SecretStr | None = None
 
-    auth_secret: SecretStr | None = None
+    # Wajib (keputusan user): tidak ada mode tanpa auth. Dipakai menandatangani access token.
+    jwt_secret: SecretStr = Field(min_length=MIN_JWT_SECRET_LENGTH)
+    jwt_ttl_seconds: int = Field(default=DEFAULT_JWT_TTL_SECONDS, ge=MIN_JWT_TTL_SECONDS)
+    # Kosong berarti tidak ada origin browser lain yang diizinkan (FR-34).
+    cors_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
     host: str = DEFAULT_HOST
     port: int = Field(default=DEFAULT_PORT, ge=MIN_PORT, le=MAX_PORT)
     log_level: LogLevel = DEFAULT_LOG_LEVEL
 
-    @field_validator("available_models", mode="before")
+    @field_validator("available_models", "cors_origins", mode="before")
     @classmethod
-    def _split_model_list(cls, value: object) -> object:
+    def _split_comma_list(cls, value: object) -> object:
         """Pisahkan string `"a, b"` menjadi `["a", "b"]`.
 
         Args:
@@ -77,11 +92,30 @@ class Settings(BaseSettings):
         if not isinstance(value, str):
             return value
         names: list[str] = []
-        for raw_name in value.split(MODEL_LIST_SEPARATOR):
+        for raw_name in value.split(LIST_SEPARATOR):
             name = raw_name.strip()
             if name:
                 names.append(name)
         return names
+
+    @field_validator("database_url")
+    @classmethod
+    def _require_postgres_url(cls, value: SecretStr) -> SecretStr:
+        """Tolak `DATABASE_URL` selain Postgres, misalnya `sqlite://` sisa konfigurasi lama.
+
+        Args:
+            value: URL database yang sudah dibungkus `SecretStr`.
+
+        Returns:
+            Nilai yang sama jika skemanya `postgresql://` atau `postgres://`.
+
+        Raises:
+            ValueError: Jika skema URL bukan Postgres.
+        """
+        scheme = urlsplit(value.get_secret_value()).scheme
+        if scheme not in POSTGRES_URL_SCHEMES:
+            raise ValueError(f"DATABASE_URL must start with postgresql:// (got scheme {scheme!r})")
+        return value
 
     @model_validator(mode="after")
     def _resolve_models(self) -> Self:
@@ -124,4 +158,4 @@ class Settings(BaseSettings):
 
 
 if __name__ == "__main__":
-    print(Settings(_env_file=None, use_fake_model=True))
+    print(Settings(_env_file=None, use_fake_model=True, jwt_secret="x" * 32))

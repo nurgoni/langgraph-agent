@@ -20,6 +20,7 @@ from agent_service.schema.stream import (
     StreamEvent,
     TokenEvent,
 )
+from agent_service.ui.login_view import end_expired_session
 from agent_service.ui.message_renderer import MessageRenderer
 from agent_service.ui.session import ChatSession
 
@@ -80,7 +81,6 @@ class ChatView:
             prompt,
             model=self._session.model,
             thread_id=self._session.thread_id,
-            user_id=self._session.user_id,
             stream_tokens=self._session.stream_tokens,
         )
         created_thread = False
@@ -92,6 +92,7 @@ class ChatView:
                     failed = self._handle_event(event, renderer) or failed
         except AgentClientError as error:
             logger.warning("Agent request failed: %s", error)
+            end_expired_session(self._client, error)
             renderer.render_error(self._error_text(error))
             failed = True
         if created_thread:
@@ -100,14 +101,15 @@ class ChatView:
     def _ensure_history(self) -> None:
         """Muat riwayat thread yang dibuka dari URL, sekali per session.
 
-        Thread yang tidak ditemukan (atau milik user lain) diganti chat baru. Jika service tidak
-        terjangkau, riwayat dicoba lagi pada run berikutnya.
+        Thread yang tidak ditemukan (atau milik user lain) diganti chat baru. Token yang ditolak
+        mengembalikan user ke form login. Jika service tidak terjangkau, riwayat dicoba lagi pada
+        run berikutnya.
         """
         thread_id = self._session.thread_id
         if self._session.history_loaded or thread_id is None:
             return
         try:
-            history = self._client.get_history(thread_id, self._session.user_id)
+            history = self._client.get_history(thread_id)
         except AgentClientError as error:
             self._report_history_error(error, thread_id)
             return
@@ -116,6 +118,7 @@ class ChatView:
     def _report_history_error(self, error: AgentClientError, thread_id: str) -> None:
         """Tampilkan alasan riwayat gagal dimuat. Thread yang tidak ada diganti chat baru."""
         logger.warning("Loading history for %s failed: %s", thread_id, error)
+        end_expired_session(self._client, error)
         if error.status_code == HTTP_NOT_FOUND:
             st.warning(THREAD_NOT_FOUND_TEMPLATE.format(thread_id=thread_id))
             self._session.start_new_thread()
@@ -135,7 +138,7 @@ class ChatView:
             `True` jika service membuat thread baru untuk run ini.
         """
         is_new_thread = run.thread_id != self._session.thread_id
-        self._session.remember_run(run.thread_id, run.user_id)
+        self._session.remember_run(run.thread_id)
         self._session.messages.append(human_message)
         return is_new_thread
 

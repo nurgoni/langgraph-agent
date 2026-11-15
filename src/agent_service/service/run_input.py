@@ -12,11 +12,19 @@ from langgraph.types import Command, StateSnapshot
 from pydantic import BaseModel, JsonValue, ValidationError
 
 from agent_service.agents.base import AgentGraph, BaseAgent
-from agent_service.schema.headers import THREAD_ID_HEADER, USER_ID_HEADER
+from agent_service.schema.headers import THREAD_ID_HEADER
 from agent_service.schema.requests import UserInput
 from agent_service.service.thread_access import ensure_thread_owner, is_new_thread, run_metadata
 
 AGENT_CONFIG_LOCATION: Final = ("body", "agent_config")
+# Header respons run di OpenAPI, supaya tipe client hasil generate tahu cara membaca ID thread.
+# Any: bentuk bebas objek OpenAPI milik FastAPI.
+RUN_RESPONSE_HEADERS: Final[dict[str, dict[str, Any]]] = {
+    THREAD_ID_HEADER: {
+        "description": "Thread used by this run. Send it as `thread_id` to continue the thread.",
+        "schema": {"type": "string"},
+    }
+}
 
 # Any: bentuk input bergantung pada state agent. Command dipakai untuk melanjutkan interrupt.
 type GraphInput = dict[str, Any] | Command
@@ -33,22 +41,25 @@ class RunInput:
     user_id: str
 
     def response_headers(self) -> dict[str, str]:
-        """Header yang mengembalikan ID thread dan user ke client (FR-13)."""
-        return {THREAD_ID_HEADER: self.thread_id, USER_ID_HEADER: self.user_id}
+        """Header yang mengembalikan ID thread ke client (FR-13)."""
+        return {THREAD_ID_HEADER: self.thread_id}
 
 
-async def build_run_input(user_input: UserInput, agent: BaseAgent, graph: AgentGraph) -> RunInput:
+async def build_run_input(
+    user_input: UserInput, user_id: str, agent: BaseAgent, graph: AgentGraph
+) -> RunInput:
     """Siapkan input graph untuk request, termasuk ID baru dan resume interrupt.
 
     Function, bukan class: tidak menyimpan state, dan setiap langkah sudah dipecah ke helper.
 
     Args:
         user_input: Body request `/invoke` atau `/stream`.
+        user_id: Pemilik run, dari access token.
         agent: Agent tujuan, untuk validasi `agent_config`.
         graph: Graph agent untuk model yang dipilih.
 
     Returns:
-        Input dan config run. `thread_id`/`user_id` yang kosong diisi UUID baru (FR-13).
+        Input dan config run. `thread_id` yang kosong diisi UUID baru (FR-13).
 
     Raises:
         RequestValidationError: Jika `agent_config` tidak lolos `config_schema` agent (422).
@@ -56,7 +67,6 @@ async def build_run_input(user_input: UserInput, agent: BaseAgent, graph: AgentG
     """
     agent_config = parse_agent_config(agent, user_input.agent_config)
     thread_id = user_input.thread_id or str(uuid4())
-    user_id = user_input.user_id or str(uuid4())
     run_id = uuid7()
     configurable: dict[str, Any] = {"thread_id": thread_id, "user_id": user_id}
     configurable.update(agent_config.model_dump(mode="json"))
@@ -120,7 +130,7 @@ if __name__ == "__main__":
     async def _demo() -> None:
         agent = ChatbotAgent()
         graph = agent.build(FakeModel(), InMemorySaver())
-        run = await build_run_input(UserInput(message="Halo"), agent, graph)
+        run = await build_run_input(UserInput(message="Halo"), "user-1", agent, graph)
         print(run.thread_id, run.user_id, run.graph_input)
 
     asyncio.run(_demo())

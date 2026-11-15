@@ -1,1 +1,1 @@
-"""Persistence: SQLite checkpointer dan metadata thread."""
+"""Persistence Postgres: engine, migrasi, checkpointer, dan metadata thread."""

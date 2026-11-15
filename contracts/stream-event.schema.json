@@ -1,0 +1,262 @@
+{
+  "$defs": {
+    "ChatMessage": {
+      "description": "Satu message dalam percakapan, dalam bentuk netral (bukan objek LangChain).",
+      "properties": {
+        "agent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Sub-agent (expert) yang membuat message ini, atau kosong untuk agent utama.",
+          "title": "Agent"
+        },
+        "content": {
+          "examples": [
+            "Hasilnya 84."
+          ],
+          "title": "Content",
+          "type": "string"
+        },
+        "custom_data": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "description": "Payload untuk message `custom` (event khusus agent).",
+          "title": "Custom Data",
+          "type": "object"
+        },
+        "reasoning": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Untuk message `ai`: pemikiran model sebelum menjawab, jika model mengirimnya.",
+          "title": "Reasoning"
+        },
+        "response_metadata": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "description": "Metadata dari provider, misalnya jumlah token.",
+          "title": "Response Metadata",
+          "type": "object"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ID run agent yang menghasilkan message.",
+          "title": "Run Id"
+        },
+        "tool_call_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Untuk message `tool`: ID tool call yang dijawab.",
+          "title": "Tool Call Id"
+        },
+        "tool_calls": {
+          "items": {
+            "$ref": "#/$defs/ToolCall"
+          },
+          "title": "Tool Calls",
+          "type": "array"
+        },
+        "truncated": {
+          "default": false,
+          "description": "Untuk message `ai`: jawaban berhenti karena batas token (`LLM_MAX_TOKENS`).",
+          "title": "Truncated",
+          "type": "boolean"
+        },
+        "type": {
+          "description": "Peran message.",
+          "enum": [
+            "human",
+            "ai",
+            "tool",
+            "custom"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "content"
+      ],
+      "title": "ChatMessage",
+      "type": "object"
+    },
+    "ErrorEvent": {
+      "description": "Error saat agent berjalan. Stream tetap diakhiri `[DONE]` setelah event ini.",
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "type": {
+          "const": "error",
+          "default": "error",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "content"
+      ],
+      "title": "ErrorEvent",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "MessageEvent": {
+      "description": "Message utuh: jawaban AI, tool call, hasil tool, atau event custom.",
+      "properties": {
+        "content": {
+          "$ref": "#/$defs/ChatMessage"
+        },
+        "type": {
+          "const": "message",
+          "default": "message",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "content"
+      ],
+      "title": "MessageEvent",
+      "type": "object"
+    },
+    "ReasoningEvent": {
+      "description": "Potongan pemikiran model sebelum jawaban (FR-29), dikirim saat `stream_tokens=True`.",
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "type": {
+          "const": "reasoning",
+          "default": "reasoning",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "content"
+      ],
+      "title": "ReasoningEvent",
+      "type": "object"
+    },
+    "TokenEvent": {
+      "description": "Potongan teks dari LLM, dikirim saat `stream_tokens=True`.",
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "type": {
+          "const": "token",
+          "default": "token",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "content"
+      ],
+      "title": "TokenEvent",
+      "type": "object"
+    },
+    "ToolCall": {
+      "description": "Permintaan model untuk memanggil satu tool.",
+      "properties": {
+        "args": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "examples": [
+            {
+              "expression": "12 * 7"
+            }
+          ],
+          "title": "Args",
+          "type": "object"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ID dari provider, dipakai oleh ToolMessage.",
+          "title": "Id"
+        },
+        "name": {
+          "examples": [
+            "calculator"
+          ],
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "ToolCall",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One Server-Sent Event frame from POST /{agent_id}/stream. Each frame is sent as `data: <json>`, and the stream always ends with the literal `data: [DONE]`, which is not JSON.",
+  "discriminator": {
+    "mapping": {
+      "error": "#/$defs/ErrorEvent",
+      "message": "#/$defs/MessageEvent",
+      "reasoning": "#/$defs/ReasoningEvent",
+      "token": "#/$defs/TokenEvent"
+    },
+    "propertyName": "type"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/ReasoningEvent"
+    },
+    {
+      "$ref": "#/$defs/TokenEvent"
+    },
+    {
+      "$ref": "#/$defs/MessageEvent"
+    },
+    {
+      "$ref": "#/$defs/ErrorEvent"
+    }
+  ],
+  "title": "StreamEvent"
+}

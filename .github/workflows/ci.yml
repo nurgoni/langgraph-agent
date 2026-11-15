@@ -21,6 +21,23 @@ jobs:
       matrix:
         python-version: ["3.12", "3.13"]
 
+    services:
+      # Database test (ADR 0001). Image dan kredensial sama dengan compose.yaml, jadi fixture
+      # `postgres_database` memakai DEFAULT_DATABASE_URL tanpa konfigurasi tambahan.
+      postgres:
+        image: pgvector/pgvector:0.8.1-pg18
+        env:
+          POSTGRES_USER: agent
+          POSTGRES_PASSWORD: agent
+          POSTGRES_DB: agent_service
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U agent -d agent_service"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
     steps:
       - uses: actions/checkout@v7
 
@@ -41,6 +58,10 @@ jobs:
 
       - name: Type check
         run: uv run pyrefly check
+
+      - name: API contracts are up to date
+        # contracts/ is what typed clients are generated from (FR-35); see CONTRIBUTING.md.
+        run: uv run python -m agent_service.export_contracts --check
 
       - name: Test with coverage
         run: uv run pytest --cov --cov-report=term

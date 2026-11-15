@@ -4,7 +4,13 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from agent_service.core.constants import DEFAULT_PORT, FAKE_MODEL_NAME
+from agent_service.core.constants import (
+    DEFAULT_DATABASE_URL,
+    DEFAULT_JWT_TTL_SECONDS,
+    DEFAULT_LLM_MAX_TOKENS,
+    DEFAULT_PORT,
+    FAKE_MODEL_NAME,
+)
 from agent_service.core.settings import Settings
 
 REAL_LLM_ENV = {
@@ -15,10 +21,14 @@ REAL_LLM_ENV = {
 
 
 @pytest.fixture(autouse=True)
-def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Hapus semua env var milik Settings agar test tidak dipengaruhi mesin developer."""
+def clean_env(monkeypatch: pytest.MonkeyPatch, test_jwt_secret: str) -> None:
+    """Hapus semua env var milik Settings agar test tidak dipengaruhi mesin developer.
+
+    `JWT_SECRET` diisi ulang dengan nilai test karena wajib. Test validasinya menghapusnya sendiri.
+    """
     for field_name in Settings.model_fields:
         monkeypatch.delenv(field_name.upper(), raising=False)
+    monkeypatch.setenv("JWT_SECRET", test_jwt_secret)
 
 
 def set_env(monkeypatch: pytest.MonkeyPatch, values: dict[str, str]) -> None:
@@ -137,3 +147,102 @@ def test_firecrawl_api_key_is_optional_and_secret(monkeypatch: pytest.MonkeyPatc
     assert settings.firecrawl_api_key is not None
     assert settings.firecrawl_api_key.get_secret_value() == "fc-test"
     assert "fc-test" not in repr(settings)
+
+
+def test_llm_max_tokens_has_default_and_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert Settings(_env_file=None, use_fake_model=True).llm_max_tokens == DEFAULT_LLM_MAX_TOKENS
+
+    monkeypatch.setenv("LLM_MAX_TOKENS", "512")
+
+    assert Settings(_env_file=None, use_fake_model=True).llm_max_tokens == 512
+
+
+@pytest.mark.parametrize("max_tokens", ["0", "-1", "many"])
+def test_invalid_llm_max_tokens_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, max_tokens: str
+) -> None:
+    set_env(monkeypatch, {"USE_FAKE_MODEL": "true", "LLM_MAX_TOKENS": max_tokens})
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+def test_llm_max_tokens_param_defaults_to_max_tokens(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert Settings(_env_file=None, use_fake_model=True).llm_max_tokens_param == "max_tokens"
+
+    monkeypatch.setenv("LLM_MAX_TOKENS_PARAM", "max_completion_tokens")
+
+    settings = Settings(_env_file=None, use_fake_model=True)
+    assert settings.llm_max_tokens_param == "max_completion_tokens"
+
+
+def test_unknown_llm_max_tokens_param_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    set_env(monkeypatch, {"USE_FAKE_MODEL": "true", "LLM_MAX_TOKENS_PARAM": "num_predict"})
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+def test_database_url_defaults_to_compose_postgres() -> None:
+    settings = Settings(_env_file=None, use_fake_model=True)
+
+    assert settings.database_url.get_secret_value() == DEFAULT_DATABASE_URL
+
+
+def test_database_url_is_read_from_env_and_hidden(monkeypatch: pytest.MonkeyPatch) -> None:
+    url = "postgres://app:hunter2@db.internal:5432/agents"
+    set_env(monkeypatch, {"USE_FAKE_MODEL": "true", "DATABASE_URL": url})
+
+    settings = Settings(_env_file=None)
+
+    assert settings.database_url.get_secret_value() == url
+    assert "hunter2" not in repr(settings)
+
+
+@pytest.mark.parametrize("url", ["sqlite:///checkpoints.db", "mysql://u:p@h/db", "checkpoints.db"])
+def test_non_postgres_database_url_is_rejected(monkeypatch: pytest.MonkeyPatch, url: str) -> None:
+    set_env(monkeypatch, {"USE_FAKE_MODEL": "true", "DATABASE_URL": url})
+
+    with pytest.raises(ValidationError, match="postgresql://"):
+        Settings(_env_file=None)
+
+
+def test_jwt_secret_is_required(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("JWT_SECRET")
+
+    with pytest.raises(ValidationError, match="jwt_secret"):
+        Settings(_env_file=None, use_fake_model=True)
+
+
+def test_short_jwt_secret_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JWT_SECRET", "too-short")
+
+    with pytest.raises(ValidationError, match="jwt_secret"):
+        Settings(_env_file=None, use_fake_model=True)
+
+
+def test_jwt_secret_is_hidden_and_ttl_defaults_to_twelve_hours(test_jwt_secret: str) -> None:
+    settings = Settings(_env_file=None, use_fake_model=True)
+
+    assert settings.jwt_ttl_seconds == DEFAULT_JWT_TTL_SECONDS == 12 * 3600
+    assert test_jwt_secret not in repr(settings)
+
+
+def test_too_short_jwt_ttl_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    set_env(monkeypatch, {"USE_FAKE_MODEL": "true", "JWT_TTL_SECONDS": "5"})
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+def test_cors_origins_are_split_on_commas(monkeypatch: pytest.MonkeyPatch) -> None:
+    origins = "http://localhost:5173, https://demo.example ,"
+    set_env(monkeypatch, {"USE_FAKE_MODEL": "true", "CORS_ORIGINS": origins})
+
+    settings = Settings(_env_file=None)
+
+    assert settings.cors_origins == ["http://localhost:5173", "https://demo.example"]
+
+
+def test_cors_origins_default_to_none_allowed() -> None:
+    assert Settings(_env_file=None, use_fake_model=True).cors_origins == []

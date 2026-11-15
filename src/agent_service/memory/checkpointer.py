@@ -1,11 +1,34 @@
-"""Siklus hidup checkpointer SQLite yang dipakai graph LangGraph."""
+"""Siklus hidup checkpointer Postgres yang dipakai graph LangGraph (ADR 0001)."""
 
-import asyncio
 from contextlib import AsyncExitStack
-from pathlib import Path
 from types import TracebackType
+from typing import Any, Final
 
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from psycopg import AsyncConnection
+from psycopg.rows import DictRow, dict_row
+from psycopg_pool import AsyncConnectionPool, PoolTimeout
+
+from agent_service.memory.database import (
+    DB_CONNECT_TIMEOUT_SECONDS,
+    START_DATABASE_HINT,
+    DatabaseUnavailableError,
+    describe_database,
+)
+
+POOL_MIN_SIZE: Final = 1
+POOL_MAX_SIZE: Final = 10
+POOL_OPEN_TIMEOUT_SECONDS: Final = 10.0
+# Wajib untuk AsyncPostgresSaver: autocommit untuk setiap operasi, tanpa prepared statement
+# (aman di belakang pgbouncer), dan baris berupa dict.
+SAVER_CONNECTION_KWARGS: Final[dict[str, Any]] = {  # Any: kwargs psycopg.connect
+    "autocommit": True,
+    "prepare_threshold": 0,
+    "row_factory": dict_row,
+    "connect_timeout": DB_CONNECT_TIMEOUT_SECONDS,
+}
+
+type SaverPool = AsyncConnectionPool[AsyncConnection[DictRow]]
 
 
 class CheckpointerAlreadyOpenError(RuntimeError):
@@ -13,47 +36,51 @@ class CheckpointerAlreadyOpenError(RuntimeError):
 
 
 class CheckpointerProvider:
-    """Async context manager yang membuka `AsyncSqliteSaver` dan menutupnya saat keluar.
+    """Async context manager yang membuka pool koneksi dan `AsyncPostgresSaver`, lalu menutupnya.
 
-    Folder induk file database dibuat jika belum ada, dan tabel checkpoint dibuat sekali saat
-    masuk, sehingga request pertama tidak menanggung biaya setup. Satu instance hanya boleh
-    dibuka satu kali dalam satu waktu, tapi boleh dibuka lagi setelah ditutup.
+    Tabel checkpoint tidak dibuat di sini, melainkan oleh migrasi (`upgrade_database`). Satu
+    instance hanya boleh dibuka satu kali dalam satu waktu, tapi boleh dibuka lagi setelah ditutup.
 
     Contoh di lifespan FastAPI::
 
-        async with CheckpointerProvider(settings.sqlite_db_path) as checkpointer:
+        async with CheckpointerProvider(database_url) as checkpointer:
             graph = builder.compile(checkpointer=checkpointer)
     """
 
-    def __init__(self, db_path: Path) -> None:
+    def __init__(self, database_url: str) -> None:
         """Inisialisasi provider tanpa membuka koneksi.
 
         Args:
-            db_path: Lokasi file database SQLite (`SQLITE_DB_PATH`).
+            database_url: URL Postgres (`DATABASE_URL`).
         """
-        self._db_path = db_path
+        self._database_url = database_url
         self._exit_stack: AsyncExitStack | None = None
 
-    async def __aenter__(self) -> AsyncSqliteSaver:
-        """Buka koneksi dan siapkan tabel checkpoint.
+    async def __aenter__(self) -> AsyncPostgresSaver:
+        """Buka pool koneksi dan buat saver.
 
         Returns:
             Saver yang siap diberikan ke `graph.compile(checkpointer=...)`.
 
         Raises:
             CheckpointerAlreadyOpenError: Jika provider ini masih terbuka.
+            DatabaseUnavailableError: Jika Postgres tidak bisa dihubungi.
         """
         if self._exit_stack is not None:
-            raise CheckpointerAlreadyOpenError(f"Checkpointer {self._db_path} is already open")
-        await asyncio.to_thread(self._db_path.parent.mkdir, parents=True, exist_ok=True)
+            raise CheckpointerAlreadyOpenError("Checkpointer is already open")
+        pool: SaverPool = AsyncConnectionPool(
+            self._database_url,
+            min_size=POOL_MIN_SIZE,
+            max_size=POOL_MAX_SIZE,
+            kwargs=SAVER_CONNECTION_KWARGS,
+            open=False,
+        )
         async with AsyncExitStack() as exit_stack:
-            saver = await exit_stack.enter_async_context(
-                AsyncSqliteSaver.from_conn_string(str(self._db_path))
-            )
-            await saver.setup()
-            # pop_all memindahkan cleanup ke __aexit__. Jika setup gagal, koneksi langsung ditutup.
+            exit_stack.push_async_callback(pool.close)
+            await self._open_pool(pool)
+            # pop_all memindahkan cleanup ke __aexit__. Jika pool gagal dibuka, langsung ditutup.
             self._exit_stack = exit_stack.pop_all()
-        return saver
+        return AsyncPostgresSaver(conn=pool)
 
     async def __aexit__(
         self,
@@ -61,24 +88,22 @@ class CheckpointerProvider:
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        """Tutup koneksi database. Aman dipanggil walau provider belum dibuka."""
+        """Tutup pool koneksi. Aman dipanggil walau provider belum dibuka."""
         exit_stack = self._exit_stack
         self._exit_stack = None
         if exit_stack is not None:
             await exit_stack.aclose()
 
+    async def _open_pool(self, pool: SaverPool) -> None:
+        """Buka pool dan tunggu koneksi pertama, supaya startup gagal cepat jika database mati.
 
-if __name__ == "__main__":
-    import tempfile
-
-    from langgraph.checkpoint.base import empty_checkpoint
-
-    async def _demo(db_path: Path) -> None:
-        config = {"configurable": {"thread_id": "demo", "checkpoint_ns": ""}}
-        async with CheckpointerProvider(db_path) as saver:
-            await saver.aput(config, empty_checkpoint(), {}, {})
-        async with CheckpointerProvider(db_path) as saver:
-            print(await saver.aget_tuple(config))
-
-    with tempfile.TemporaryDirectory() as temp_dir:
-        asyncio.run(_demo(Path(temp_dir) / "demo.db"))
+        Raises:
+            DatabaseUnavailableError: Jika tidak ada koneksi dalam batas waktu.
+        """
+        try:
+            await pool.open(wait=True, timeout=POOL_OPEN_TIMEOUT_SECONDS)
+        except PoolTimeout as error:
+            location = describe_database(self._database_url)
+            raise DatabaseUnavailableError(
+                f"Cannot connect to Postgres at {location}. {START_DATABASE_HINT}"
+            ) from error

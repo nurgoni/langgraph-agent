@@ -1,18 +1,19 @@
 import logging
 from collections.abc import AsyncIterator
-from pathlib import Path
 from typing import Any
 
 import pytest
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import CheckpointTuple
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from agent_service.agents.base import AgentGraph
 from agent_service.agents.chatbot import ChatbotAgent
 from agent_service.llm.fake import FakeModel
 from agent_service.memory.checkpointer import CheckpointerProvider
+from agent_service.memory.database import DatabaseEngineProvider
 from agent_service.memory.thread_metadata import ThreadMetadataRepository
 from agent_service.schema.requests import TITLE_MAX_LENGTH
 from agent_service.service.thread_access import ThreadNotFoundError, run_metadata
@@ -23,24 +24,29 @@ USER_B = "user-b"
 
 
 @pytest.fixture
-async def saver(tmp_path: Path) -> AsyncIterator[AsyncSqliteSaver]:
-    async with CheckpointerProvider(tmp_path / "threads.db") as checkpointer:
+async def saver(database_url: str) -> AsyncIterator[AsyncPostgresSaver]:
+    async with CheckpointerProvider(database_url) as checkpointer:
         yield checkpointer
 
 
 @pytest.fixture
-async def titles(tmp_path: Path) -> AsyncIterator[ThreadMetadataRepository]:
-    async with ThreadMetadataRepository(tmp_path / "threads.db") as repository:
-        yield repository
+async def engine(database_url: str) -> AsyncIterator[AsyncEngine]:
+    async with DatabaseEngineProvider(database_url) as database_engine:
+        yield database_engine
 
 
 @pytest.fixture
-def repository(saver: AsyncSqliteSaver, titles: ThreadMetadataRepository) -> ThreadRepository:
+def titles(engine: AsyncEngine) -> ThreadMetadataRepository:
+    return ThreadMetadataRepository(engine)
+
+
+@pytest.fixture
+def repository(saver: AsyncPostgresSaver, titles: ThreadMetadataRepository) -> ThreadRepository:
     return ThreadRepository(saver, titles)
 
 
 @pytest.fixture
-def graph(saver: AsyncSqliteSaver) -> AgentGraph:
+def graph(saver: AsyncPostgresSaver) -> AgentGraph:
     return ChatbotAgent().build(FakeModel(), saver)
 
 
@@ -111,7 +117,7 @@ async def test_limit_caps_result(graph: AgentGraph, repository: ThreadRepository
 
 
 async def test_paging_collects_threads_across_pages(
-    graph: AgentGraph, saver: AsyncSqliteSaver, titles: ThreadMetadataRepository
+    graph: AgentGraph, saver: AsyncPostgresSaver, titles: ThreadMetadataRepository
 ) -> None:
     for index in range(5):
         await send(graph, f"t{index}", USER_A, "halo")
@@ -123,7 +129,7 @@ async def test_paging_collects_threads_across_pages(
 
 
 async def test_max_threads_bounds_scan(
-    graph: AgentGraph, saver: AsyncSqliteSaver, titles: ThreadMetadataRepository
+    graph: AgentGraph, saver: AsyncPostgresSaver, titles: ThreadMetadataRepository
 ) -> None:
     for index in range(4):
         await send(graph, f"t{index}", USER_A, "halo")
@@ -148,7 +154,7 @@ def test_title_falls_back_without_human_message() -> None:
     assert thread_title([]) == DEFAULT_THREAD_TITLE
 
 
-class OwnerFilterIgnoringSaver(AsyncSqliteSaver):
+class OwnerFilterIgnoringSaver(AsyncPostgresSaver):
     """Saver rusak yang hanya memfilter step, untuk menguji cek ulang pemilik di repository."""
 
     async def alist(
@@ -167,7 +173,7 @@ class OwnerFilterIgnoringSaver(AsyncSqliteSaver):
 
 async def test_owner_is_rechecked_when_saver_ignores_filter(
     graph: AgentGraph,
-    saver: AsyncSqliteSaver,
+    saver: AsyncPostgresSaver,
     titles: ThreadMetadataRepository,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -217,7 +223,7 @@ async def test_rename_of_unowned_thread_is_not_found(
 
 async def test_delete_removes_checkpoints_and_title(
     graph: AgentGraph,
-    saver: AsyncSqliteSaver,
+    saver: AsyncPostgresSaver,
     repository: ThreadRepository,
     titles: ThreadMetadataRepository,
 ) -> None:
@@ -234,7 +240,7 @@ async def test_delete_removes_checkpoints_and_title(
 
 
 async def test_delete_of_other_users_thread_keeps_it(
-    graph: AgentGraph, saver: AsyncSqliteSaver, repository: ThreadRepository
+    graph: AgentGraph, saver: AsyncPostgresSaver, repository: ThreadRepository
 ) -> None:
     await send(graph, "a1", USER_A, "punya A")
 

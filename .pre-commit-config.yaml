@@ -31,6 +31,12 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
+      - id: api-contracts
+        name: api contracts up to date
+        entry: uv run python -m agent_service.export_contracts --check
+        language: system
+        files: ^(src/agent_service/(schema|service)/|contracts/)
+        pass_filenames: false
       - id: pytest
         name: pytest
         entry: uv run pytest -q

@@ -15,7 +15,7 @@ kode yang sederhana, eksplisit, dan mudah dites (Zen of Python).
 - **Streaming SSE**: token dan message (termasuk tool call dan sub-agent) dikirim secara real-time.
 - **Reasoning terlihat**: pemikiran model reasoning (misalnya Qwen3 lewat Ollama) di-stream
   sebelum jawaban dan tampil di blok "Thinking" UI.
-- **Percakapan persisten**: riwayat thread disimpan di SQLite via LangGraph checkpointer.
+- **Percakapan persisten**: riwayat thread disimpan di Postgres via LangGraph checkpointer.
 - **Human-in-the-loop**: agent bisa berhenti (`interrupt`) dan melanjutkan dengan input user.
 - **Python client**: `AgentClient` sync dan async.
 - **UI Streamlit**: chat, riwayat thread, pemilih agent dan model.
@@ -31,17 +31,17 @@ kode yang sederhana, eksplisit, dan mudah dites (Zen of Python).
        │ pakai              │              ▼                           │
 ┌──────▼───────┐            │  AgentRegistry ─► BaseAgent (graph)      │
 │ AgentClient  │            │                     │        │           │
-│ (client/)    │            │              ModelFactory  SQLite        │
+│ (client/)    │            │              ModelFactory  Postgres      │
 └──────────────┘            │              (llm/)        checkpointer  │
                             └──────────────────────────────────────────┘
 ```
 
 ## Quickstart
 
-Prasyarat: Python 3.12+ dan [uv](https://docs.astral.sh/uv/).
+Prasyarat: Python 3.12+, [uv](https://docs.astral.sh/uv/), dan Docker (untuk Postgres).
 
 ```bash
-# 1. Install dependency
+# 1. Install dependency (semua extra + tool dev)
 uv sync
 
 # 2. Konfigurasi
@@ -49,31 +49,63 @@ cp .env.example .env
 # isi LLM_BASE_URL, LLM_API_KEY, DEFAULT_MODEL
 # atau USE_FAKE_MODEL=true untuk mencoba tanpa API key
 
-# 3. Jalankan service (http://localhost:8080, docs di /docs)
+#    isi JWT_SECRET (wajib, minimal 32 karakter):
+#    uv run python -c "import secrets; print(secrets.token_urlsafe(48))"
+
+# 3. Jalankan Postgres, siapkan skemanya, dan buat akun login
+docker compose up -d postgres
+uv run python -m agent_service.run_migrate
+uv run python -m agent_service.manage create-user demo   # password ditanya dua kali
+
+# 4. Jalankan service (http://localhost:8080, docs di /docs)
 uv run python -m agent_service.run_service
 
-# 4. Jalankan UI di terminal lain (http://localhost:8501)
+# 5. Jalankan UI di terminal lain (http://localhost:8501)
 uv run streamlit run src/agent_service/ui/app.py
 ```
+
+Service menolak start jika Postgres tidak terjangkau atau migrasi belum dijalankan, dan pesan
+error-nya menyebut perintah yang perlu dijalankan.
 
 UI hanya client: service (langkah 3) harus sudah berjalan di `AGENT_URL`. Jika belum, UI
 menampilkan pesan "Cannot reach the agent service at ..." saat pesan dikirim.
 
-URL UI berisi `user_id`, `thread_id`, dan `agent`. Simpan atau bagikan URL itu untuk membuka ulang
-percakapan. Siapa pun yang memegang URL tersebut bisa membaca thread-nya.
+**Extras.** Install dasar hanya berisi `schema` + `client` (pydantic, httpx). Komponen lain
+dipasang lewat extra:
+
+| Extra | Untuk | Isi utama |
+|---|---|---|
+| (dasar) | `AgentClient` sebagai library | pydantic, httpx |
+| `service` | API FastAPI | fastapi, uvicorn, langgraph, langchain, Postgres (psycopg, SQLAlchemy, Alembic) |
+| `ui` | UI Streamlit | streamlit, pydantic-settings |
+
+`uv sync` untuk development meng-install semuanya, karena grup `dev` mereferensikan
+`agent-service[service,ui]`. Untuk satu komponen saja: `uv sync --no-dev --extra service`.
+
+UI meminta login dengan akun dari `manage create-user`. URL UI berisi `thread_id` dan `agent`,
+tanpa identitas user, jadi URL yang dibagikan hanya bisa dibuka oleh pemilik thread.
 
 ### Docker Compose
 
 ```bash
-docker compose up --build        # API di :8080, UI di :8501
-docker compose down              # hentikan (tambahkan -v untuk menghapus data SQLite)
+docker compose up --build        # Postgres, migrasi, API di :8080, UI di :8501
+docker compose down              # hentikan (tambahkan -v untuk menghapus data Postgres)
 ```
 
 - **Model:** stack memakai FakeModel secara default, jadi bisa jalan tanpa API key. Konfigurasi LLM
   di `.env` sengaja tidak dipakai di dalam container.
-- **Variabel yang diambil dari shell atau `.env`:** `AUTH_SECRET` (dipakai service dan UI) dan
-  `LOG_LEVEL`. Port bisa dipindah dengan `SERVICE_PORT` dan `UI_PORT`.
-- **Data:** thread tersimpan di volume `agent-data`, jadi tetap ada setelah container di-restart.
+- **Variabel yang diambil dari shell atau `.env`:** `JWT_SECRET` (default nilai dev yang tidak
+  aman, ganti di luar mesin dev), `JWT_TTL_SECONDS`, `CORS_ORIGINS`, dan `LOG_LEVEL`. Port bisa
+  dipindah dengan `SERVICE_PORT` dan `UI_PORT`.
+- **Akun:** `docker compose exec agent-service python -m agent_service.manage create-user demo`.
+- **Urutan start:** `postgres` (healthy) → `migrate` (Alembic + tabel checkpointer, lalu selesai)
+  → `agent-service` → `ui`. Migrasi tidak dijalankan di lifespan, supaya beberapa replika tidak
+  menjalankannya bersamaan.
+- **Data:** thread tersimpan di volume `postgres-data`. Postgres hanya dibuka di `127.0.0.1`
+  (port `POSTGRES_PORT`, default 5432). Kredensial dev bisa diganti lewat `POSTGRES_USER`,
+  `POSTGRES_PASSWORD`, dan `POSTGRES_DB`.
+- **Image:** setiap image hanya membawa extra-nya. Image `service` sekitar 505 MB (tanpa
+  Streamlit), dan image `ui` sekitar 881 MB (tanpa LangGraph). Sebelumnya keduanya sekitar 1 GB.
 
 Untuk LLM OpenAI-compatible asli (nilai `LLM_*` dan `DEFAULT_MODEL` dibaca dari `.env`):
 
@@ -94,8 +126,12 @@ menunjuk ke container itu sendiri.
 | `DEFAULT_MODEL` | ya* | Model default |
 | `AVAILABLE_MODELS` | tidak | Allowlist model, dipisah koma |
 | `USE_FAKE_MODEL` | tidak | `true` untuk dev/test tanpa LLM |
-| `SQLITE_DB_PATH` | tidak | Default `checkpoints.db` |
-| `AUTH_SECRET` | tidak | Jika diset, semua request butuh `Authorization: Bearer ...` |
+| `LLM_MAX_TOKENS` | tidak | Batas token jawaban per giliran model, default `8192`. Pada model reasoning (Ollama), token reasoning ikut dihitung. Jawaban yang terpotong ditandai `truncated` |
+| `LLM_MAX_TOKENS_PARAM` | tidak | Nama parameter batas token di request: `max_tokens` (default, untuk Ollama/vLLM/llama.cpp) atau `max_completion_tokens` (model reasoning OpenAI seperti gpt-5/o-series) |
+| `DATABASE_URL` | tidak | Postgres, default `postgresql://agent:agent@127.0.0.1:5432/agent_service` (service `postgres` di compose). Pakai `127.0.0.1`, bukan `localhost`, di Docker Desktop Windows |
+| `JWT_SECRET` | **ya** | Kunci penanda tangan access token (HS256), minimal 32 karakter. Service menolak start tanpa nilai ini |
+| `JWT_TTL_SECONDS` | tidak | Umur access token, default `43200` (12 jam). Tidak ada refresh token |
+| `CORS_ORIGINS` | tidak | Origin browser yang boleh memanggil API, dipisah koma. Kosong = tidak ada |
 | `FIRECRAWL_API_KEY` | tidak | Key [Firecrawl](https://firecrawl.dev) untuk tool `web_search` (research-assistant, supervisor). Kosong = tanpa pencarian web |
 | `AGENT_URL` | tidak | URL service untuk UI/client, default `http://localhost:8080` |
 
@@ -105,6 +141,7 @@ menunjuk ke container itu sendiri.
 
 | Method | Path | Fungsi |
 |---|---|---|
+| POST | `/auth/login` | Tukar username dan password dengan access token, tanpa auth |
 | GET | `/info` | Daftar agent dan model |
 | POST | `/{agent_id}/invoke` | Jalankan agent, kembalikan jawaban akhir |
 | POST | `/{agent_id}/stream` | Jalankan agent dengan streaming SSE |
@@ -114,35 +151,47 @@ menunjuk ke container itu sendiri.
 | DELETE | `/{agent_id}/threads/{thread_id}` | Hapus thread beserta riwayatnya |
 | GET | `/health` | Health check, selalu tanpa auth |
 
-Response `/invoke` dan `/stream` membawa header `X-Thread-Id` dan `X-User-Id`. Kirim keduanya lagi
-untuk melanjutkan thread yang sama. Thread milik user lain menjawab 404.
+Semua endpoint selain `/health` dan `/auth/login` butuh `Authorization: Bearer <access_token>`.
+Identitas user diambil dari token, bukan dari body atau query. Response `/invoke` dan `/stream`
+membawa header `X-Thread-Id`; kirim lagi sebagai `thread_id` untuk melanjutkan thread yang sama.
+Thread milik user lain menjawab 404.
 
 ```bash
-curl -N -X POST http://localhost:8080/chatbot/stream \
+TOKEN=$(curl -s -X POST http://localhost:8080/auth/login \
   -H "Content-Type: application/json" \
+  -d '{"username": "demo", "password": "..."}' | python -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
+curl -N -X POST http://localhost:8080/chatbot/stream \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"message": "Halo!", "stream_tokens": true}'
 ```
+
+Kontrak lengkap ada di [`contracts/openapi.json`](contracts/openapi.json) dan
+[`contracts/stream-event.schema.json`](contracts/stream-event.schema.json) (satu frame SSE). Keduanya
+dihasilkan dari kode dan dicek CI, jadi aman dipakai untuk generate client bertipe.
 
 ## Menggunakan AgentClient
 
 ```python
 from agent_service.client import AgentClient
 
-with AgentClient(base_url="http://localhost:8080", agent_id="chatbot", auth_secret=None) as client:
-    reply = client.invoke("Halo!", user_id="user-1")
+with AgentClient(base_url="http://localhost:8080", agent_id="chatbot") as client:
+    client.login("demo", "rahasia-demo")  # token dipakai untuk request berikutnya
+    reply = client.invoke("Halo!")
     print(reply.message.content, reply.thread_id)
 
     # Lanjutkan thread yang sama. Event: TokenEvent, MessageEvent, atau ErrorEvent.
-    with client.stream("Lanjut", thread_id=reply.thread_id, user_id="user-1") as run:
+    with client.stream("Lanjut", thread_id=reply.thread_id) as run:
         for event in run:
             print(event)
 
-    print(client.get_threads("user-1").threads)
+    print(client.get_threads().threads)
 ```
 
 Setiap method punya versi async berawalan `a` (`ainvoke`, `astream` dengan `async with`, dan
 seterusnya). Error HTTP atau koneksi dilempar sebagai `AgentClientError` dengan `status_code`
-dan `detail`.
+dan `detail`. Token yang kedaluwarsa menghasilkan 401; panggil `login()` lagi. Token yang sudah
+ada (misalnya disimpan aplikasi) bisa dipakai lewat `AgentClient(access_token=...)` atau
+`set_access_token()`.
 
 ## Menambah Agent Baru
 
@@ -155,13 +204,20 @@ dan UI otomatis menampilkan agent baru.
 ## Development
 
 ```bash
+docker compose up -d postgres # database untuk test (sekali per sesi kerja)
 uv run pytest                 # test (tanpa test integration)
 uv run pytest -m integration  # test e2e Docker Compose (butuh Docker)
+uv run alembic revision --autogenerate -m "add projects"   # migrasi baru dari memory/tables.py
+uv run python -m agent_service.export_contracts            # ekspor ulang contracts/ setelah ubah API
 uv run ruff check . --fix     # lint
 uv run ruff format .          # format
 uv run pyrefly check          # type check
 pre-commit install            # pasang git hook
 ```
+
+Test database membuat database sementara `agent_service_test_<acak>` di server Postgres, menjalankan
+migrasi sekali per sesi, mengosongkan tabel sebelum setiap test, lalu menghapus database itu.
+Server lain bisa dipakai lewat `TEST_DATABASE_URL`.
 
 Aturan penulisan kode (prosedur 5 langkah, Class vs Function, checklist Zen) ada di
 [AGENTS.md](AGENTS.md). Wajib dibaca sebelum berkontribusi.

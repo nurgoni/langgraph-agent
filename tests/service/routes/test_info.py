@@ -1,5 +1,4 @@
 from collections.abc import AsyncIterator
-from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -9,6 +8,7 @@ from pydantic import BaseModel, ConfigDict
 from agent_service.agents.base import AgentGraph, Checkpointer
 from agent_service.agents.chatbot import ChatbotAgent
 from agent_service.core.settings import Settings
+from agent_service.memory.users import UserRecord
 from agent_service.schema.responses import ServiceMetadata
 from agent_service.service.app import create_app
 
@@ -29,11 +29,11 @@ class BrokenAgent(ChatbotAgent):
 
 
 @pytest.fixture
-async def multi_agent_client(tmp_path: Path) -> AsyncIterator[AsyncClient]:
+async def multi_agent_client(database_url: str) -> AsyncIterator[AsyncClient]:
     settings = Settings(
         _env_file=None,
         use_fake_model=True,
-        sqlite_db_path=tmp_path / "test.db",
+        database_url=database_url,
         llm_base_url="http://llm.test/v1",
         llm_api_key="sk-test",
         available_models=["fake", "gpt-test"],
@@ -45,8 +45,13 @@ async def multi_agent_client(tmp_path: Path) -> AsyncIterator[AsyncClient]:
     ]
     app = create_app(settings, agents=agents, default_agent_id="styled")
     async with app.router.lifespan_context(app):
+        user = UserRecord(user_id="user-a", username="user-a", password_hash="", role="user")
+        token = app.state.authenticator.issue_token(user).access_token
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        headers = {"Authorization": f"Bearer {token}"}
+        async with AsyncClient(
+            transport=transport, base_url="http://testserver", headers=headers
+        ) as client:
             yield client
 
 

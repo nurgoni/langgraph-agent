@@ -1,7 +1,10 @@
-"""Fixture service: app dengan FakeModel, SQLite di `tmp_path`, lifespan, dan agent fake."""
+"""Fixture service: app dengan FakeModel, database Postgres test, lifespan, agent fake, dan token.
 
-from collections.abc import AsyncIterator
-from pathlib import Path
+`client` membawa access token milik `OWNER`. Token user lain dibuat dengan fixture `auth_headers`,
+dan request tanpa token memakai `anonymous_client`.
+"""
+
+from collections.abc import AsyncIterator, Callable
 
 import pytest
 from fastapi import FastAPI
@@ -16,9 +19,13 @@ from pydantic import BaseModel, ConfigDict
 from agent_service.agents.base import AgentGraph, BaseAgent, Checkpointer
 from agent_service.agents.chatbot import ChatbotAgent
 from agent_service.core.settings import Settings
+from agent_service.memory.users import UserRecord, UserRole
 from agent_service.service.app import create_app
 
 BASE_URL = "http://testserver"
+OWNER = "user-a"
+
+type AuthHeaders = Callable[..., dict[str, str]]
 INTERRUPT_QUESTION = "What is your name?"
 
 
@@ -74,8 +81,8 @@ def tone_agent() -> BaseAgent:
 
 
 @pytest.fixture
-def settings(tmp_path: Path) -> Settings:
-    return Settings(_env_file=None, use_fake_model=True, sqlite_db_path=tmp_path / "test.db")
+def settings(database_url: str) -> Settings:
+    return Settings(_env_file=None, use_fake_model=True, database_url=database_url)
 
 
 @pytest.fixture
@@ -88,10 +95,35 @@ def app(settings: Settings, agents: list[BaseAgent]) -> FastAPI:
     return create_app(settings, agents=agents)
 
 
+def bearer_headers(app: FastAPI, user_id: str, role: UserRole = "user") -> dict[str, str]:
+    """Header `Authorization` dengan token asli dari authenticator app, tanpa akun di database."""
+    user = UserRecord(user_id=user_id, username=user_id, password_hash="", role=role)
+    token = app.state.authenticator.issue_token(user)
+    return {"Authorization": f"Bearer {token.access_token}"}
+
+
 @pytest.fixture
-async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
-    """Client HTTP in-process. Lifespan dijalankan manual karena `ASGITransport` melewatinya."""
+async def anonymous_client(app: FastAPI) -> AsyncIterator[AsyncClient]:
+    """Client HTTP in-process tanpa token. Lifespan dijalankan manual karena `ASGITransport`
+    melewatinya."""
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app, raise_app_exceptions=False)
         async with AsyncClient(transport=transport, base_url=BASE_URL) as http_client:
             yield http_client
+
+
+@pytest.fixture
+def client(app: FastAPI, anonymous_client: AsyncClient) -> AsyncClient:
+    """Client yang sama dengan `anonymous_client`, ditambah access token milik `OWNER`."""
+    anonymous_client.headers.update(bearer_headers(app, OWNER))
+    return anonymous_client
+
+
+@pytest.fixture
+def auth_headers(app: FastAPI, anonymous_client: AsyncClient) -> AuthHeaders:
+    """Pembuat header token untuk user lain, misalnya `auth_headers("user-b")`."""
+
+    def headers_for(user_id: str, role: UserRole = "user") -> dict[str, str]:
+        return bearer_headers(app, user_id, role)
+
+    return headers_for

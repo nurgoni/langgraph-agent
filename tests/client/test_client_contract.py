@@ -1,7 +1,6 @@
-"""Client asli terhadap service asli (in-process lewat ASGI, FakeModel, SQLite sementara)."""
+"""Client asli terhadap service asli (in-process lewat ASGI, FakeModel, database Postgres test)."""
 
 from collections.abc import AsyncIterator
-from pathlib import Path
 
 import httpx
 import pytest
@@ -13,11 +12,14 @@ from agent_service.agents.chatbot import ChatbotAgent
 from agent_service.client import AgentClient, AgentClientError
 from agent_service.core.settings import Settings
 from agent_service.llm.fake import DEFAULT_FAKE_RESPONSE, FakeModel
+from agent_service.memory.database import DatabaseEngineProvider
+from agent_service.memory.users import UserRepository
 from agent_service.schema.stream import MessageEvent, ReasoningEvent, TokenEvent
 from agent_service.service.app import create_app
+from agent_service.service.auth import hash_password
 
-SECRET = "s3cret"
-OWNER = "user-a"
+BASE_URL = "http://testserver"
+PASSWORD = "correct-horse"
 
 
 THINKING_REPLY = AIMessage(
@@ -36,32 +38,42 @@ class ThinkingAgent(ChatbotAgent):
 
 
 @pytest.fixture
-async def client(tmp_path: Path) -> AsyncIterator[AgentClient]:
-    settings = Settings(
-        _env_file=None,
-        use_fake_model=True,
-        sqlite_db_path=tmp_path / "contract.db",
-        auth_secret=SECRET,
-    )
+async def transport(database_url: str) -> AsyncIterator[httpx.ASGITransport]:
+    """Service asli dengan dua akun login: `alice` dan `bob`."""
+    async with DatabaseEngineProvider(database_url) as engine:
+        users = UserRepository(engine)
+        for username in ("alice", "bob"):
+            await users.create(username, hash_password(PASSWORD))
+    settings = Settings(_env_file=None, use_fake_model=True, database_url=database_url)
     app = create_app(settings, agents=[ChatbotAgent(), ThinkingAgent()])
     async with app.router.lifespan_context(app):
-        transport = httpx.ASGITransport(app=app)
-        async with AgentClient(
-            base_url="http://testserver", auth_secret=SECRET, async_transport=transport
-        ) as agent_client:
-            yield agent_client
+        yield httpx.ASGITransport(app=app)
+
+
+@pytest.fixture
+async def client(transport: httpx.ASGITransport) -> AsyncIterator[AgentClient]:
+    async with AgentClient(base_url=BASE_URL, async_transport=transport) as agent_client:
+        await agent_client.alogin("alice", PASSWORD)
+        yield agent_client
+
+
+@pytest.fixture
+async def other_client(transport: httpx.ASGITransport) -> AsyncIterator[AgentClient]:
+    async with AgentClient(base_url=BASE_URL, async_transport=transport) as agent_client:
+        await agent_client.alogin("bob", PASSWORD)
+        yield agent_client
 
 
 async def test_full_conversation_through_client(client: AgentClient) -> None:
     info = await client.aget_info()
-    first = await client.ainvoke("Rencana liburan", user_id=OWNER)
+    first = await client.ainvoke("Rencana liburan")
 
-    async with client.astream("Lanjut", thread_id=first.thread_id, user_id=OWNER) as run:
+    async with client.astream("Lanjut", thread_id=first.thread_id) as run:
         events = [event async for event in run]
         streamed_thread = run.thread_id
 
-    history = await client.aget_history(first.thread_id, OWNER)
-    threads = await client.aget_threads(OWNER)
+    history = await client.aget_history(first.thread_id)
+    threads = await client.aget_threads()
 
     assert info.default_agent == "chatbot"
     assert first.message.content == DEFAULT_FAKE_RESPONSE
@@ -75,14 +87,14 @@ async def test_full_conversation_through_client(client: AgentClient) -> None:
 
 
 async def test_rename_and_delete_through_client(client: AgentClient) -> None:
-    reply = await client.ainvoke("Halo", user_id=OWNER)
+    reply = await client.ainvoke("Halo")
 
-    summary = await client.arename_thread(reply.thread_id, OWNER, "Judul baru")
-    await client.adelete_thread(reply.thread_id, OWNER)
+    summary = await client.arename_thread(reply.thread_id, "Judul baru")
+    await client.adelete_thread(reply.thread_id)
 
     assert summary.title == "Judul baru"
     with pytest.raises(AgentClientError) as error_info:
-        await client.aget_history(reply.thread_id, OWNER)
+        await client.aget_history(reply.thread_id)
     assert error_info.value.status_code == 404
 
 
@@ -100,27 +112,52 @@ async def test_service_errors_reach_client_with_status(client: AgentClient) -> N
     assert isinstance(invalid_config.value.detail, list)
 
 
-async def test_missing_token_is_401(tmp_path: Path) -> None:
-    settings = Settings(
-        _env_file=None, use_fake_model=True, sqlite_db_path=tmp_path / "x.db", auth_secret=SECRET
-    )
-    app = create_app(settings)
-    async with app.router.lifespan_context(app):
-        transport = httpx.ASGITransport(app=app)
-        async with AgentClient(base_url="http://testserver", async_transport=transport) as client:
-            with pytest.raises(AgentClientError) as error_info:
-                await client.aget_info()
+async def test_missing_token_is_401(transport: httpx.ASGITransport) -> None:
+    async with AgentClient(base_url=BASE_URL, async_transport=transport) as anonymous:
+        with pytest.raises(AgentClientError) as error_info:
+            await anonymous.aget_info()
 
     assert error_info.value.status_code == 401
+
+
+async def test_wrong_password_is_401(transport: httpx.ASGITransport) -> None:
+    async with AgentClient(base_url=BASE_URL, async_transport=transport) as anonymous:
+        with pytest.raises(AgentClientError) as error_info:
+            await anonymous.alogin("alice", "wrong-password")
+
+    assert error_info.value.status_code == 401
+    assert not anonymous.has_access_token
+
+
+async def test_other_user_cannot_touch_thread(
+    client: AgentClient, other_client: AgentClient
+) -> None:
+    reply = await client.ainvoke("Rahasia Alice")
+
+    attempts = [
+        other_client.aget_history(reply.thread_id),
+        other_client.ainvoke("Lanjut", thread_id=reply.thread_id),
+        other_client.arename_thread(reply.thread_id, "Dibajak"),
+        other_client.adelete_thread(reply.thread_id),
+    ]
+    statuses = []
+    for attempt in attempts:
+        with pytest.raises(AgentClientError) as error_info:
+            await attempt
+        statuses.append(error_info.value.status_code)
+
+    assert statuses == [404, 404, 404, 404]
+    assert (await other_client.aget_threads()).threads == []
+    assert len((await client.aget_history(reply.thread_id)).messages) == 2
 
 
 async def test_reasoning_reaches_client_and_history(client: AgentClient) -> None:
     client.agent_id = "thinking"
 
-    async with client.astream("Dua warna?", user_id=OWNER) as run:
+    async with client.astream("Dua warna?") as run:
         events = [event async for event in run]
         thread_id = run.thread_id
-    history = await client.aget_history(thread_id, OWNER)
+    history = await client.aget_history(thread_id)
 
     reasoning = "".join(e.content for e in events if isinstance(e, ReasoningEvent))
     first_token = next(i for i, e in enumerate(events) if isinstance(e, TokenEvent))

@@ -6,6 +6,7 @@ import streamlit as st
 
 from agent_service.client import AgentClient
 from agent_service.ui.chat_view import ChatView
+from agent_service.ui.login_view import LoginView, signed_in_username
 from agent_service.ui.session import ChatSession
 from agent_service.ui.settings import UiSettings
 from agent_service.ui.sidebar_view import SidebarView, clear_thread_list_cache
@@ -28,11 +29,7 @@ def resolve_client(settings: UiSettings) -> AgentClient:
         client = st.session_state.get(key)
         if isinstance(client, AgentClient):
             return client
-    client = AgentClient(
-        base_url=settings.agent_url,
-        auth_secret=settings.auth_token(),
-        timeout=settings.request_timeout_seconds,
-    )
+    client = AgentClient(base_url=settings.agent_url, timeout=settings.request_timeout_seconds)
     st.session_state[CLIENT_STATE_KEY] = client
     return client
 
@@ -40,15 +37,19 @@ def resolve_client(settings: UiSettings) -> AgentClient:
 def main() -> None:
     """Susun halaman. Dipanggil Streamlit setiap kali script dijalankan ulang.
 
-    Function, bukan class: entrypoint script Streamlit.
+    Function, bukan class: entrypoint script Streamlit. Tanpa login, hanya form login yang tampil.
     """
     st.set_page_config(page_title=APP_TITLE, page_icon=APP_ICON)
     settings = UiSettings()
     client = resolve_client(settings)
-    session = ChatSession.current()
     st.title(APP_TITLE)
+    username = signed_in_username()
+    if username is None or not client.has_access_token:
+        LoginView(client).render()
+        return
+    session = ChatSession.current()
     # SidebarView juga menyelaraskan `client.agent_id` dengan agent terpilih.
-    SidebarView(client, session).render()
+    SidebarView(client, session, username).render()
     ChatView(client, session, on_thread_created=clear_thread_list_cache).render()
     session.to_url().write()
 

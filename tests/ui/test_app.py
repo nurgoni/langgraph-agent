@@ -8,13 +8,26 @@ from streamlit.testing.v1 import AppTest
 
 import agent_service.ui.app
 from agent_service.client import AgentClient
-from agent_service.schema.headers import THREAD_ID_HEADER, USER_ID_HEADER
+from agent_service.schema.headers import THREAD_ID_HEADER
 from agent_service.ui.app import APP_TITLE, CLIENT_OVERRIDE_KEY
+from agent_service.ui.login_view import SESSION_EXPIRED_TEXT, USERNAME_STATE_KEY
 from agent_service.ui.session import SESSION_STATE_KEY, ChatSession
 from agent_service.ui.sidebar_view import clear_thread_list_cache
 
 APP_FILE = str(Path(agent_service.ui.app.__file__))
-ID_HEADERS = {THREAD_ID_HEADER: "t1", USER_ID_HEADER: "u1"}
+ID_HEADERS = {THREAD_ID_HEADER: "t1"}
+PASSWORD = "correct-horse"
+
+
+def token_for(username: str) -> dict[str, object]:
+    return {
+        "access_token": f"token-{username}",
+        "token_type": "bearer",
+        "expires_in": 43200,
+        "user_id": f"id-{username}",
+        "username": username,
+        "role": "user",
+    }
 
 
 def sse(*frames: dict[str, object]) -> str:
@@ -48,11 +61,18 @@ class FakeService:
     ) -> None:
         self.requests: list[httpx.Request] = []
         self.thread_list_requests: list[httpx.Request] = []
+        self.login_requests: list[httpx.Request] = []
         self.threads: list[dict[str, str]] = []
         self._respond = respond
         self._info_status = info_status
 
     def handle(self, request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/auth/login":
+            self.login_requests.append(request)
+            credentials = json.loads(request.content)
+            if credentials["password"] != PASSWORD:
+                return httpx.Response(401, json={"detail": "Invalid username or password"})
+            return httpx.Response(200, json=token_for(credentials["username"]))
         if request.url.path == "/info":
             return httpx.Response(self._info_status, json=INFO)
         if request.method == "GET" and request.url.path.endswith("/threads"):
@@ -78,12 +98,17 @@ def start_app(
     service: FakeService,
     clients: list[AgentClient],
     query_params: dict[str, str] | None = None,
+    username: str | None = "demo",
 ) -> AppTest:
-    client = AgentClient(transport=httpx.MockTransport(service.handle))
+    """Jalankan app dengan service tiruan. `username=None` berarti belum login."""
+    access_token = None if username is None else f"token-{username}"
+    client = AgentClient(transport=httpx.MockTransport(service.handle), access_token=access_token)
     clients.append(client)
     app = AppTest.from_file(APP_FILE, default_timeout=10)
     app.query_params.update(query_params or {})
     app.session_state[CLIENT_OVERRIDE_KEY] = client
+    if username is not None:
+        app.session_state[USERNAME_STATE_KEY] = username
     app.run()
     assert not app.exception, app.exception
     return app
@@ -120,7 +145,7 @@ def test_message_is_streamed_and_kept_in_session(clients: list[AgentClient]) -> 
     assert [block.name for block in app.chat_message] == ["human", "ai"]
     assert app.markdown[-1].value == "Halo!"
     session = session_of(app)
-    assert (session.thread_id, session.user_id) == ("t1", "u1")
+    assert session.thread_id == "t1"
     assert [(m.type, m.content) for m in session.messages] == [("human", "Hai"), ("ai", "Halo!")]
     assert service.bodies()[0]["stream_tokens"] is True
 
@@ -136,7 +161,8 @@ def test_second_message_continues_same_thread(clients: list[AgentClient]) -> Non
 
     first, second = service.bodies()
     assert "thread_id" not in first
-    assert (second["thread_id"], second["user_id"]) == ("t1", "u1")
+    assert second["thread_id"] == "t1"
+    assert "user_id" not in second
     assert [block.name for block in app.chat_message] == ["human", "ai", "human", "ai"]
 
 
@@ -230,40 +256,28 @@ HISTORY = {
 }
 
 
-def test_ids_are_written_to_url_after_first_message(clients: list[AgentClient]) -> None:
+def test_thread_is_written_to_url_without_user(clients: list[AgentClient]) -> None:
     service = FakeService(
         lambda request: httpx.Response(200, text=ANSWER_STREAM, headers=ID_HEADERS)
     )
-    app = start_app(service, clients)
-    generated_user = session_of(app).user_id
+    app = start_app(service, clients, {"user_id": "legacy"})
 
     send(app, "Hai")
 
     assert app.query_params["thread_id"] == "t1"
-    assert app.query_params["user_id"] == "u1"
-    assert service.bodies()[0]["user_id"] == generated_user
-
-
-def test_user_id_from_url_is_used_for_requests(clients: list[AgentClient]) -> None:
-    service = FakeService(
-        lambda request: httpx.Response(200, text=ANSWER_STREAM, headers=ID_HEADERS)
-    )
-    app = start_app(service, clients, {"user_id": "from-url"})
-
-    send(app, "Hai")
-
-    assert service.bodies()[0]["user_id"] == "from-url"
+    assert "user_id" not in app.query_params
+    assert service.requests[0].headers["authorization"] == "Bearer token-demo"
 
 
 def test_thread_in_url_loads_history_once(clients: list[AgentClient]) -> None:
     service = FakeService(lambda request: httpx.Response(200, json=HISTORY))
-    app = start_app(service, clients, {"user_id": "u1", "thread_id": "t1", "agent": "chatbot"})
+    app = start_app(service, clients, {"thread_id": "t1", "agent": "chatbot"})
 
     app.run()
 
     [history_request] = service.requests
     assert history_request.url.path == "/chatbot/history"
-    assert json.loads(history_request.content) == {"thread_id": "t1", "user_id": "u1"}
+    assert json.loads(history_request.content) == {"thread_id": "t1"}
     assert [m.value for m in app.markdown] == ["Lama", "Jawaban lama"]
 
 
@@ -272,7 +286,7 @@ def test_missing_thread_in_url_starts_new_chat(clients: list[AgentClient]) -> No
         lambda request: httpx.Response(404, json={"detail": "Thread 't1' not found"})
     )
 
-    app = start_app(service, clients, {"user_id": "u1", "thread_id": "t1"})
+    app = start_app(service, clients, {"thread_id": "t1"})
 
     assert "was not found" in app.warning[0].value
     assert session_of(app).thread_id is None
@@ -284,7 +298,7 @@ def test_unreachable_service_keeps_thread_and_retries(clients: list[AgentClient]
         raise httpx.ConnectError("connection refused", request=request)
 
     service = FakeService(refuse, info_status=503)
-    app = start_app(service, clients, {"user_id": "u1", "thread_id": "t1"})
+    app = start_app(service, clients, {"thread_id": "t1"})
     app.run()
 
     assert "Cannot reach the agent service" in app.error[0].value
@@ -304,7 +318,7 @@ def test_sidebar_shows_agents_models_and_default_selection(clients: list[AgentCl
     assert agent_picker.options == ["chatbot", "research"]
     assert agent_picker.value == "chatbot"
     assert model_picker.value == "fake"
-    assert app.sidebar.caption[0].value == "Simple chatbot"
+    assert "Simple chatbot" in [caption.value for caption in app.sidebar.caption]
 
 
 def test_choosing_agent_starts_new_thread_on_that_agent(clients: list[AgentClient]) -> None:
@@ -359,7 +373,8 @@ def test_unknown_agent_in_url_falls_back_to_default(clients: list[AgentClient]) 
 def test_info_failure_hides_pickers(clients: list[AgentClient]) -> None:
     app = start_app(FakeService(lambda request: httpx.Response(200), info_status=503), clients)
 
-    assert "Agent service unavailable" in app.sidebar.caption[0].value
+    captions = [caption.value for caption in app.sidebar.caption]
+    assert any("Agent service unavailable" in caption for caption in captions)
     assert len(app.sidebar.selectbox) == 0
 
 
@@ -371,7 +386,7 @@ def test_sidebar_lists_threads_of_user_and_agent(clients: list[AgentClient]) -> 
     service = stream_service()
     service.threads = [thread("t1", "Rencana liburan"), thread("t2", "Resep")]
 
-    app = start_app(service, clients, {"user_id": "u1"})
+    app = start_app(service, clients, username="u1")
 
     labels = [
         button.label
@@ -380,7 +395,7 @@ def test_sidebar_lists_threads_of_user_and_agent(clients: list[AgentClient]) -> 
     ]
     assert labels == ["Rencana liburan", "Resep"]
     params = dict(service.thread_list_requests[0].url.params)
-    assert params == {"user_id": "u1", "limit": "20"}
+    assert params == {"limit": "20"}
 
 
 def test_empty_thread_list_shows_hint(clients: list[AgentClient]) -> None:
@@ -392,7 +407,7 @@ def test_empty_thread_list_shows_hint(clients: list[AgentClient]) -> None:
 def test_clicking_thread_opens_its_history(clients: list[AgentClient]) -> None:
     service = FakeService(lambda request: httpx.Response(200, json=HISTORY))
     service.threads = [thread("t9", "Lama")]
-    app = start_app(service, clients, {"user_id": "u1"})
+    app = start_app(service, clients, username="u1")
 
     app.sidebar.button(key="sidebar_open_t9").click().run()
 
@@ -404,7 +419,7 @@ def test_clicking_thread_opens_its_history(clients: list[AgentClient]) -> None:
 
 def test_thread_list_is_cached_until_new_thread(clients: list[AgentClient]) -> None:
     service = stream_service()
-    app = start_app(service, clients, {"user_id": "u-cache"})
+    app = start_app(service, clients, username="u-cache")
     app.run()
     assert len(service.thread_list_requests) == 1
 
@@ -418,7 +433,7 @@ def test_failed_open_shows_toast(clients: list[AgentClient]) -> None:
         lambda request: httpx.Response(404, json={"detail": "Thread 't9' not found"})
     )
     service.threads = [thread("t9", "Hilang")]
-    app = start_app(service, clients, {"user_id": "u-toast"})
+    app = start_app(service, clients, username="u-toast")
 
     app.sidebar.button(key="sidebar_open_t9").click().run()
 
@@ -434,7 +449,7 @@ def thread_service(respond: Callable[[httpx.Request], httpx.Response]) -> FakeSe
 
 def test_rename_sends_trimmed_title_and_refreshes_list(clients: list[AgentClient]) -> None:
     service = thread_service(lambda request: httpx.Response(200, json=thread("t1", "Judul baru")))
-    app = start_app(service, clients, {"user_id": "u-rename"})
+    app = start_app(service, clients, username="u-rename")
     lists_before = len(service.thread_list_requests)
 
     app.text_input(key="sidebar_title_t1").set_value("  Judul baru  ")
@@ -442,14 +457,14 @@ def test_rename_sends_trimmed_title_and_refreshes_list(clients: list[AgentClient
 
     [rename] = service.requests
     assert (rename.method, rename.url.path) == ("PATCH", "/threads/t1")
-    assert json.loads(rename.content) == {"user_id": "u-rename", "title": "Judul baru"}
+    assert json.loads(rename.content) == {"title": "Judul baru"}
     assert app.toast[0].value == "Conversation renamed."
     assert len(service.thread_list_requests) == lists_before + 1
 
 
 def test_empty_title_is_rejected_without_request(clients: list[AgentClient]) -> None:
     service = thread_service(lambda request: httpx.Response(500))
-    app = start_app(service, clients, {"user_id": "u-empty"})
+    app = start_app(service, clients, username="u-empty")
 
     app.text_input(key="sidebar_title_t1").set_value("   ")
     app.button(key="sidebar_rename_t1").click().run()
@@ -462,7 +477,7 @@ def test_failed_rename_shows_error(clients: list[AgentClient]) -> None:
     service = thread_service(
         lambda request: httpx.Response(404, json={"detail": "Thread 't1' not found"})
     )
-    app = start_app(service, clients, {"user_id": "u-rename-fail"})
+    app = start_app(service, clients, username="u-rename-fail")
 
     app.button(key="sidebar_rename_t1").click().run()
 
@@ -476,14 +491,14 @@ def test_delete_active_thread_starts_new_chat(clients: list[AgentClient]) -> Non
         return httpx.Response(200, json=HISTORY)
 
     service = thread_service(respond)
-    app = start_app(service, clients, {"user_id": "u-del", "thread_id": "t1"})
+    app = start_app(service, clients, {"thread_id": "t1"})
     assert session_of(app).thread_id == "t1"
 
     app.button(key="sidebar_delete_t1").click().run()
 
     delete = service.requests[-1]
     assert (delete.method, delete.url.path) == ("DELETE", "/threads/t1")
-    assert dict(delete.url.params) == {"user_id": "u-del"}
+    assert dict(delete.url.params) == {}
     assert session_of(app).thread_id is None
     assert "thread_id" not in app.query_params
     assert app.toast[0].value == "Conversation deleted."
@@ -496,7 +511,7 @@ def test_delete_other_thread_keeps_current_chat(clients: list[AgentClient]) -> N
         return httpx.Response(200, json=HISTORY)
 
     service = thread_service(respond)
-    app = start_app(service, clients, {"user_id": "u-del2", "thread_id": "t1"})
+    app = start_app(service, clients, {"thread_id": "t1"})
 
     app.button(key="sidebar_delete_t2").click().run()
 
@@ -505,7 +520,7 @@ def test_delete_other_thread_keeps_current_chat(clients: list[AgentClient]) -> N
 
 def test_failed_delete_shows_error(clients: list[AgentClient]) -> None:
     service = thread_service(lambda request: httpx.Response(503, json={"detail": "down"}))
-    app = start_app(service, clients, {"user_id": "u-del-fail"})
+    app = start_app(service, clients, username="u-del-fail")
 
     app.button(key="sidebar_delete_t1").click().run()
 
@@ -531,3 +546,81 @@ def test_reasoning_frames_show_thinking_block_and_are_kept(clients: list[AgentCl
     [status] = app.status
     assert status.markdown[0].value == "Pilih dua warna"
     assert session_of(app).messages[-1].reasoning == "Pilih dua warna"
+
+
+# ---------------- login (FR-33)
+
+
+def log_in(app: AppTest, username: str, password: str) -> None:
+    app.text_input(key="login_username").set_value(username)
+    app.text_input(key="login_password").set_value(password)
+    app.button[0].click().run()
+    assert not app.exception, app.exception
+
+
+def test_without_login_only_the_form_is_shown(clients: list[AgentClient]) -> None:
+    service = stream_service()
+
+    app = start_app(service, clients, username=None)
+
+    assert app.text_input(key="login_username").label == "Username"
+    assert len(app.chat_input) == 0
+    assert len(app.sidebar.selectbox) == 0
+    assert service.requests == []
+    assert service.thread_list_requests == []
+
+
+def test_successful_login_opens_chat_and_sends_token(clients: list[AgentClient]) -> None:
+    service = stream_service()
+    app = start_app(service, clients, username=None)
+
+    log_in(app, "alice", PASSWORD)
+    send(app, "Hai")
+
+    assert json.loads(service.login_requests[0].content)["username"] == "alice"
+    assert "Signed in as **alice**" in [caption.value for caption in app.sidebar.caption]
+    assert service.requests[-1].headers["authorization"] == "Bearer token-alice"
+
+
+def test_wrong_password_shows_error_and_stays_on_form(clients: list[AgentClient]) -> None:
+    app = start_app(stream_service(), clients, username=None)
+
+    log_in(app, "alice", "wrong")
+
+    assert app.error[0].value == "Invalid username or password."
+    assert len(app.chat_input) == 0
+
+
+def test_rejected_token_returns_to_login_with_notice(clients: list[AgentClient]) -> None:
+    service = FakeService(lambda request: httpx.Response(401, json={"detail": "expired"}))
+    app = start_app(service, clients)
+
+    send(app, "Hai")
+
+    assert len(app.chat_input) == 0
+    assert app.info[0].value == SESSION_EXPIRED_TEXT
+    assert USERNAME_STATE_KEY not in app.session_state
+
+
+def test_sign_out_clears_token_and_conversation(clients: list[AgentClient]) -> None:
+    app = start_app(stream_service(), clients)
+    send(app, "Hai")
+
+    app.sidebar.button(key="sidebar_logout").click().run()
+
+    client = app.session_state[CLIENT_OVERRIDE_KEY]
+    assert not client.has_access_token
+    assert len(app.chat_input) == 0
+    assert SESSION_STATE_KEY not in app.session_state
+
+
+def test_thread_list_cache_is_not_shared_between_users(clients: list[AgentClient]) -> None:
+    service = stream_service()
+    service.threads = [thread("t1", "Milik Alice")]
+    start_app(service, clients, username="alice")
+    service.threads = [thread("t2", "Milik Bob")]
+
+    app = start_app(service, clients, username="bob")
+
+    labels = [b.label for b in app.sidebar.button if (b.key or "").startswith("sidebar_open_")]
+    assert labels == ["Milik Bob"]

@@ -13,11 +13,13 @@ from fastapi.responses import JSONResponse
 
 from agent_service.agents.errors import AgentNotFoundError, AgentUnavailableError
 from agent_service.llm.factory import ModelNotConfiguredError, UnknownModelError
+from agent_service.service.auth import AuthenticationError
 from agent_service.service.thread_access import ThreadNotFoundError
 
 logger = logging.getLogger(__name__)
 
 DOMAIN_ERROR_STATUS: Final[Mapping[type[Exception], int]] = {
+    AuthenticationError: status.HTTP_401_UNAUTHORIZED,
     AgentNotFoundError: status.HTTP_404_NOT_FOUND,
     ThreadNotFoundError: status.HTTP_404_NOT_FOUND,
     AgentUnavailableError: status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -25,6 +27,8 @@ DOMAIN_ERROR_STATUS: Final[Mapping[type[Exception], int]] = {
     ModelNotConfiguredError: status.HTTP_503_SERVICE_UNAVAILABLE,
 }
 INTERNAL_ERROR_DETAIL: Final = "Internal server error"
+# RFC 9110: respons 401 wajib menyebut skema auth yang diterima.
+BEARER_CHALLENGE: Final = {"WWW-Authenticate": "Bearer"}
 
 
 def register_exception_handlers(app: FastAPI) -> None:
@@ -56,7 +60,8 @@ async def handle_domain_error(request: Request, exc: Exception) -> JSONResponse:
     status_code = status_code_for(exc)
     if status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR:
         logger.warning("%s %s failed: %s", request.method, request.url.path, exc)
-    return JSONResponse({"detail": str(exc)}, status_code=status_code)
+    headers = BEARER_CHALLENGE if isinstance(exc, AuthenticationError) else None
+    return JSONResponse({"detail": str(exc)}, status_code=status_code, headers=headers)
 
 
 async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
