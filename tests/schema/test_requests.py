@@ -19,7 +19,6 @@ def test_user_input_defaults() -> None:
 
     assert user_input.model is None
     assert user_input.thread_id is None
-    assert user_input.user_id is None
     assert user_input.agent_config == {}
 
 
@@ -53,23 +52,29 @@ def test_stream_input_streams_tokens_by_default() -> None:
     assert StreamInput(message="Halo").stream_tokens is True
 
 
-def test_chat_history_input_requires_user_id() -> None:
+def test_requests_carry_no_user_id() -> None:
+    models = [UserInput, StreamInput, ChatHistoryInput, UserThreadsQuery, ThreadRenameInput]
+
+    assert [model for model in models if "user_id" in model.model_fields] == []
+
+
+def test_chat_history_input_requires_thread_id() -> None:
     with pytest.raises(ValidationError):
-        ChatHistoryInput.model_validate({"thread_id": "t-1"})
+        ChatHistoryInput.model_validate({})
 
 
 def test_user_threads_query_uses_default_limit() -> None:
-    assert UserThreadsQuery(user_id="u-1").limit == THREADS_LIMIT_DEFAULT
+    assert UserThreadsQuery().limit == THREADS_LIMIT_DEFAULT
 
 
 @pytest.mark.parametrize("limit", [THREADS_LIMIT_MIN - 1, THREADS_LIMIT_MAX + 1])
 def test_user_threads_query_rejects_limit_out_of_range(limit: int) -> None:
     with pytest.raises(ValidationError):
-        UserThreadsQuery(user_id="u-1", limit=limit)
+        UserThreadsQuery(limit=limit)
 
 
 def test_thread_title_is_stripped() -> None:
-    rename = ThreadRenameInput(user_id="u-1", title="  Rencana liburan  ")
+    rename = ThreadRenameInput(title="  Rencana liburan  ")
 
     assert rename.title == "Rencana liburan"
 
@@ -77,4 +82,4 @@ def test_thread_title_is_stripped() -> None:
 @pytest.mark.parametrize("title", ["   ", "x" * (TITLE_MAX_LENGTH + 1)])
 def test_invalid_thread_title_is_rejected(title: str) -> None:
     with pytest.raises(ValidationError):
-        ThreadRenameInput(user_id="u-1", title=title)
+        ThreadRenameInput(title=title)

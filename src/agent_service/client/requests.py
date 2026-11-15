@@ -8,7 +8,7 @@ import httpx
 from pydantic import BaseModel, JsonValue, ValidationError
 
 from agent_service.client.errors import AgentClientError, ServiceUnreachableError
-from agent_service.schema.headers import THREAD_ID_HEADER, USER_ID_HEADER
+from agent_service.schema.headers import THREAD_ID_HEADER
 from agent_service.schema.responses import ChatMessage
 
 DETAIL_KEY: Final = "detail"
@@ -29,14 +29,13 @@ class RequestSpec:
 
 @dataclass(frozen=True)
 class AgentReply:
-    """Hasil `invoke`: jawaban akhir beserta ID yang dipakai run (FR-13).
+    """Hasil `invoke`: jawaban akhir beserta ID thread yang dipakai run (FR-13).
 
-    Kirim `thread_id` dan `user_id` lagi untuk melanjutkan thread yang sama.
+    Kirim `thread_id` lagi untuk melanjutkan thread yang sama.
     """
 
     message: ChatMessage
     thread_id: str
-    user_id: str
 
 
 def path_segment(value: str) -> str:
@@ -92,20 +91,19 @@ def parse_model[ModelT: BaseModel](response: httpx.Response, model_type: type[Mo
         ) from error
 
 
-def run_ids(response: httpx.Response) -> tuple[str, str]:
-    """Ambil `(thread_id, user_id)` dari header respons `/invoke` atau `/stream`.
+def run_thread_id(response: httpx.Response) -> str:
+    """Ambil `thread_id` dari header respons `/invoke` atau `/stream`.
 
     Raises:
         AgentClientError: Jika header tidak ada (service versi lama atau proxy membuangnya).
     """
     thread_id = response.headers.get(THREAD_ID_HEADER)
-    user_id = response.headers.get(USER_ID_HEADER)
-    if thread_id is None or user_id is None:
+    if thread_id is None:
         raise AgentClientError(
-            f"Response is missing {THREAD_ID_HEADER}/{USER_ID_HEADER} headers",
+            f"Response is missing the {THREAD_ID_HEADER} header",
             status_code=response.status_code,
         )
-    return thread_id, user_id
+    return thread_id
 
 
 def request_error(error: httpx.RequestError, context: str) -> AgentClientError:

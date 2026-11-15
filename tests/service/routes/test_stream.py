@@ -1,13 +1,16 @@
+from collections.abc import Callable
 from typing import Any
 
 import pytest
 from httpx import AsyncClient
 
 from agent_service.llm.fake import DEFAULT_FAKE_RESPONSE
-from agent_service.schema.headers import THREAD_ID_HEADER, USER_ID_HEADER
+from agent_service.schema.headers import THREAD_ID_HEADER
 from agent_service.schema.stream import STREAM_EVENT_ADAPTER, MessageEvent, StreamEvent, TokenEvent
 
-OWNER = "user-a"
+INTRUDER = "user-b"
+
+type AuthHeaders = Callable[..., dict[str, str]]
 DONE_LINE = "data: [DONE]"
 
 
@@ -43,25 +46,23 @@ async def test_default_agent_route_streams(client: AsyncClient) -> None:
     assert len(events) == 1
 
 
-async def test_stream_returns_id_headers(client: AsyncClient) -> None:
-    _, headers = await stream_events(
-        client, "/chatbot/stream", message="Halo", thread_id="t1", user_id=OWNER
-    )
+async def test_stream_returns_thread_id_header(client: AsyncClient) -> None:
+    _, headers = await stream_events(client, "/chatbot/stream", message="Halo", thread_id="t1")
 
     assert headers[THREAD_ID_HEADER.lower()] == "t1"
-    assert headers[USER_ID_HEADER.lower()] == OWNER
+    assert "x-user-id" not in headers
 
 
 async def test_streamed_turn_is_kept_in_history(client: AsyncClient) -> None:
-    await stream_events(client, "/chatbot/stream", message="Halo", thread_id="t1", user_id=OWNER)
+    await stream_events(client, "/chatbot/stream", message="Halo", thread_id="t1")
 
-    history = await client.post("/chatbot/history", json={"thread_id": "t1", "user_id": OWNER})
+    history = await client.post("/chatbot/history", json={"thread_id": "t1"})
 
     assert [m["type"] for m in history.json()["messages"]] == ["human", "ai"]
 
 
 async def test_interrupt_question_then_resume_over_stream(client: AsyncClient) -> None:
-    ids = {"thread_id": "t1", "user_id": OWNER}
+    ids = {"thread_id": "t1"}
 
     question, _ = await stream_events(client, "/interrupt/stream", message="Hai", **ids)
     answer, _ = await stream_events(client, "/interrupt/stream", message="Budi", **ids)
@@ -90,11 +91,13 @@ async def test_invalid_request_fails_before_streaming(
     assert response.headers["content-type"] == "application/json"
 
 
-async def test_other_users_thread_is_404(client: AsyncClient) -> None:
-    await stream_events(client, "/chatbot/stream", message="Halo", thread_id="t1", user_id=OWNER)
+async def test_other_users_thread_is_404(client: AsyncClient, auth_headers: AuthHeaders) -> None:
+    await stream_events(client, "/chatbot/stream", message="Halo", thread_id="t1")
 
     response = await client.post(
-        "/chatbot/stream", json={"message": "Hai", "thread_id": "t1", "user_id": "user-b"}
+        "/chatbot/stream",
+        json={"message": "Hai", "thread_id": "t1"},
+        headers=auth_headers(INTRUDER),
     )
 
     assert response.status_code == 404

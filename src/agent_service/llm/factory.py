@@ -43,7 +43,7 @@ class ModelFactory:
     Nama `fake` menghasilkan `FakeModel`. Nama lain menghasilkan `ChatOpenAI` yang diarahkan
     ke endpoint OpenAI-compatible di `LLM_BASE_URL`, dengan batas token jawaban (FR-30).
 
-    >>> factory = ModelFactory(Settings(_env_file=None, use_fake_model=True))
+    >>> factory = ModelFactory(Settings(_env_file=None, use_fake_model=True, jwt_secret="x" * 32))
     >>> type(factory.create()).__name__
     'FakeModel'
     >>> factory.create("fake") is factory.create()
@@ -80,7 +80,8 @@ class ModelFactory:
         Raises:
             UnknownModelError: Jika nama model tidak ada di `AVAILABLE_MODELS`.
 
-        >>> ModelFactory(Settings(_env_file=None, use_fake_model=True)).resolve_name()
+        >>> settings = Settings(_env_file=None, use_fake_model=True, jwt_secret="x" * 32)
+        >>> ModelFactory(settings).resolve_name()
         'fake'
         """
         name = self._default_model if model_name is None else model_name
@@ -151,5 +152,5 @@ class ModelFactory:
 
 
 if __name__ == "__main__":
-    factory = ModelFactory(Settings(_env_file=None, use_fake_model=True))
+    factory = ModelFactory(Settings(_env_file=None, use_fake_model=True, jwt_secret="x" * 32))
     print(factory.create().invoke("Halo").content)

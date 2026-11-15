@@ -7,7 +7,7 @@ dibutuhkan untuk menghubungi service.
 from pathlib import Path
 from typing import Final
 
-from pydantic import Field, SecretStr
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ENV_FILE: Final = Path(".env")
@@ -21,9 +21,8 @@ class UiSettings(BaseSettings):
 
     `.env` dipakai bersama dengan service, jadi variabel milik service diabaikan.
 
-    >>> settings = UiSettings(_env_file=None, agent_url="http://agent:8080")
-    >>> settings.agent_url, settings.auth_secret
-    ('http://agent:8080', None)
+    >>> UiSettings(_env_file=None, agent_url="http://agent:8080").agent_url
+    'http://agent:8080'
     """
 
     model_config = SettingsConfigDict(
@@ -34,11 +33,4 @@ class UiSettings(BaseSettings):
     )
 
     agent_url: str = DEFAULT_AGENT_URL
-    auth_secret: SecretStr | None = None
     request_timeout_seconds: float = Field(default=DEFAULT_REQUEST_TIMEOUT_SECONDS, gt=0)
-
-    def auth_token(self) -> str | None:
-        """Token bearer dalam bentuk teks, atau `None` jika service tanpa auth."""
-        if self.auth_secret is None:
-            return None
-        return self.auth_secret.get_secret_value()

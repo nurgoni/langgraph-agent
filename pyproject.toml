@@ -16,6 +16,7 @@ dependencies = [
 [project.optional-dependencies]
 service = [
     "alembic~=1.20",
+    "argon2-cffi~=25.1",
     "fastapi~=0.143",
     "langchain-core~=1.6",
     "langchain-openai~=1.7",
@@ -25,6 +26,7 @@ service = [
     "psycopg-pool~=3.3",
     "psycopg[binary]~=3.3",
     "pydantic-settings~=2.16",
+    "pyjwt~=2.15",
     "sqlalchemy[asyncio]~=2.1",
     "uvicorn~=0.54",
 ]

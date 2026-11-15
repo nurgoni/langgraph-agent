@@ -23,7 +23,7 @@ class AgentRegistry:
     >>> from langgraph.checkpoint.memory import InMemorySaver
     >>> from agent_service.agents.chatbot import ChatbotAgent
     >>> from agent_service.core.settings import Settings
-    >>> factory = ModelFactory(Settings(_env_file=None, use_fake_model=True))
+    >>> factory = ModelFactory(Settings(_env_file=None, use_fake_model=True, jwt_secret="x" * 32))
     >>> registry = AgentRegistry(factory, InMemorySaver())
     >>> registry.register(ChatbotAgent())
     >>> asyncio.run(registry.load_all())

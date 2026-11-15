@@ -9,11 +9,17 @@
 from typing import Annotated
 
 from fastapi import Depends, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from agent_service.agents.registry import AgentRegistry
 from agent_service.core.settings import Settings
 from agent_service.llm.factory import ModelFactory
+from agent_service.service.auth import Authenticator, InvalidTokenError, Principal
 from agent_service.service.threads import ThreadRepository
+
+# auto_error=False: header yang hilang dijawab InvalidTokenError (401 + WWW-Authenticate), sama
+# seperti token yang salah, bukan 403 bawaan HTTPBearer.
+bearer_scheme = HTTPBearer(auto_error=False, description="Access token dari `POST /auth/login`.")
 
 
 def get_settings(request: Request) -> Settings:
@@ -41,8 +47,32 @@ def get_default_agent_id(request: Request) -> str:
     return request.app.state.default_agent_id
 
 
+def get_authenticator(request: Request) -> Authenticator:
+    """Ambil `Authenticator` yang dibuat di lifespan."""
+    return request.app.state.authenticator
+
+
+def current_principal(
+    authenticator: Annotated[Authenticator, Depends(get_authenticator)],
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+) -> Principal:
+    """User pemilik request, dari header `Authorization: Bearer <token>` (FR-33).
+
+    Dipasang per router di `create_app`, dan diminta lagi oleh route yang butuh `user_id`.
+    FastAPI meng-cache dependency per request, jadi token hanya diverifikasi sekali.
+
+    Raises:
+        InvalidTokenError: Jika header tidak ada atau token tidak valid (401).
+    """
+    if credentials is None:
+        raise InvalidTokenError()
+    return authenticator.verify_token(credentials.credentials)
+
+
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 RegistryDep = Annotated[AgentRegistry, Depends(get_registry)]
 ModelFactoryDep = Annotated[ModelFactory, Depends(get_model_factory)]
 ThreadRepositoryDep = Annotated[ThreadRepository, Depends(get_thread_repository)]
 DefaultAgentIdDep = Annotated[str, Depends(get_default_agent_id)]
+AuthenticatorDep = Annotated[Authenticator, Depends(get_authenticator)]
+PrincipalDep = Annotated[Principal, Depends(current_principal)]

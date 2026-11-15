@@ -6,11 +6,19 @@ import pytest
 
 from agent_service.client import AgentClient, AgentClientError, ServiceUnreachableError
 from agent_service.client.stream import StreamNotStartedError
-from agent_service.schema.headers import THREAD_ID_HEADER, USER_ID_HEADER
+from agent_service.schema.headers import THREAD_ID_HEADER
 from agent_service.schema.stream import ErrorEvent, MessageEvent, TokenEvent
 
 BASE_URL = "http://agent.test"
-ID_HEADERS = {THREAD_ID_HEADER: "t1", USER_ID_HEADER: "u1"}
+ID_HEADERS = {THREAD_ID_HEADER: "t1"}
+TOKEN = {
+    "access_token": "jwt-token",
+    "token_type": "bearer",
+    "expires_in": 43200,
+    "user_id": "u1",
+    "username": "demo",
+    "role": "user",
+}
 AI_MESSAGE = {"type": "ai", "content": "Halo!", "run_id": "r1"}
 INFO = {
     "agents": [{"key": "chatbot", "description": "Bot", "config_schema": {}}],
@@ -42,11 +50,11 @@ class RecordingTransport(httpx.MockTransport):
 
 
 def make_client(
-    handler: Handler, agent_id: str | None = "chatbot", auth_secret: str | None = None
+    handler: Handler, agent_id: str | None = "chatbot", access_token: str | None = None
 ) -> tuple[AgentClient, RecordingTransport]:
     transport = RecordingTransport(handler)
     client = AgentClient(
-        base_url=BASE_URL, agent_id=agent_id, auth_secret=auth_secret, transport=transport
+        base_url=BASE_URL, agent_id=agent_id, access_token=access_token, transport=transport
     )
     return client, transport
 
@@ -78,17 +86,16 @@ def test_invoke_posts_payload_and_returns_reply_with_ids() -> None:
     )
 
     with client:
-        reply = client.invoke("Hai", model="fake", user_id="u1", agent_config={"tone": "x"})
+        reply = client.invoke("Hai", model="fake", agent_config={"tone": "x"})
 
     [request] = transport.requests
     assert (request.method, request.url.path) == ("POST", "/chatbot/invoke")
     assert json.loads(request.content) == {
         "message": "Hai",
         "model": "fake",
-        "user_id": "u1",
         "agent_config": {"tone": "x"},
     }
-    assert (reply.message.content, reply.thread_id, reply.user_id) == ("Halo!", "t1", "u1")
+    assert (reply.message.content, reply.thread_id) == ("Halo!", "t1")
 
 
 def test_no_agent_id_uses_default_agent_routes() -> None:
@@ -102,15 +109,61 @@ def test_no_agent_id_uses_default_agent_routes() -> None:
     assert transport.requests[0].url.path == "/invoke"
 
 
-def test_auth_secret_is_sent_as_bearer_token() -> None:
+def test_access_token_is_sent_as_bearer_token() -> None:
     client, transport = make_client(
-        lambda request: httpx.Response(200, json=INFO), auth_secret="s3cret"
+        lambda request: httpx.Response(200, json=INFO), access_token="jwt-token"
     )
 
     with client:
         client.get_info()
 
-    assert transport.requests[0].headers["authorization"] == "Bearer s3cret"
+    assert client.has_access_token
+    assert transport.requests[0].headers["authorization"] == "Bearer jwt-token"
+
+
+def test_login_posts_credentials_and_uses_returned_token() -> None:
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/auth/login":
+            return httpx.Response(200, json=TOKEN)
+        return httpx.Response(200, json=INFO)
+
+    client, transport = make_client(respond)
+
+    with client:
+        token = client.login(" Demo ", "rahasia")
+        client.get_info()
+
+    login_request, info_request = transport.requests
+    assert json.loads(login_request.content) == {"username": "demo", "password": "rahasia"}
+    assert "authorization" not in login_request.headers
+    assert info_request.headers["authorization"] == "Bearer jwt-token"
+    assert (token.username, token.user_id) == ("demo", "u1")
+
+
+def test_failed_login_keeps_client_without_token() -> None:
+    client, _ = make_client(
+        lambda request: httpx.Response(401, json={"detail": "Invalid username or password"})
+    )
+
+    with client, pytest.raises(AgentClientError) as error_info:
+        client.login("demo", "salah")
+
+    assert error_info.value.status_code == 401
+    assert not client.has_access_token
+
+
+def test_clearing_token_logs_out_and_drops_cached_info() -> None:
+    client, transport = make_client(
+        lambda request: httpx.Response(200, json=INFO), access_token="jwt-token"
+    )
+
+    with client:
+        client.get_info()
+        client.set_access_token(None)
+        client.get_info()
+
+    assert not client.has_access_token
+    assert "authorization" not in transport.requests[1].headers
 
 
 def test_http_error_carries_status_and_detail() -> None:
@@ -127,11 +180,11 @@ def test_http_error_carries_status_and_detail() -> None:
 
 
 def test_validation_error_keeps_field_list() -> None:
-    detail = [{"type": "missing", "loc": ["query", "user_id"], "msg": "Field required"}]
+    detail = [{"type": "less_than_equal", "loc": ["query", "limit"], "msg": "Too big"}]
     client, _ = make_client(lambda request: httpx.Response(422, json={"detail": detail}))
 
     with client, pytest.raises(AgentClientError) as error_info:
-        client.get_threads("u1")
+        client.get_threads()
 
     assert error_info.value.detail == detail
 
@@ -187,20 +240,20 @@ def test_history_threads_rename_and_delete_requests() -> None:
     client, transport = make_client(respond)
 
     with client:
-        history = client.get_history("t1", "u1")
-        threads = client.get_threads("u1", limit=5)
-        summary = client.rename_thread("t/1", "u1", "Baru")
-        client.delete_thread("t/1", "u1")
+        history = client.get_history("t1")
+        threads = client.get_threads(limit=5)
+        summary = client.rename_thread("t/1", "Baru")
+        client.delete_thread("t/1")
 
     history_req, threads_req, rename_req, delete_req = transport.requests
-    assert json.loads(history_req.content) == {"thread_id": "t1", "user_id": "u1"}
+    assert json.loads(history_req.content) == {"thread_id": "t1"}
     assert history.messages[0].content == "Halo!"
-    assert dict(threads_req.url.params) == {"user_id": "u1", "limit": "5"}
+    assert dict(threads_req.url.params) == {"limit": "5"}
     assert threads.threads == []
     assert rename_req.url.raw_path == b"/chatbot/threads/t%2F1"
-    assert json.loads(rename_req.content) == {"user_id": "u1", "title": "Baru"}
+    assert json.loads(rename_req.content) == {"title": "Baru"}
     assert summary.title == "Baru"
-    assert delete_req.url.raw_path == b"/chatbot/threads/t%2F1?user_id=u1"
+    assert delete_req.url.raw_path == b"/chatbot/threads/t%2F1"
 
 
 def test_stream_exposes_ids_and_yields_events() -> None:
@@ -210,10 +263,10 @@ def test_stream_exposes_ids_and_yields_events() -> None:
 
     with client, client.stream("Hai", stream_tokens=False) as run:
         events = list(run)
-        ids = (run.thread_id, run.user_id)
+        thread_id = run.thread_id
 
     assert json.loads(transport.requests[0].content)["stream_tokens"] is False
-    assert ids == ("t1", "u1")
+    assert thread_id == "t1"
     assert [type(event) for event in events] == [TokenEvent, TokenEvent, MessageEvent]
 
 
