@@ -254,3 +254,41 @@ renderer.render(ChatMessage(type="ai", content="hitung", agent="math_expert"))
         ":material/support_agent: research_expert",
         ":material/support_agent: math_expert",
     ]
+
+
+def test_truncated_answer_shows_warning_below_content() -> None:
+    app = run_script(
+        """
+renderer = MessageRenderer()
+renderer.render(ChatMessage(type="ai", content="Jawaban terpo", truncated=True))
+"""
+    )
+
+    assert [m.value for m in app.markdown] == ["Jawaban terpo"]
+    [warning] = app.warning
+    assert "token limit" in warning.value
+
+
+def test_streamed_truncated_answer_shows_warning_after_tokens() -> None:
+    app = run_script(
+        """
+renderer = MessageRenderer(live=True)
+renderer.append_token("Jawaban ")
+renderer.append_token("terpo")
+renderer.render(ChatMessage(type="ai", content="Jawaban terpo", truncated=True))
+"""
+    )
+
+    assert len(app.chat_message) == 1
+    assert [m.value for m in app.markdown] == ["Jawaban terpo"]
+    assert len(app.warning) == 1
+
+
+def test_complete_answer_has_no_warning() -> None:
+    app = run_script(
+        """
+MessageRenderer().render(ChatMessage(type="ai", content="Selesai."))
+"""
+    )
+
+    assert len(app.warning) == 0
