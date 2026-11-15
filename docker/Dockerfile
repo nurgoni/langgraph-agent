@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1
-# Satu Dockerfile, dua target: `service` (FastAPI) dan `ui` (Streamlit).
+# Satu Dockerfile, dua target: `service` (FastAPI) dan `ui` (Streamlit). Setiap target hanya
+# meng-install extra miliknya, jadi image service tanpa Streamlit dan image UI tanpa LangGraph.
 #   docker build -f docker/Dockerfile --target service -t agent-service .
 #   docker build -f docker/Dockerfile --target ui -t agent-service-ui .
 
@@ -14,21 +15,19 @@ ENV UV_COMPILE_BYTECODE=1 \
     PATH="/opt/venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1
 WORKDIR /app
-
-# Dependency dulu, supaya layer ini tetap ter-cache selama uv.lock tidak berubah.
-COPY pyproject.toml uv.lock README.md ./
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-project
-COPY src ./src
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-editable
-
 RUN useradd --create-home --uid 10001 app \
     && mkdir -p /data \
     && chown app:app /data
-USER app
+COPY pyproject.toml uv.lock README.md ./
 
 FROM base AS service
+# Dependency dulu, supaya layer ini tetap ter-cache selama uv.lock tidak berubah.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project --extra service
+COPY src ./src
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-editable --extra service
+USER app
 ENV HOST=0.0.0.0 \
     PORT=8080 \
     SQLITE_DB_PATH=/data/checkpoints.db
@@ -39,6 +38,12 @@ HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=10 \
 CMD ["python", "-m", "agent_service.run_service"]
 
 FROM base AS ui
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project --extra ui
+COPY src ./src
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-editable --extra ui
+USER app
 ENV AGENT_URL=http://agent-service:8080 \
     STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
 EXPOSE 8501
