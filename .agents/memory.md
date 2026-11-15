@@ -13,10 +13,10 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** Fase 2 (M4). F21–F24 sudah di-merge. **F25** (kontrak API) selesai di
-  `feature/F25-api-contracts`, menunggu user commit, push, dan PR. Ini fitur terakhir M4.
-- **Berikutnya:** rilis **v0.4.0** (CONTRIBUTING § Release; versi naik → ekspor ulang kontrak),
-  lalu **F26** (Projects).
+- **Fase:** M4 selesai (F21–F25). Rilis **v0.4.0** disiapkan di `release/v0.4.0` (versi,
+  changelog dengan catatan upgrade breaking, lock, kontrak), menunggu user merge ke `main`, tag,
+  dan back-merge.
+- **Berikutnya:** **F26** (Projects), awal M5 Harness Core.
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
