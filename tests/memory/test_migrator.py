@@ -5,6 +5,7 @@ from agent_service.memory.database import DatabaseEngineProvider
 from agent_service.memory.migrator import (
     DatabaseNotMigratedError,
     ensure_database_migrated,
+    expected_heads,
     upgrade_database,
 )
 
@@ -44,4 +45,5 @@ async def test_unmigrated_database_is_rejected_with_hint(database_url: str) -> N
             with pytest.raises(DatabaseNotMigratedError, match="run_migrate"):
                 await ensure_database_migrated(engine)
     finally:
-        set_revision(database_url, "0001")
+        [head] = expected_heads()
+        set_revision(database_url, head)

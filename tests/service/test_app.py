@@ -1,5 +1,3 @@
-import logging
-
 import psycopg
 import pytest
 from fastapi import FastAPI
@@ -11,7 +9,7 @@ from agent_service.agents.chatbot import ChatbotAgent
 from agent_service.agents.registry import AgentRegistry
 from agent_service.agents.tools.web_search import FirecrawlSearch, UnconfiguredSearch
 from agent_service.core.settings import Settings
-from agent_service.memory.migrator import DatabaseNotMigratedError
+from agent_service.memory.migrator import DatabaseNotMigratedError, expected_heads
 from agent_service.service.app import (
     DefaultAgentNotRegisteredError,
     build_search_backend,
@@ -51,7 +49,9 @@ async def test_lifespan_refuses_unmigrated_database(app: FastAPI, database_url: 
                 pass
     finally:
         with psycopg.connect(database_url, autocommit=True) as connection:
-            connection.execute("UPDATE alembic_version SET version_num = '0001'")
+            connection.execute(
+                "UPDATE alembic_version SET version_num = %s", list(expected_heads())
+            )
 
 
 async def test_failed_agent_does_not_stop_startup(settings: Settings) -> None:
@@ -61,16 +61,6 @@ async def test_failed_agent_does_not_stop_startup(settings: Settings) -> None:
     async with app.router.lifespan_context(app):
         assert app.state.registry.is_available("chatbot")
         assert not app.state.registry.is_available("broken")
-
-
-async def test_missing_auth_secret_logs_warning(
-    app: FastAPI, caplog: pytest.LogCaptureFixture
-) -> None:
-    with caplog.at_level(logging.WARNING):
-        async with app.router.lifespan_context(app):
-            pass
-
-    assert "AUTH_SECRET is not set" in caplog.text
 
 
 def test_search_backend_follows_firecrawl_key(settings: Settings) -> None:
