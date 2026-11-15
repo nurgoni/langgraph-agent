@@ -13,15 +13,31 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** Fase 2 (M4). F21–F23 sudah di-merge. **F24** (auth per user & CORS) selesai di
-  `feature/F24-user-auth`, menunggu user commit, push, dan PR.
-- **Berikutnya:** **F25** (API contract export), lalu rilis **v0.4.0**.
+- **Fase:** Fase 2 (M4). F21–F24 sudah di-merge. **F25** (kontrak API) selesai di
+  `feature/F25-api-contracts`, menunggu user commit, push, dan PR. Ini fitur terakhir M4.
+- **Berikutnya:** rilis **v0.4.0** (CONTRIBUTING § Release; versi naik → ekspor ulang kontrak),
+  lalu **F26** (Projects).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Terakhir diperbarui:** 2026-11-15
 
 ## Decision Log
+
+### 2026-11-15: Kontrak API dari F25
+
+- **Keputusan desain:**
+  - `service/contracts.py` + entrypoint `export_contracts` (`--check`, `--output-dir`). OpenAPI dari
+    `create_app` dengan `Settings` tiruan dan hanya `ChatbotAgent`. `info.version` = versi package.
+  - Tiga lapis penjaga: hook pre-commit `api-contracts` (file di `schema/`, `service/`,
+    `contracts/`), test `test_published_contracts_match_the_code`, dan langkah CI `--check`.
+  - `RUN_RESPONSE_HEADERS` (`service/run_input.py`) mendokumentasikan `X-Thread-Id` di OpenAPI.
+- **Pelajaran:**
+  - Docstring class Pydantic dan function route menjadi `description` di OpenAPI, termasuk doctest.
+    Doctest untuk model/route ditaruh di docstring modul.
+  - `configure_logging` mengganti handler root logger, jadi `caplog` tidak menangkap log dari
+    entrypoint. Pakai `capsys` (stderr).
+  - `cmd | tail` menyembunyikan exit code `cmd`. Cek exit code tanpa pipe.
 
 ### 2026-11-15: Auth per user dari F24
 

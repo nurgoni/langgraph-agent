@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from agent_service.agents.registry import AgentRegistry
 from agent_service.schema.requests import StreamInput
 from agent_service.service.dependencies import DefaultAgentIdDep, PrincipalDep, RegistryDep
-from agent_service.service.run_input import build_run_input
+from agent_service.service.run_input import RUN_RESPONSE_HEADERS, build_run_input
 from agent_service.service.streaming import StreamService
 
 logger = logging.getLogger(__name__)
@@ -19,7 +19,11 @@ router = APIRouter(tags=["agents"])
 SSE_MEDIA_TYPE: Final = "text/event-stream"
 # Any: bentuk bebas objek OpenAPI milik FastAPI.
 SSE_RESPONSES: Final[dict[int | str, dict[str, Any]]] = {
-    200: {"content": {SSE_MEDIA_TYPE: {}}, "description": "Frame SSE."}
+    200: {
+        "content": {SSE_MEDIA_TYPE: {}},
+        "description": "SSE frames, see contracts/stream-event.schema.json.",
+        "headers": RUN_RESPONSE_HEADERS,
+    }
 }
 
 

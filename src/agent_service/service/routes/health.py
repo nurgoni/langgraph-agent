@@ -1,4 +1,11 @@
-"""Endpoint `/health`, selalu tanpa auth (FR-10)."""
+"""Endpoint `/health`, selalu tanpa auth (FR-10).
+
+Docstring route menjadi deskripsi di kontrak OpenAPI, jadi contoh pemanggilan ditaruh di sini.
+
+>>> import asyncio
+>>> asyncio.run(health())
+HealthStatus(status='ok')
+"""
 
 from fastapi import APIRouter
 
@@ -9,10 +16,5 @@ router = APIRouter(tags=["health"])
 
 @router.get("/health")
 async def health() -> HealthStatus:
-    """Tanda service hidup. Tidak menyentuh agent atau database.
-
-    >>> import asyncio
-    >>> asyncio.run(health())
-    HealthStatus(status='ok')
-    """
+    """Tanda service hidup. Tidak menyentuh agent atau database."""
     return HealthStatus()

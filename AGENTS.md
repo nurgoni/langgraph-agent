@@ -42,12 +42,14 @@ uv run pyrefly check                      # type check
 docker compose up -d postgres             # database untuk dev dan test
 uv run python -m agent_service.run_migrate   # migrasi skema (Alembic + checkpointer)
 uv run python -m agent_service.manage create-user demo   # buat akun login
+uv run python -m agent_service.export_contracts          # ekspor ulang contracts/ (FR-35)
 uv run python -m agent_service.run_service   # jalankan API di :8080
 uv run streamlit run src/agent_service/ui/app.py  # jalankan UI di :8501
 ```
 
 Sebelum menyatakan pekerjaan selesai, jalankan: `ruff check`, `ruff format --check`,
-`pyrefly check`, dan `pytest`. Semua harus hijau.
+`pyrefly check`, dan `pytest`. Semua harus hijau. Jika API berubah, jalankan juga
+`export_contracts` dan sertakan `contracts/` di commit yang sama (CONTRIBUTING § Kontrak API).
 
 ## Struktur Folder Target
 
@@ -286,6 +288,7 @@ Ringkasan. Detail lengkap ada di [CONTRIBUTING.md](CONTRIBUTING.md).
 - [ ] Lint, format, type check, dan test hijau.
 - [ ] Ada contoh penggunaan (`__main__` atau doctest).
 - [ ] README diperbarui jika ada perintah/env var/endpoint baru.
+- [ ] `contracts/` diekspor ulang jika schema atau route API berubah.
 - [ ] PRD diperbarui jika requirement berubah.
 - [ ] Status fitur di [docs/ROADMAP.md](docs/ROADMAP.md) diperbarui.
 - [ ] **`.agents/memory.md` diperbarui** jika ada keputusan desain, perubahan scope, atau pelajaran

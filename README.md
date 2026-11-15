@@ -165,6 +165,10 @@ curl -N -X POST http://localhost:8080/chatbot/stream \
   -d '{"message": "Halo!", "stream_tokens": true}'
 ```
 
+Kontrak lengkap ada di [`contracts/openapi.json`](contracts/openapi.json) dan
+[`contracts/stream-event.schema.json`](contracts/stream-event.schema.json) (satu frame SSE). Keduanya
+dihasilkan dari kode dan dicek CI, jadi aman dipakai untuk generate client bertipe.
+
 ## Menggunakan AgentClient
 
 ```python
@@ -204,6 +208,7 @@ docker compose up -d postgres # database untuk test (sekali per sesi kerja)
 uv run pytest                 # test (tanpa test integration)
 uv run pytest -m integration  # test e2e Docker Compose (butuh Docker)
 uv run alembic revision --autogenerate -m "add projects"   # migrasi baru dari memory/tables.py
+uv run python -m agent_service.export_contracts            # ekspor ulang contracts/ setelah ubah API
 uv run ruff check . --fix     # lint
 uv run ruff format .          # format
 uv run pyrefly check          # type check

@@ -59,6 +59,10 @@ jobs:
       - name: Type check
         run: uv run pyrefly check
 
+      - name: API contracts are up to date
+        # contracts/ is what typed clients are generated from (FR-35); see CONTRIBUTING.md.
+        run: uv run python -m agent_service.export_contracts --check
+
       - name: Test with coverage
         run: uv run pytest --cov --cov-report=term
 
