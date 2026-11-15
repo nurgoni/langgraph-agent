@@ -42,6 +42,17 @@ print(json.dumps({
 }))
 """
 
+# Setiap image hanya membawa extra miliknya (FR-31): modul ini tidak boleh ada di image tersebut.
+# `uvicorn` tidak dicek di image UI, karena Streamlit 1.66 sendiri bergantung padanya.
+FORBIDDEN_MODULES = {
+    "agent-service": ["streamlit", "pyarrow", "pandas"],
+    "ui": ["langgraph", "langchain_core", "fastapi"],
+}
+INSTALLED_MODULES_SCRIPT = """
+import importlib.util, json, sys
+print(json.dumps([name for name in sys.argv[1:] if importlib.util.find_spec(name)]))
+"""
+
 
 @dataclass
 class ComposeStack:
@@ -150,3 +161,14 @@ def test_threads_survive_service_restart(stack: ComposeStack) -> None:
     with stack.client() as client:
         threads = client.get_threads(OWNER)
     assert reply.thread_id in [thread.thread_id for thread in threads.threads]
+
+
+@pytest.mark.parametrize(("compose_service", "modules"), FORBIDDEN_MODULES.items())
+def test_image_ships_only_its_extra(
+    stack: ComposeStack, compose_service: str, modules: list[str]
+) -> None:
+    output = stack.compose(
+        "exec", "-T", compose_service, "python", "-c", INSTALLED_MODULES_SCRIPT, *modules
+    )
+
+    assert json.loads(output.strip().splitlines()[-1]) == []
