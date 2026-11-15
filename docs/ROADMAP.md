@@ -39,7 +39,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F22 | Dependency extras | M4 | done |
 | F23 | Postgres migration | M4 | done |
 | F24 | User auth & CORS | M4 | done |
-| F25 | API contract export | M4 | todo |
+| F25 | API contract export | M4 | done |
 | F26 | Projects | M5 | todo |
 | F27 | Context builder | M5 | todo |
 | F28 | Built-in skills | M5 | todo |
@@ -1138,8 +1138,20 @@ F32 → F33 → F34 → *rilis v0.6.0* → F35 → F36 → F37 → F38 → *rili
   1. `feat(service): export openapi and stream event schemas`
   2. `ci: fail when published contracts are stale`
   3. `docs: document the api contract workflow`
+- **Penyesuaian saat implementasi:**
+  - CI memakai `export_contracts --check`, bukan `git diff --exit-code contracts/`. `--check`
+    juga menangkap file kontrak yang belum ada atau belum di-track (yang tidak terlihat oleh
+    `git diff`), dan pesannya menyebut perintah perbaikannya.
+  - Ditambah hook pre-commit `api-contracts` dan test `test_published_contracts_match_the_code`,
+    supaya lupa ekspor ulang ketahuan saat commit dan saat `pytest`, bukan hanya di CI.
+  - `info.version` mengikuti versi package, jadi langkah rilis kini menyertakan ekspor ulang.
+  - Doctest `HealthStatus` dan route `/health` bocor ke deskripsi OpenAPI, jadi dipindah ke
+    docstring modul. Header `X-Thread-Id` ditambahkan ke respons OpenAPI `/invoke` dan `/stream`.
+  - Commit 1 juga memuat dokumentasi header dan pemindahan doctest, karena keduanya mengubah isi
+    kontrak yang dipublikasikan.
 - **Acceptance criteria:**
-  - [ ] Mengubah schema tanpa export ulang membuat CI gagal.
+  - [x] Mengubah schema tanpa export ulang membuat CI gagal. Diverifikasi dengan menambah field
+        ke `ThreadRenameInput` tanpa ekspor: `--check` keluar dengan kode 1 dan test kontrak gagal.
 - **Squash title:** `build: publish api contracts for typed clients (F25)`
 - **Setelah merge:** rilis **v0.4.0**.
 

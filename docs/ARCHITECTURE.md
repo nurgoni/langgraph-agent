@@ -185,6 +185,26 @@ Auth per user dengan JWT (FR-33), tanpa mode anonim: `JWT_SECRET` wajib diisi.
   API, header `Authorization`/`Content-Type`, dan mengekspos `X-Thread-Id`. Token dikirim lewat
   header, bukan cookie, jadi `allow_credentials` tidak dipakai.
 
+## Kontrak API
+
+`service/contracts.py` membuat dua file di `contracts/` (FR-35):
+
+- **`openapi.json`** dari `create_app(...).openapi()` dengan `Settings` tiruan (tanpa `.env`, tanpa
+  lifespan, jadi tanpa database atau LLM) dan hanya `ChatbotAgent`. Route agent memakai path
+  generik `/{agent_id}/...`, jadi daftar agent tidak memengaruhi kontrak. `info.version` diambil
+  dari versi package. Header `X-Thread-Id` didokumentasikan di respons `/invoke` dan `/stream`
+  (`RUN_RESPONSE_HEADERS`), dan route terlindungi mendeklarasikan skema `HTTPBearer`.
+- **`stream-event.schema.json`** dari `STREAM_EVENT_ADAPTER.json_schema()`, ditambah `$schema`
+  (draft 2020-12), judul `StreamEvent`, dan penjelasan penanda akhir `[DONE]` yang bukan JSON.
+
+Serialisasinya deterministik: key terurut, indentasi 2, UTF-8, LF, dan newline di akhir.
+`python -m agent_service.export_contracts` menulis file. Opsi `--check` hanya membandingkan dan
+keluar dengan kode 1 jika ada file yang usang atau hilang (dipakai CI dan hook pre-commit
+`api-contracts`).
+
+Docstring model dan route menjadi deskripsi di OpenAPI, jadi doctest-nya ditaruh di docstring
+modul. Test `test_contracts_carry_no_internal_docstrings` menjaga aturan ini.
+
 ## Persistence
 
 Satu database Postgres di `DATABASE_URL` ([ADR 0001](adr/0001-postgres-only.md)):

@@ -192,6 +192,29 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
    merge** ke `develop` dan hapus branch.
 5. Body squash commit berisi ringkasan + `Refs: Fxx`. Hapus daftar commit "fixup" bawaan GitHub.
 
+## Kontrak API
+
+`contracts/openapi.json` dan `contracts/stream-event.schema.json` adalah kontrak publik service
+(FR-35). Tipe TypeScript frontend (F32) digenerate dari file ini, jadi isinya harus selalu sama
+dengan kode.
+
+- **Ubah schema, ekspor ulang di commit yang sama.** Setiap perubahan di `schema/` atau route di
+  `service/` yang mengubah API wajib menyertakan hasil:
+
+  ```bash
+  uv run python -m agent_service.export_contracts
+  ```
+
+  Hook pre-commit `api-contracts`, test `tests/service/test_contracts.py`, dan langkah CI
+  `export_contracts --check` gagal jika `contracts/` tidak sinkron.
+- **Jangan edit `contracts/` dengan tangan.** File ini hasil generate dan deterministik (key
+  terurut, LF), jadi diff-nya selalu menunjukkan perubahan kontrak yang sebenarnya.
+- **Perubahan breaking** (field atau endpoint dihapus, tipe diganti, field jadi wajib) memakai
+  `!` dan footer `BREAKING CHANGE:` di commit message, dan dicatat di `CHANGELOG.md` bagian
+  `Changed`. Menambah field opsional atau endpoint baru tidak breaking.
+- **Docstring route dan model menjadi deskripsi di kontrak.** Tulis ringkas, dan taruh doctest di
+  docstring modul, bukan di docstring class model atau function route.
+
 ## Release
 
 Dilakukan di akhir setiap milestone (lihat ROADMAP: M1 → `v0.1.0`, M2 → `v0.2.0`, M3 → `v0.3.0`).
@@ -204,6 +227,8 @@ git switch -c release/v0.1.0
 # 2. Bump versi dan changelog
 #    - pyproject.toml: version = "0.1.0"
 #    - CHANGELOG.md: pindahkan [Unreleased] ke [0.1.0] - YYYY-MM-DD
+#    - uv lock --offline, lalu ekspor ulang kontrak (info.version ikut versi package):
+#      uv run python -m agent_service.export_contracts
 git commit -am "chore(release): prepare v0.1.0"
 git push -u origin release/v0.1.0
 

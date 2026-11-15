@@ -26,6 +26,10 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 - CORS untuk origin di `CORS_ORIGINS` (FR-34), dengan header `X-Thread-Id` diekspos ke browser
   (F24).
 
+- Kontrak API dipublikasikan di `contracts/openapi.json` dan `contracts/stream-event.schema.json`
+  (FR-35), dihasilkan oleh `python -m agent_service.export_contracts`. CI dan hook pre-commit gagal
+  jika file tidak sinkron dengan kode. Header `X-Thread-Id` kini tercatat di OpenAPI (F25).
+
 ### Changed
 
 - **Breaking:** `user_id` diambil dari access token. Field `user_id` dihapus dari semua request
