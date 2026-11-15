@@ -13,16 +13,47 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** M3 selesai (F19, F15, F16, F17, F20 di `develop`). `release/v0.3.0` disiapkan,
-  menunggu push, PR ke `main` (`--no-ff`), tag `v0.3.0`, dan back-merge ke `develop`.
-- **Berikutnya:** belum ada milestone setelah M3. Tanyakan ke user (kandidat: batas token
-  jawaban `LLM_MAX_TOKENS`, pemisahan dependency image Docker).
+- **Fase:** Fase 1 selesai, `v0.3.0` dirilis dan di-tag (PR #24, back-merge ke `develop`). Fase 2
+  (M4–M10, F21–F46) sudah direncanakan di ROADMAP, PRD (FR-30–FR-58), dan ADR 0001–0005, di branch
+  `docs/phase2-roadmap` (belum di-commit).
+- **Berikutnya:** commit dan PR dokumen Fase 2, lalu mulai **F21** (LLM token limit).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
-- **Terakhir diperbarui:** 2026-11-12
+- **Terakhir diperbarui:** 2026-11-15
 
 ## Decision Log
+
+### 2026-11-15: Rencana Fase 2 (M4–M10)
+
+- **Keputusan user:**
+  - **Postgres-only**, dijalankan sebagai service di Docker Compose
+    ([ADR 0001](../docs/adr/0001-postgres-only.md)).
+  - **Harness dibangun sendiri**, tanpa `deepagents` atau package `langchain`
+    ([ADR 0002](../docs/adr/0002-own-harness.md)). Alasan: belum ada waktu meriset perilakunya.
+  - **Frontend React + TypeScript** dengan komponen standar (shadcn/ui, assistant-ui), tanpa
+    komponen buatan sendiri, dan layout ala Claude dengan Projects
+    ([ADR 0003](../docs/adr/0003-frontend-stack.md)). Streamlit menjadi dev console.
+  - **Project = agent deklaratif** ([ADR 0004](../docs/adr/0004-project-as-declarative-agent.md)).
+  - **Skill runtime built-in dulu** (`SKILL.md`, spesifikasi agentskills.io), untuk demo
+    showcase. Skill lewat UI = backlog B1, tetapi setiap desain wajib menyediakan titik
+    ekstensinya ([ADR 0005](../docs/adr/0005-skill-format-and-sources.md)).
+  - Cron job: hasil analisa dikirim sebagai PDF di thread chat. Sumber data: database relasional.
+- **Keputusan desain:**
+  - Urutan: M4 Foundation → M5 Harness Core → M6 Frontend (demo) → M7 Files & Execution → M8 Data
+    Analytics → M9 Knowledge → M10 Interop. Auth per user (F24) naik ke M4 karena frontend
+    browser tidak boleh memegang `AUTH_SECRET`.
+  - Fitur "general tools" (read/write/bash) dilebur ke F36 (workspace) dan F37 (sandbox). "Review"
+    adalah skill/sub-agent, bukan tool.
+  - Kode buatan model tidak pernah dijalankan di proses service (NFR-10). Referensi
+    `charting_agent.py` (abh2050/langgraph_data_analytics_agents) memakai `exec()` tanpa sandbox,
+    dan pola itu tidak ditiru.
+  - Worker menjalankan agent lewat `AgentClient` dengan service account. Jendela waktu job dihitung
+    dari waktu jadwal (UTC), dan `(job_id, window_start)` unik.
+- **Di luar roadmap (ide user, jangan dijadwalkan):** memisahkan produk chat dari dev-time harness,
+  seperti Claude memisahkan Claude Code dari chat biasa.
+- **Pelajaran:** heredoc bash yang sangat panjang gagal dengan `ENAMETOOLONG`. Tulis konten ke file
+  scratchpad, lalu `cat >>`.
 
 ### 2026-11-12: Web search pindah ke Firecrawl (F20)
 
@@ -545,7 +576,14 @@ melakukan port.
 
 ## Pertanyaan Terbuka
 
-Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pertanyaan terbuka.
+Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Pertanyaan Fase 2 (no. 6–10) dijawab di
+Langkah 1 fitur terkait:
+
+- No. 6: sumber data analisa, user read-only, dan masking PII (F39).
+- No. 7: backend tracing (F31).
+- No. 8: bentuk route chat berbasis Project (F26).
+- No. 9: library PDF (F42).
+- No. 10: parser dokumen ingestion (F43).
 
 ## TODO Berikutnya
 
@@ -556,7 +594,13 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Saat ini tidak ada pe
       UI).
 - [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
       (CONTRIBUTING.md § Setup Awal Repo).
-- [ ] Usulkan ke user: batas token jawaban (misalnya `LLM_MAX_TOKENS`), karena model reasoning
-      bisa berpikir sangat lama.
-- [ ] User: push `release/v0.3.0`, PR ke `main` (merge commit `--no-ff`), tag annotated `v0.3.0`,
-      lalu back-merge `main` → `develop`.
+- [ ] **Ingatkan user: saatnya memakai dev-time skill** (skill untuk coding agent yang
+      mengembangkan repo ini, bukan skill runtime produk). Sampaikan saat salah satu pemicu ini
+      terjadi:
+  1. Prosedur yang sama dijalankan berulang dengan banyak langkah. Kandidat pertama: rilis
+     `v0.4.0` (setelah F25), lalu "ubah schema → export kontrak → generate tipe TS" setelah F32.
+  2. `AGENTS.md` + `.agents/memory.md` terasa terlalu panjang untuk dimuat setiap sesi.
+  3. Sebelum mulai F28 (`SkillRegistry`): membuat satu dev-time skill (misalnya `release`) adalah
+     latihan paling murah untuk memahami format `SKILL.md`.
+- [ ] Ringkas `.agents/memory.md` (±600 baris, melewati batas ±300): pindahkan entri Decision Log
+      Fase 1 yang sudah stabil ke `docs/adr/` atau arsip.
