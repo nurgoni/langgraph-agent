@@ -139,7 +139,7 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
   untuk thread baru.
 - **FR-10** `GET /health` selalu tanpa auth.
 - **FR-11** Jika `AUTH_SECRET` diset, semua endpoint kecuali `/health` membutuhkan
-  `Authorization: Bearer <AUTH_SECRET>`.
+  `Authorization: Bearer <AUTH_SECRET>`. *Digantikan FR-33 mulai F24.*
 - **FR-12** Jika thread sedang dalam status `interrupt`, input berikutnya dikirim sebagai
   `Command(resume=...)`.
 - **FR-13** `thread_id` dan `user_id` yang kosong diisi UUID baru dan dikembalikan ke client lewat
@@ -325,18 +325,20 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
 | POST | `/{agent_id}/invoke` | `UserInput` | `ChatMessage` |
 | POST | `/{agent_id}/stream` | `StreamInput` | `text/event-stream` |
 | POST | `/{agent_id}/history` | `ChatHistoryInput` | `ChatHistory` |
-| GET | `/{agent_id}/threads` | query `user_id`, `limit` (1–100, default 20) | `UserThreads` |
+| POST | `/auth/login` | `LoginRequest` | `TokenResponse` |
+| GET | `/{agent_id}/threads` | query `limit` (1–100, default 20) | `UserThreads` |
 | PATCH | `/{agent_id}/threads/{thread_id}` | `ThreadRenameInput` | `ThreadSummary` |
-| DELETE | `/{agent_id}/threads/{thread_id}` | query `user_id` | 204 |
+| DELETE | `/{agent_id}/threads/{thread_id}` | – | 204 |
 | GET | `/health` | – | `{"status": "ok"}` |
 
-Varian tanpa `{agent_id}` (`/invoke`, `/stream`, dan seterusnya) memakai agent default.
+Varian tanpa `{agent_id}` (`/invoke`, `/stream`, dan seterusnya) memakai agent default. Mulai F24,
+semua endpoint kecuali `/health` dan `/auth/login` butuh `Authorization: Bearer <access_token>`,
+dan pemilik thread diambil dari token (FR-33).
 
 **Endpoint baru Fase 2 (rencana, detail final ditetapkan di fitur masing-masing):**
 
 | Method | Path | FR | Fitur |
 |---|---|---|---|
-| POST | `/auth/login` | FR-33 | F24 |
 | GET, POST, PATCH, DELETE | `/projects`, `/projects/{project_id}` | FR-36 | F26 |
 | GET | `/skills`, `/skills/{skill_id}` | FR-38 | F28 |
 | GET, DELETE | `/memories`, `/memories/{memory_id}` | FR-40 | F30 |
@@ -348,15 +350,18 @@ Varian tanpa `{agent_id}` (`/invoke`, `/stream`, dan seterusnya) memakai agent d
 ### 7.2 Schema Utama
 
 ```text
-UserInput       { message: str, model?: str, thread_id?: str, user_id?: str, agent_config?: dict }
+LoginRequest    { username: str (huruf kecil, [a-z0-9._-], 3–32), password: str }
+TokenResponse   { access_token: str, token_type: "bearer", expires_in: int, user_id: str,
+                  username: str, role: "user"|"service" }
+UserInput       { message: str, model?: str, thread_id?: str, agent_config?: dict }
 StreamInput     UserInput + { stream_tokens: bool = true }
 ChatMessage     { type: "human"|"ai"|"tool"|"custom", content: str, tool_calls: list,
                   tool_call_id?: str, run_id?: str, agent?: str, reasoning?: str,
                   custom_data?: dict }
-ChatHistoryInput { thread_id: str, user_id: str }
+ChatHistoryInput { thread_id: str }
 ChatHistory     { messages: list[ChatMessage] }
 ThreadSummary   { thread_id: str, agent_id: str, title: str, updated_at?: datetime }
-ThreadRenameInput { user_id: str, title: str (1–TITLE_MAX_LENGTH karakter) }
+ThreadRenameInput { title: str (1–TITLE_MAX_LENGTH karakter) }
 AgentInfo       { key: str, description: str, config_schema: dict (JSON Schema) }
 ```
 
@@ -392,7 +397,9 @@ Node yang LLM-nya diberi tag `skip_stream` tidak menghasilkan frame `token`.
 | `LLM_MAX_TOKENS` | `8192` | Batas token jawaban per giliran, termasuk reasoning pada provider yang menghitungnya bersama (FR-30) |
 | `LLM_MAX_TOKENS_PARAM` | `max_tokens` | Nama parameter batas token di request. `max_completion_tokens` untuk model reasoning OpenAI. Ollama hanya membaca `max_tokens` |
 | `DATABASE_URL` | `postgresql://agent:agent@127.0.0.1:5432/agent_service` | Koneksi Postgres (FR-32). Menggantikan `SQLITE_DB_PATH` mulai F23 |
-| `AUTH_SECRET` | – | Bearer token. Kosong = tanpa auth |
+| `JWT_SECRET` | – (wajib) | Kunci HS256 access token, minimal 32 karakter (FR-33). Menggantikan `AUTH_SECRET` mulai F24 |
+| `JWT_TTL_SECONDS` | `43200` | Umur access token (12 jam), tanpa refresh token |
+| `CORS_ORIGINS` | – | Origin browser yang diizinkan, dipisah koma (FR-34) |
 | `FIRECRAWL_API_KEY` | – | Key Firecrawl untuk tool `web_search`. Kosong = tool menjawab "not configured", agent tetap berjalan |
 | `HOST` / `PORT` | `0.0.0.0` / `8080` | Bind address service |
 | `LOG_LEVEL` | `INFO` | Level logging |
@@ -404,8 +411,6 @@ Node yang LLM-nya diberi tag `skip_stream` tidak menghasilkan frame `token`.
 |---|---|---|
 | `LLM_MAX_TOKENS` | F21 | Batas token jawaban default |
 | `DATABASE_URL` | F23 (selesai) | Koneksi Postgres. Menggantikan `SQLITE_DB_PATH` |
-| `JWT_SECRET`, `JWT_TTL_SECONDS` | F24 | Penandatanganan dan umur access token. Menggantikan `AUTH_SECRET` |
-| `CORS_ORIGINS` | F24 | Origin frontend yang diizinkan, dipisah koma |
 | `CONTEXT_MAX_TOKENS` | F29 | Anggaran token riwayat yang dikirim ke model |
 | `ARTIFACT_DIR`, `ARTIFACT_MAX_BYTES` | F35 | Lokasi dan batas ukuran artifact |
 | `TOOL_OUTPUT_MAX_TOKENS` | F36 | Batas output tool sebelum dipindah ke workspace |

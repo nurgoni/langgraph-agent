@@ -38,7 +38,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F21 | LLM token limit | M4 | done |
 | F22 | Dependency extras | M4 | done |
 | F23 | Postgres migration | M4 | done |
-| F24 | User auth & CORS | M4 | todo |
+| F24 | User auth & CORS | M4 | done |
 | F25 | API contract export | M4 | todo |
 | F26 | Projects | M5 | todo |
 | F27 | Context builder | M5 | todo |
@@ -1095,10 +1095,32 @@ F32 → F33 → F34 → *rilis v0.6.0* → F35 → F36 → F37 → F38 → *rili
   6. `feat(ui): add login to the streamlit dev console`
   7. `feat: add create-user management command`
   8. `docs: record F24 auth decisions`
+- **Langkah 1 (keputusan user):** tanpa refresh token, TTL 12 jam. `JWT_SECRET` wajib (≥ 32 karakter,
+  tanpa mode anonim). Login dengan username. Verifikasi token stateless, tanpa query DB per request.
+- **Penyesuaian saat implementasi:**
+  - **Commit 2–6 digabung** menjadi satu commit `feat(service)`. Menghapus `user_id` dari schema
+    langsung mematahkan client dan UI, dan `settings.py`/`app.py` dipakai bersama JWT dan CORS,
+    jadi commit perantara akan gagal di hook pyrefly. Hasilnya 5 commit: tabel users, auth + CORS
+    (service, client, UI), `create-user`, compose/e2e, docs.
+  - Library: `pyjwt 2.15.1` dan `argon2-cffi 25.1.0`, di extra `service`.
+  - `Authenticator` (login, terbitkan, verifikasi) dibuat di lifespan. Username yang tidak ada
+    diverifikasi terhadap hash tiruan, supaya waktu respons sama dengan password salah.
+  - Error auth = `AuthenticationError` → 401 + `WWW-Authenticate: Bearer`, lewat pemetaan error
+    domain yang sudah ada. `HTTPBearer(auto_error=False)`, supaya header yang hilang juga 401, bukan
+    403.
+  - `manage.py` (subcommand `create-user`), bukan file `manage.py` di root, supaya ikut terpasang di
+    image (`python -m agent_service.manage`). `--password-stdin` untuk skrip dan e2e.
+  - UI: token di `AgentClient` milik session, username di `st.session_state`. Kunci cache daftar
+    thread memakai username, karena `st.cache_data` berlaku untuk seluruh proses. Param URL
+    `user_id` lama dihapus saat URL ditulis.
+  - Fixture test: `client` membawa token `user-a` yang dibuat langsung dari authenticator app (tanpa
+    akun di DB), `auth_headers(user)` untuk user lain, dan `anonymous_client`. `JWT_SECRET` test
+    diisi fixture autouse.
 - **Acceptance criteria:**
-  - [ ] Tanpa token atau dengan token tidak valid → 401. `/health` tetap tanpa auth.
-  - [ ] User A tidak bisa membaca, melanjutkan, rename, atau menghapus thread user B (404).
-  - [ ] Preflight CORS dari origin yang diizinkan berhasil, sedangkan origin lain ditolak.
+  - [x] Tanpa token atau dengan token tidak valid → 401. `/health` tetap tanpa auth.
+  - [x] User A tidak bisa membaca, melanjutkan, rename, atau menghapus thread user B (404). Dites di
+        route, kontrak client, dan e2e Docker.
+  - [x] Preflight CORS dari origin yang diizinkan berhasil, sedangkan origin lain ditolak.
 - **Squash title:** `feat(service): add per-user jwt auth and cors (F24)`
 
 ### F25: API contract export

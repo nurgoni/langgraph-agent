@@ -13,15 +13,48 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** Fase 2 (M4). F21 dan F22 sudah di-merge. **F23** (Postgres) selesai di
-  `feature/F23-postgres`, menunggu user commit, push, dan PR.
-- **Berikutnya:** **F24** (user auth & CORS).
+- **Fase:** Fase 2 (M4). F21–F23 sudah di-merge. **F24** (auth per user & CORS) selesai di
+  `feature/F24-user-auth`, menunggu user commit, push, dan PR.
+- **Berikutnya:** **F25** (API contract export), lalu rilis **v0.4.0**.
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Terakhir diperbarui:** 2026-11-15
 
 ## Decision Log
+
+### 2026-11-15: Auth per user dari F24
+
+- **Supersedes:** "AUTH_SECRET" bersama (F06) dan keputusan F13 "`user_id` disimpan di URL".
+- **Keputusan user:** tanpa refresh token, TTL 12 jam. `JWT_SECRET` wajib (service gagal start).
+  Login dengan username. Token stateless (tanpa query DB per request).
+- **Keputusan desain:**
+  - JWT HS256 (`pyjwt`), klaim `sub`/`role`/`iat`/`exp`, semuanya wajib saat decode. Hash password
+    argon2id (`argon2-cffi`). `Authenticator` di `service/auth.py`. `UserRepository` di
+    `memory/users.py` tidak bergantung pada library kripto.
+  - `current_principal` di `service/dependencies.py` (dipasang per router, dan sebagai
+    `PrincipalDep` di route). Kebocoran keberadaan username dicegah dengan pesan yang sama dan hash
+    tiruan untuk username yang tidak ada.
+  - Kontrak breaking: `user_id` dihapus dari semua request dan header `X-User-Id` dihapus.
+    `RESERVED_AGENT_CONFIG_KEYS` tetap berisi `user_id`, karena nilainya diisi service di
+    `configurable`.
+  - Akun hanya lewat CLI `python -m agent_service.manage create-user`. Role `service` disiapkan
+    untuk F31/F41, dan saat ini aksesnya sama dengan `user`.
+  - CORS: `allow_credentials` tidak dipakai (token di header, bukan cookie). `X-Thread-Id`
+    diekspos.
+- **Pelajaran:**
+  - Pydantic `StringConstraints(pattern=..., to_lower=True)` mengecek pola **sebelum** `to_lower`
+    dan `strip_whitespace`. Normalisasi harus memakai `BeforeValidator`.
+  - pyrefly tidak menuntut argumen untuk field wajib `BaseSettings` (nilainya bisa dari env), jadi
+    `Settings()` tanpa `jwt_secret` lolos type check. Doctest di `src/` harus mengisinya eksplisit,
+    sedangkan test mendapatkannya dari fixture autouse `test_jwt_secret`.
+  - pytest-asyncio 1.x tidak mengizinkan test sync memakai fixture async. Jadikan test-nya async.
+  - `st.rerun()` bertipe `NoReturn`, jadi kode setelahnya ditandai unreachable oleh pyrefly.
+  - `HTTPBearer()` default menjawab 403 untuk header yang hilang. Pakai `auto_error=False` dan raise
+    sendiri agar 401 konsisten.
+  - `st.cache_data` berlaku untuk seluruh proses Streamlit: kunci cache data milik user wajib
+    menyertakan identitas user.
+  - `.env` developer harus ditambah `JWT_SECRET` setelah F24, kalau tidak service gagal start.
 
 ### 2026-11-15: Postgres dari F23
 

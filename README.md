@@ -49,9 +49,13 @@ cp .env.example .env
 # isi LLM_BASE_URL, LLM_API_KEY, DEFAULT_MODEL
 # atau USE_FAKE_MODEL=true untuk mencoba tanpa API key
 
-# 3. Jalankan Postgres dan siapkan skemanya
+#    isi JWT_SECRET (wajib, minimal 32 karakter):
+#    uv run python -c "import secrets; print(secrets.token_urlsafe(48))"
+
+# 3. Jalankan Postgres, siapkan skemanya, dan buat akun login
 docker compose up -d postgres
 uv run python -m agent_service.run_migrate
+uv run python -m agent_service.manage create-user demo   # password ditanya dua kali
 
 # 4. Jalankan service (http://localhost:8080, docs di /docs)
 uv run python -m agent_service.run_service
@@ -78,8 +82,8 @@ dipasang lewat extra:
 `uv sync` untuk development meng-install semuanya, karena grup `dev` mereferensikan
 `agent-service[service,ui]`. Untuk satu komponen saja: `uv sync --no-dev --extra service`.
 
-URL UI berisi `user_id`, `thread_id`, dan `agent`. Simpan atau bagikan URL itu untuk membuka ulang
-percakapan. Siapa pun yang memegang URL tersebut bisa membaca thread-nya.
+UI meminta login dengan akun dari `manage create-user`. URL UI berisi `thread_id` dan `agent`,
+tanpa identitas user, jadi URL yang dibagikan hanya bisa dibuka oleh pemilik thread.
 
 ### Docker Compose
 
@@ -90,8 +94,10 @@ docker compose down              # hentikan (tambahkan -v untuk menghapus data P
 
 - **Model:** stack memakai FakeModel secara default, jadi bisa jalan tanpa API key. Konfigurasi LLM
   di `.env` sengaja tidak dipakai di dalam container.
-- **Variabel yang diambil dari shell atau `.env`:** `AUTH_SECRET` (dipakai service dan UI) dan
-  `LOG_LEVEL`. Port bisa dipindah dengan `SERVICE_PORT` dan `UI_PORT`.
+- **Variabel yang diambil dari shell atau `.env`:** `JWT_SECRET` (default nilai dev yang tidak
+  aman, ganti di luar mesin dev), `JWT_TTL_SECONDS`, `CORS_ORIGINS`, dan `LOG_LEVEL`. Port bisa
+  dipindah dengan `SERVICE_PORT` dan `UI_PORT`.
+- **Akun:** `docker compose exec agent-service python -m agent_service.manage create-user demo`.
 - **Urutan start:** `postgres` (healthy) → `migrate` (Alembic + tabel checkpointer, lalu selesai)
   → `agent-service` → `ui`. Migrasi tidak dijalankan di lifespan, supaya beberapa replika tidak
   menjalankannya bersamaan.
@@ -123,7 +129,9 @@ menunjuk ke container itu sendiri.
 | `LLM_MAX_TOKENS` | tidak | Batas token jawaban per giliran model, default `8192`. Pada model reasoning (Ollama), token reasoning ikut dihitung. Jawaban yang terpotong ditandai `truncated` |
 | `LLM_MAX_TOKENS_PARAM` | tidak | Nama parameter batas token di request: `max_tokens` (default, untuk Ollama/vLLM/llama.cpp) atau `max_completion_tokens` (model reasoning OpenAI seperti gpt-5/o-series) |
 | `DATABASE_URL` | tidak | Postgres, default `postgresql://agent:agent@127.0.0.1:5432/agent_service` (service `postgres` di compose). Pakai `127.0.0.1`, bukan `localhost`, di Docker Desktop Windows |
-| `AUTH_SECRET` | tidak | Jika diset, semua request butuh `Authorization: Bearer ...` |
+| `JWT_SECRET` | **ya** | Kunci penanda tangan access token (HS256), minimal 32 karakter. Service menolak start tanpa nilai ini |
+| `JWT_TTL_SECONDS` | tidak | Umur access token, default `43200` (12 jam). Tidak ada refresh token |
+| `CORS_ORIGINS` | tidak | Origin browser yang boleh memanggil API, dipisah koma. Kosong = tidak ada |
 | `FIRECRAWL_API_KEY` | tidak | Key [Firecrawl](https://firecrawl.dev) untuk tool `web_search` (research-assistant, supervisor). Kosong = tanpa pencarian web |
 | `AGENT_URL` | tidak | URL service untuk UI/client, default `http://localhost:8080` |
 
@@ -133,6 +141,7 @@ menunjuk ke container itu sendiri.
 
 | Method | Path | Fungsi |
 |---|---|---|
+| POST | `/auth/login` | Tukar username dan password dengan access token, tanpa auth |
 | GET | `/info` | Daftar agent dan model |
 | POST | `/{agent_id}/invoke` | Jalankan agent, kembalikan jawaban akhir |
 | POST | `/{agent_id}/stream` | Jalankan agent dengan streaming SSE |
@@ -142,12 +151,17 @@ menunjuk ke container itu sendiri.
 | DELETE | `/{agent_id}/threads/{thread_id}` | Hapus thread beserta riwayatnya |
 | GET | `/health` | Health check, selalu tanpa auth |
 
-Response `/invoke` dan `/stream` membawa header `X-Thread-Id` dan `X-User-Id`. Kirim keduanya lagi
-untuk melanjutkan thread yang sama. Thread milik user lain menjawab 404.
+Semua endpoint selain `/health` dan `/auth/login` butuh `Authorization: Bearer <access_token>`.
+Identitas user diambil dari token, bukan dari body atau query. Response `/invoke` dan `/stream`
+membawa header `X-Thread-Id`; kirim lagi sebagai `thread_id` untuk melanjutkan thread yang sama.
+Thread milik user lain menjawab 404.
 
 ```bash
-curl -N -X POST http://localhost:8080/chatbot/stream \
+TOKEN=$(curl -s -X POST http://localhost:8080/auth/login \
   -H "Content-Type: application/json" \
+  -d '{"username": "demo", "password": "..."}' | python -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
+curl -N -X POST http://localhost:8080/chatbot/stream \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"message": "Halo!", "stream_tokens": true}'
 ```
 
@@ -156,21 +170,24 @@ curl -N -X POST http://localhost:8080/chatbot/stream \
 ```python
 from agent_service.client import AgentClient
 
-with AgentClient(base_url="http://localhost:8080", agent_id="chatbot", auth_secret=None) as client:
-    reply = client.invoke("Halo!", user_id="user-1")
+with AgentClient(base_url="http://localhost:8080", agent_id="chatbot") as client:
+    client.login("demo", "rahasia-demo")  # token dipakai untuk request berikutnya
+    reply = client.invoke("Halo!")
     print(reply.message.content, reply.thread_id)
 
     # Lanjutkan thread yang sama. Event: TokenEvent, MessageEvent, atau ErrorEvent.
-    with client.stream("Lanjut", thread_id=reply.thread_id, user_id="user-1") as run:
+    with client.stream("Lanjut", thread_id=reply.thread_id) as run:
         for event in run:
             print(event)
 
-    print(client.get_threads("user-1").threads)
+    print(client.get_threads().threads)
 ```
 
 Setiap method punya versi async berawalan `a` (`ainvoke`, `astream` dengan `async with`, dan
 seterusnya). Error HTTP atau koneksi dilempar sebagai `AgentClientError` dengan `status_code`
-dan `detail`.
+dan `detail`. Token yang kedaluwarsa menghasilkan 401; panggil `login()` lagi. Token yang sudah
+ada (misalnya disimpan aplikasi) bisa dipakai lewat `AgentClient(access_token=...)` atau
+`set_access_token()`.
 
 ## Menambah Agent Baru
 
