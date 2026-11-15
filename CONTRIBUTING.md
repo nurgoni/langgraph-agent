@@ -217,7 +217,8 @@ dengan kode.
 
 ## Release
 
-Dilakukan di akhir setiap milestone (lihat ROADMAP: M1 → `v0.1.0`, M2 → `v0.2.0`, M3 → `v0.3.0`).
+Dilakukan di akhir setiap milestone (lihat ROADMAP § Milestone & Rilis: M1 → `v0.1.0`, M2 →
+`v0.2.0`, M3 → `v0.3.0`, M4 → `v0.4.0`, dan seterusnya).
 
 ```bash
 # 1. Buat branch release
