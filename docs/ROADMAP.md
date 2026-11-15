@@ -35,6 +35,32 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F16 | Interrupt agent | M3 | done |
 | F17 | Supervisor agent | M3 | done |
 | F20 | Firecrawl web search | M3 | done |
+| F21 | LLM token limit | M4 | todo |
+| F22 | Dependency extras | M4 | todo |
+| F23 | Postgres migration | M4 | todo |
+| F24 | User auth & CORS | M4 | todo |
+| F25 | API contract export | M4 | todo |
+| F26 | Projects | M5 | todo |
+| F27 | Context builder | M5 | todo |
+| F28 | Built-in skills | M5 | todo |
+| F29 | Context policy | M5 | todo |
+| F30 | Long-term memory | M5 | todo |
+| F31 | Evals & tracing | M5 | todo |
+| F32 | Frontend scaffold & auth | M6 | todo |
+| F33 | Chat UI | M6 | todo |
+| F34 | Projects & threads UI | M6 | todo |
+| F35 | Artifact storage | M7 | todo |
+| F36 | Workspace & file tools | M7 | todo |
+| F37 | Sandbox | M7 | todo |
+| F38 | Artifact panel UI | M7 | todo |
+| F39 | SQL data source | M8 | todo |
+| F40 | Data analyst project | M8 | todo |
+| F41 | Worker & scheduler | M8 | todo |
+| F42 | PDF report & scheduled analysis | M8 | todo |
+| F43 | Knowledge ingestion | M9 | todo |
+| F44 | Knowledge retrieval | M9 | todo |
+| F45 | Knowledge UI | M9 | todo |
+| F46 | OpenAI-compatible endpoint | M10 | todo |
 
 ## Milestone & Rilis
 
@@ -44,6 +70,15 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | M1: Core + Service | F01–F10, F18 | `v0.1.0` | API lengkap dengan `chatbot`, dites dengan FakeModel |
 | M2: Client + UI | F11–F14 | `v0.2.0` | Chat end-to-end via Docker Compose |
 | M3: Agent tambahan | F19, F15–F17, F20 | `v0.3.0` | Reasoning terlihat, tool calling, human-in-the-loop, multi-agent |
+| M4: Foundation | F21–F25 | `v0.4.0` | Postgres di compose, login JWT, batas token, image lebih kecil, kontrak API dipublikasikan |
+| M5: Harness Core | F26–F31 | `v0.5.0` | Project, prompt dirakit per giliran, skill built-in, context management, memory, eval |
+| M6: Frontend | F32–F34 | `v0.6.0` | **Demo showcase:** chat React bergaya Claude dengan Projects |
+| M7: Files & Execution | F35–F38 | `v0.7.0` | Artifact, workspace, sandbox, panel artifact |
+| M8: Data Analytics | F39–F42 | `v0.8.0` | Analisa SQL → chart, job terjadwal → PDF |
+| M9: Knowledge | F43–F45 | `v0.9.0` | RAG per Project dengan ingestion |
+| M10: Interop | F46 | `v0.10.0` | Endpoint OpenAI-compatible |
+
+Arsitektur Fase 2 (M4–M10) mengikuti [ADR 0001–0005](adr/README.md).
 
 ## Dependency Graph
 
@@ -68,6 +103,39 @@ F13 → F14 → *rilis v0.2.0* → F19 → F15 → F16 → F17 → F20 → *rili
   `httpx.MockTransport`.
 - F15 ∥ M2
 
+### Fase 2 (M4–M10)
+
+```text
+F21, F22 (independen)
+F23 ─┬─► F24 ─► F25 ─► F32 ─► F33 ─► F34 ─► F38 ─► F45
+     ├─► F26 ─► F27 ─┬─► F28 ─► F40
+     │               ├─► F29
+     │               ├─► F30
+     │               └─► F31
+     ├─► F35 ─► F36 ─► F37 ─► F40 ─► F42
+     ├─► F39 ─► F40
+     ├─► F41 ─► F42
+     └─► F43 ─► F44 ─► F45
+F24, F26 ─► F46
+```
+
+Prasyarat tambahan yang tidak terlihat di graph:
+
+- F34 butuh F26 dan F28 (pemilih skill). F38 butuh F35.
+- F40 butuh F28 (skill semantic layer), F36, dan F37. F42 butuh F35 dan F41.
+- F43 butuh F26, F35, dan F41 (worker untuk ingestion).
+
+**Urutan eksekusi yang disarankan (satu developer):**
+F21 → F22 → F23 → F24 → F25 → *rilis v0.4.0* → F26 → F27 → F28 → F29 → F30 → F31 → *rilis v0.5.0* →
+F32 → F33 → F34 → *rilis v0.6.0* → F35 → F36 → F37 → F38 → *rilis v0.7.0* → F39 → F40 → F41 → F42 →
+*rilis v0.8.0* → F43 → F44 → F45 → *rilis v0.9.0* → F46 → *rilis v0.10.0*
+
+**Bisa dikerjakan paralel:**
+- F21 ∥ F22 ∥ F23.
+- Track frontend (F32 → F33) bisa dimulai setelah F25, paralel dengan M5. F34 menunggu F26/F28.
+- F39 ∥ M7 (tool SQL bisa dites tanpa workspace, dengan hasil sebagai teks).
+- F46 kapan pun setelah F26.
+
 ## Pemetaan FR → Fitur
 
 | FR | Fitur | | FR | Fitur |
@@ -87,6 +155,21 @@ F13 → F14 → *rilis v0.2.0* → F19 → F15 → F16 → F17 → F20 → *rili
 | FR-25 | F18, F13 | | FR-27 | F04, F05, F06, F07 |
 | FR-26 | F18, F13 | | FR-28 | F07, F08, F18 |
 | FR-29 | F19 | | | |
+| FR-30 | F21, F26, F33 | | FR-45 | F32, B3 |
+| FR-31 | F22 | | FR-46 | F35 |
+| FR-32 | F23 | | FR-47 | F36 |
+| FR-33 | F24 | | FR-48 | F36 |
+| FR-34 | F24 | | FR-49 | F37 |
+| FR-35 | F25 | | FR-50 | F38 |
+| FR-36 | F26, F34 | | FR-51 | F39 |
+| FR-37 | F27 | | FR-52 | F40 |
+| FR-38 | F28, F34 | | FR-53 | F41 |
+| FR-39 | F29 | | FR-54 | F42 |
+| FR-40 | F30 | | FR-55 | F43 |
+| FR-41 | F31 | | FR-56 | F44 |
+| FR-42 | F32 | | FR-57 | F45 |
+| FR-43 | F33 | | FR-58 | F46 |
+| FR-44 | F34 | | | |
 
 ## Loop Eksekusi per Fitur
 
@@ -106,6 +189,10 @@ F13 → F14 → *rilis v0.2.0* → F19 → F15 → F16 → F17 → F20 → *rili
    ```bash
    uv run ruff check . && uv run ruff format --check . && uv run pyrefly check && uv run pytest
    ```
+
+   Mulai F23, test database butuh Postgres (`docker compose up -d postgres`). Mulai F32, jika
+   `frontend/` berubah, jalankan juga lint, type check, dan test frontend (perintahnya ditetapkan
+   di F32). Jika schema API berubah, generate ulang kontrak (F25).
 
 6. Perbarui README, PRD, dan memory.md jika ada perubahan. Ubah status Fxx menjadi `done`.
 7. Push, buka PR ke `develop` dengan **Squash title**, tunggu CI hijau dan review, lalu squash
@@ -840,3 +927,683 @@ F13 → F14 → *rilis v0.2.0* → F19 → F15 → F16 → F17 → F20 → *rili
   - [ ] Smoke test dengan key Firecrawl asli (menunggu user mengisi `FIRECRAWL_API_KEY`).
 - **Squash title:** `feat(agents): switch web search to firecrawl (F20)`
 - **Setelah merge:** rilis **v0.3.0**.
+
+---
+
+## M4: Foundation → v0.4.0
+
+### F21: LLM token limit
+
+- **Branch:** `feature/F21-llm-token-limit`
+- **FR:** FR-30
+- **File:** `core/settings.py` (`llm_max_tokens`), `llm/factory.py`, `llm/fake.py` (`finish_reason`
+  bisa di-script), `schema/responses.py` (`ChatMessage.truncated`), `service/converters.py`,
+  `ui/message_renderer.py`, `tests/`
+- **Langkah 1 (klarifikasi):** ukur dengan `qwen3.5:9b` lewat Ollama apakah token reasoning ikut
+  dihitung dalam `max_tokens`, dan berapa batas minimum supaya jawaban tidak kosong. Hasilnya
+  menentukan nilai default.
+- **Catatan desain:**
+  - Konstanta `DEFAULT_LLM_MAX_TOKENS`. `ModelFactory.create(name, max_tokens=None)`, dan kunci cache
+    mencakup `max_tokens` (override per Project di F26).
+  - `finish_reason == "length"` di `response_metadata` diubah converter menjadi
+    `ChatMessage.truncated = true`.
+- **Rencana commit:**
+  1. `feat(core): add LLM_MAX_TOKENS setting`
+  2. `feat(llm): pass max tokens to openai-compatible models`
+  3. `feat(schema): mark truncated ai messages`
+  4. `feat(service): flag messages stopped by the token limit`
+  5. `feat(ui): warn when an answer is truncated`
+  6. `docs: record F21 token limit decisions`
+- **Acceptance criteria:**
+  - [ ] `FakeModel` dengan `finish_reason="length"` menghasilkan `truncated=true` di `/invoke`,
+        frame `message` `/stream`, dan `/history`.
+  - [ ] Smoke test dengan model reasoning asli dan batas kecil: peringatan muncul di UI.
+- **Squash title:** `feat(llm): add answer token limit and truncation flag (F21)`
+
+### F22: Dependency extras
+
+- **Branch:** `feature/F22-dependency-extras`
+- **FR/NFR:** FR-31, NFR-12
+- **File:** `pyproject.toml`, `uv.lock`, `docker/Dockerfile`, `.github/workflows/ci.yml`,
+  `.pre-commit-config.yaml` (jika perlu), `README.md`
+- **Catatan desain:**
+  - Dependency dasar hanya untuk `schema/` + `client/` (pydantic, httpx). Extras: `service`
+    (fastapi, uvicorn, langgraph, langchain-*, numexpr, database) dan `ui` (streamlit). Extras
+    `analytics` dan `rag` ditambahkan oleh fitur yang pertama kali membutuhkannya.
+  - Dev dan CI: `uv sync --all-extras`. Docker: `uv sync --frozen --no-dev --extra <target>`.
+  - Ukur ukuran image sebelum dan sesudah (`docker images`), lalu catat di PR dan memory.md.
+- **Rencana commit:**
+  1. `build: split runtime dependencies into extras`
+  2. `build(docker): install only the extras each image needs`
+  3. `ci: install all extras in ci jobs`
+  4. `docs: document extras and image sizes`
+- **Acceptance criteria:**
+  - [ ] Image `service` tidak berisi Streamlit, dan image `ui` tidak berisi langgraph.
+  - [ ] Test e2e (`-m integration`) tetap hijau.
+- **Squash title:** `build: split dependencies into extras per image (F22)`
+
+### F23: Postgres migration
+
+- **Branch:** `feature/F23-postgres`
+- **FR:** FR-32, [ADR 0001](adr/0001-postgres-only.md)
+- **File:** `compose.yaml` (service `postgres`, `migrate`, volume), `core/settings.py`
+  (`database_url`), `memory/database.py` (engine factory), `memory/migrations/` (Alembic),
+  `memory/checkpointer.py`, `memory/thread_metadata.py`, `run_migrate.py`, `tests/conftest.py`
+  (fixture Postgres), `.github/workflows/ci.yml` (service Postgres), `docker/Dockerfile`, README
+- **Langkah 1 (klarifikasi):** cek versi `langgraph-checkpoint-postgres` yang cocok dengan langgraph
+  1.2, dan driver yang diwajibkannya (psycopg 3). Pakai driver yang sama untuk SQLAlchemy supaya
+  hanya ada satu driver.
+- **Catatan desain:**
+  - Image `pgvector/pgvector` (tag di-pin), supaya F43 tidak perlu mengganti image.
+  - Service `migrate` menjalankan `alembic upgrade head` dan `setup()` milik saver/store, lalu
+    selesai. Service API dan worker memakai
+    `depends_on: migrate: condition: service_completed_successfully`.
+  - Kontrak publik dipertahankan: `CheckpointerProvider` dan `ThreadMetadataRepository` tetap async
+    context manager / repository.
+  - `aiosqlite`, `langgraph-checkpoint-sqlite`, dan `SQLITE_DB_PATH` dihapus.
+  - Test database memakai database terpisah per sesi test (dibuat dan dihapus oleh fixture). Fixture
+    gagal cepat dengan pesan "jalankan `docker compose up -d postgres`".
+- **Rencana commit:**
+  1. `build(docker): add postgres and migrate services to compose`
+  2. `feat(core): add DATABASE_URL setting`
+  3. `feat(memory): add async engine and alembic migrations`
+  4. `feat(memory): switch checkpointer to postgres`
+  5. `feat(memory): move thread metadata to postgres`
+  6. `ci: run database tests against a postgres service`
+  7. `docs: record F23 postgres decisions`
+- **Acceptance criteria:**
+  - [ ] `docker compose up` → `migrate` selesai → service healthy → chat berjalan.
+  - [ ] Semua test thread (FR-8, FR-9, FR-25, FR-26, FR-28) hijau di Postgres.
+  - [ ] Tidak ada lagi kode atau dependency SQLite.
+- **Squash title:** `feat(memory): migrate persistence to postgres (F23)`
+
+### F24: User auth & CORS
+
+- **Branch:** `feature/F24-user-auth`
+- **FR:** FR-33, FR-34
+- **File:** `memory/users.py` (`UserRepository`), migrasi tabel `users`, `service/auth.py` (JWT,
+  hash password), `service/routes/auth.py`, `service/app.py` (CORS), `schema/requests.py`
+  (`user_id` dihapus), `schema/auth.py`, `client/` (login + token), `ui/` (form login di dev
+  console), `manage.py` (`create-user`), `core/settings.py`, README, `tests/`
+- **Langkah 1 (klarifikasi):** pastikan access token tanpa refresh token cukup untuk demo, dan tentukan
+  TTL default.
+- **Catatan desain:**
+  - JWT HS256 dengan `JWT_SECRET`. Hash password memakai argon2. Klaim `sub` = `user_id`, dan
+    `role` = `user` | `service`.
+  - **Perubahan kontrak (breaking):** `user_id` tidak lagi diterima dari body/query. Client dan dev
+    console diperbarui di PR yang sama. Header `X-User-Id` dihapus.
+  - Service account (role `service`) dipakai worker (F41) dan eval (F31).
+  - `AUTH_SECRET` dihapus.
+- **Rencana commit:**
+  1. `feat(memory): add users table and repository`
+  2. `feat(service): issue and verify jwt access tokens`
+  3. `feat(service): take user id from the access token`
+  4. `feat(service): add cors allowlist`
+  5. `feat(client): log in and send bearer tokens`
+  6. `feat(ui): add login to the streamlit dev console`
+  7. `feat: add create-user management command`
+  8. `docs: record F24 auth decisions`
+- **Acceptance criteria:**
+  - [ ] Tanpa token atau dengan token tidak valid → 401. `/health` tetap tanpa auth.
+  - [ ] User A tidak bisa membaca, melanjutkan, rename, atau menghapus thread user B (404).
+  - [ ] Preflight CORS dari origin yang diizinkan berhasil, sedangkan origin lain ditolak.
+- **Squash title:** `feat(service): add per-user jwt auth and cors (F24)`
+
+### F25: API contract export
+
+- **Branch:** `feature/F25-api-contracts`
+- **FR:** FR-35
+- **File:** `service/contracts.py` + entrypoint `export_contracts`, `contracts/openapi.json`,
+  `contracts/stream-event.schema.json`, `.github/workflows/ci.yml`, CONTRIBUTING (aturan perubahan
+  kontrak)
+- **Catatan desain:**
+  - OpenAPI dari `create_app(...).openapi()` (tanpa lifespan), dan JSON Schema dari
+    `STREAM_EVENT_ADAPTER.json_schema()`. Output deterministik (key terurut, newline di akhir).
+  - CI menjalankan export lalu `git diff --exit-code contracts/`.
+- **Rencana commit:**
+  1. `feat(service): export openapi and stream event schemas`
+  2. `ci: fail when published contracts are stale`
+  3. `docs: document the api contract workflow`
+- **Acceptance criteria:**
+  - [ ] Mengubah schema tanpa export ulang membuat CI gagal.
+- **Squash title:** `build: publish api contracts for typed clients (F25)`
+- **Setelah merge:** rilis **v0.4.0**.
+
+---
+
+## M5: Harness Core → v0.5.0
+
+### F26: Projects
+
+- **Branch:** `feature/F26-projects`
+- **FR:** FR-36, FR-30 (override per project), [ADR 0004](adr/0004-project-as-declarative-agent.md)
+- **File:** `schema/projects.py`, `memory/projects.py` (`ProjectRepository`), migrasi `projects` +
+  `project_id` di metadata thread, `service/routes/projects.py`, `service/run_input.py`,
+  `agents/catalog.py` (definisi project built-in), `client/`, `tests/`
+- **Langkah 1 (klarifikasi):** bentuk route chat (PRD §11 no. 8) dan isi `ProjectSettings`
+  (`max_tokens`, `tool_approval`, dan lainnya).
+- **Catatan desain:**
+  - Project built-in di-upsert saat startup berdasarkan `id` (idempoten). Mengubah atau menghapusnya
+    → 403. Project milik user lain → 404.
+  - Di awal setiap run, project dibaca dan diterapkan: model, `max_tokens`, dan instruksi + skill
+    yang diteruskan lewat `configurable` (dipakai F27/F28).
+  - `ThreadSummary.project_id`, dan listing thread bisa difilter `project_id`.
+- **Rencana commit:**
+  1. `feat(schema): add project models`
+  2. `feat(memory): add projects table and repository`
+  3. `feat(service): add project crud routes`
+  4. `feat(service): run threads inside a project`
+  5. `feat(agents): seed built-in projects`
+  6. `feat(client): add project methods`
+  7. `docs: record F26 project decisions`
+- **Acceptance criteria:**
+  - [ ] User bisa CRUD project miliknya. Project built-in read-only.
+  - [ ] Run di dalam project memakai model dan `max_tokens` project.
+  - [ ] Thread tercatat di project dan bisa difilter.
+- **Squash title:** `feat(service): add projects as declarative agents (F26)`
+
+### F27: Context builder
+
+- **Branch:** `feature/F27-context-builder`
+- **FR:** FR-37, [ADR 0002](adr/0002-own-harness.md)
+- **File:** `harness/context.py` (`ContextBuilder`, `PromptSection`), `agents/chatbot.py`,
+  `agents/tool_calling.py`, `agents/supervisor.py`, `tests/harness/`
+- **Catatan desain:**
+  - Bagian berurutan: instruksi agent → instruksi project → indeks skill (F28) → memory (F30) →
+    lingkungan (tanggal, timezone dari `clock` yang di-inject). Setiap bagian punya `max_chars`.
+  - Agent menerima `ContextBuilder` lewat konstruktor (komposisi). Tanpa project, prompt yang
+    dihasilkan sama dengan v1.
+  - `harness/` hanya meng-import `core/`, `llm/`, `memory/`, `files/`, `sandbox/`, dan
+    `langchain_core`.
+- **Rencana commit:**
+  1. `feat(harness): add ContextBuilder with ordered prompt sections`
+  2. `feat(agents): build system prompts through ContextBuilder`
+  3. `feat(agents): include project instructions in prompts`
+  4. `docs: record F27 context builder decisions`
+- **Acceptance criteria:**
+  - [ ] Test snapshot prompt yang dirakit, termasuk batas ukuran per bagian.
+  - [ ] Perilaku agent v1 tanpa project tidak berubah (test lama hijau).
+- **Squash title:** `feat(harness): assemble prompts per turn with ContextBuilder (F27)`
+
+### F28: Built-in skills
+
+- **Branch:** `feature/F28-built-in-skills`
+- **FR:** FR-38, [ADR 0005](adr/0005-skill-format-and-sources.md)
+- **File:** `harness/skills/` (`Skill`, `SkillSource`, `FilesystemSkillSource`, `SkillRegistry`,
+  parser/validator), `harness/tools/load_skill.py`, `skills/builtin/` (2–3 skill demo),
+  `schema/skills.py`, `service/routes/skills.py`, `pyproject.toml` (file `.md` ikut di wheel),
+  `tests/`
+- **Catatan desain:**
+  - Frontmatter diparse dengan `yaml.safe_load`, lalu divalidasi sesuai spesifikasi (nama huruf kecil
+    dengan tanda hubung, batas panjang). Skill tidak valid dilewati dengan warning.
+  - Registry dibuat sekali di lifespan (`app.state.skill_registry`).
+  - `load_skill(name, path=None)` dibuat lewat factory (closure atas registry dan daftar skill
+    aktif). Path resource dinormalisasi dan tidak bisa keluar dari folder skill.
+  - Model data sudah memuat `scope`, `owner_id`, `version`, dan `read_only`, supaya backlog B1 hanya
+    menambah sumber baru.
+  - Skill demo: `research-report` (format laporan riset dengan sumber), `meeting-notes`.
+- **Rencana commit:**
+  1. `feat(harness): parse and validate SKILL.md files`
+  2. `feat(harness): add SkillRegistry with a filesystem source`
+  3. `feat(harness): add load_skill tool scoped to project skills`
+  4. `feat(harness): list active skills in the system prompt`
+  5. `feat(service): add read-only skill routes`
+  6. `feat(agents): add built-in demo skills`
+  7. `docs: record F28 skill decisions`
+- **Acceptance criteria:**
+  - [ ] `FakeModel` yang di-script memanggil `load_skill` dan menerima isi skill.
+  - [ ] Skill yang tidak aktif di project → error tool, bukan isi skill.
+  - [ ] Skill tidak valid dilewati dan tercatat di log, dan startup tetap berjalan.
+  - [ ] Smoke test `qwen3.5:9b`: model memuat skill yang relevan dari deskripsinya.
+- **Squash title:** `feat(harness): add built-in skills with progressive disclosure (F28)`
+
+### F29: Context policy
+
+- **Branch:** `feature/F29-context-policy`
+- **FR:** FR-39
+- **File:** `harness/context_policy.py` (`ContextPolicy`), state `summary`, `agents/`, `tests/`
+- **Catatan desain:**
+  - Hitung token dengan `count_tokens_approximately` dan pangkas dengan `trim_messages` dari
+    `langchain_core`.
+  - Pasangan `AIMessage` dengan `tool_calls` dan `ToolMessage`-nya tidak boleh terpisah.
+  - Peringkasan memakai panggilan model bertag `skip_stream`. Ringkasan disimpan di state thread.
+- **Rencana commit:**
+  1. `feat(harness): trim history to a token budget`
+  2. `feat(harness): summarize older turns into thread state`
+  3. `feat(agents): apply ContextPolicy before model calls`
+  4. `docs: record F29 context policy decisions`
+- **Acceptance criteria:**
+  - [ ] Thread panjang: input model selalu di bawah `CONTEXT_MAX_TOKENS`.
+  - [ ] Pasangan tool call tidak pernah terpotong. `/history` tetap lengkap.
+- **Squash title:** `feat(harness): add context trimming and summarization (F29)`
+
+### F30: Long-term memory
+
+- **Branch:** `feature/F30-long-term-memory`
+- **FR:** FR-40
+- **File:** `memory/store.py` (`StoreProvider`, `AsyncPostgresStore`), `harness/memory.py` (tool +
+  bagian prompt), `schema/memories.py`, `service/routes/memories.py`, `tests/`
+- **Catatan desain:**
+  - Namespace `("users", user_id, "memories")`.
+  - `save_memory` memanggil `interrupt()` untuk persetujuan (pola F16) sebelum menyimpan.
+  - Pencarian awal memakai teks (tanpa embedding). Index embedding bisa diaktifkan setelah F43.
+- **Rencana commit:**
+  1. `feat(memory): add postgres store provider`
+  2. `feat(harness): add memory tools with user approval`
+  3. `feat(harness): inject relevant memories into prompts`
+  4. `feat(service): let users list and delete memories`
+  5. `docs: record F30 memory decisions`
+- **Acceptance criteria:**
+  - [ ] Memory tersimpan hanya setelah disetujui, dan muncul di prompt thread lain milik user yang
+        sama.
+  - [ ] Memory user lain tidak pernah terbaca (NFR-9).
+- **Squash title:** `feat(harness): add long-term user memory (F30)`
+
+### F31: Evals & tracing
+
+- **Branch:** `feature/F31-evals-tracing`
+- **FR:** FR-41
+- **File:** `evals/` (dataset YAML), `src/agent_service/evals/` (runner, scorer, laporan), modul
+  tracing (lokasi menurut keputusan Langkah 1), README
+- **Langkah 1 (klarifikasi):** backend tracing (PRD §11 no. 7).
+- **Catatan desain:**
+  - Runner menjalankan kasus lewat `AgentClient` dengan service account, jadi jalurnya sama dengan
+    user.
+  - Skor deterministik: teks mengandung, tool dipanggil, skill dimuat, dan latensi maksimum. LLM
+    judge opsional dengan rubrik.
+  - CI hanya menjalankan smoke eval dengan `FakeModel`. Eval dengan LLM asli dijalankan manual,
+    dan laporannya tidak di-commit.
+- **Rencana commit:**
+  1. `feat(evals): add dataset format and runner over AgentClient`
+  2. `feat(evals): add deterministic and llm judge scorers`
+  3. `feat(service): record run traces`
+  4. `docs: document how to run evals`
+- **Acceptance criteria:**
+  - [ ] Eval skill (F28) dengan model asli menghasilkan laporan skor.
+  - [ ] Trace satu run memuat panggilan model, tool, token, dan latensi.
+- **Squash title:** `feat(evals): add evaluation runner and run tracing (F31)`
+- **Setelah merge:** rilis **v0.5.0**.
+
+---
+
+## M6: Frontend → v0.6.0
+
+Scope commit frontend: `frontend`. Aturan kode frontend ada di [ADR 0003](adr/0003-frontend-stack.md).
+
+### F32: Frontend scaffold & auth
+
+- **Branch:** `feature/F32-frontend-scaffold`
+- **FR:** FR-42, FR-45
+- **File:** `frontend/` (Vite, TypeScript strict, Tailwind, shadcn/ui, React Router, TanStack Query,
+  ESLint, Vitest), client API hasil generate dari `contracts/`, halaman login, app shell (sidebar
+  kosong), `frontend/Dockerfile`, `compose.yaml` (service `web`), `.github/workflows/ci.yml` (job
+  frontend), README
+- **Langkah 1 (klarifikasi):** package manager (pnpm atau npm), versi Node yang di-pin, dan lokasi
+  token di browser.
+- **Catatan desain:**
+  - Tipe dan client API digenerate (`openapi-typescript` + `openapi-fetch`), tidak ditulis manual.
+  - `src/components/ui/` = vendor shadcn, tidak diedit.
+  - Image `web` menyajikan hasil build statis.
+- **Rencana commit:**
+  1. `build(frontend): scaffold vite react typescript app`
+  2. `build(frontend): add shadcn ui and app shell layout`
+  3. `feat(frontend): generate a typed api client from contracts`
+  4. `feat(frontend): add login and authenticated routes`
+  5. `build(docker): serve the frontend as a web service`
+  6. `ci: lint, type check and test the frontend`
+  7. `docs: document frontend commands`
+- **Acceptance criteria:**
+  - [ ] `docker compose up` → login di browser → app shell tampil.
+  - [ ] Job CI frontend hijau (NFR-11).
+- **Squash title:** `build(frontend): scaffold react app with auth and app shell (F32)`
+
+### F33: Chat UI
+
+- **Branch:** `feature/F33-chat-ui`
+- **FR:** FR-43, FR-30
+- **File:** `frontend/src/features/chat/` (runtime adapter assistant-ui untuk SSE, part reasoning,
+  status tool, grup sub-agent, interrupt, peringatan terpotong), `tests`
+- **Langkah 1 (klarifikasi):** cek ulang API assistant-ui untuk runtime custom dan part reasoning di
+  versi yang di-pin.
+- **Catatan desain:**
+  - Parser SSE TypeScript memakai tipe dari `stream-event.schema.json`.
+  - Perilaku `MessageRenderer` Streamlit menjadi spesifikasi acuan (urutan reasoning → token →
+    message, pasangan tool call lewat `tool_call_id`, dan grup per `agent`).
+  - Test memakai rekaman SSE asli sebagai fixture.
+- **Rencana commit:**
+  1. `feat(frontend): stream chat through an assistant-ui runtime adapter`
+  2. `feat(frontend): show reasoning and tool call status`
+  3. `feat(frontend): render sub-agent steps and interrupts`
+  4. `feat(frontend): load thread history`
+  5. `docs: record F33 chat ui decisions`
+- **Acceptance criteria:**
+  - [ ] Setara Streamlit untuk FR-20, FR-23, FR-24, FR-29, dan FR-30 (dites dengan fixture SSE).
+- **Squash title:** `feat(frontend): add streaming chat with reasoning and sub-agents (F33)`
+
+### F34: Projects & threads UI
+
+- **Branch:** `feature/F34-projects-ui`
+- **FR:** FR-44, FR-36, FR-38
+- **File:** `frontend/src/features/projects/`, `frontend/src/features/threads/`, `tests`
+- **Catatan desain:** layout ala Claude: sidebar (chat baru, Projects, Recents), halaman Project
+  (instruksi, model, pemilih skill dari `GET /skills`, daftar chat). Form memakai komponen form
+  shadcn.
+- **Rencana commit:**
+  1. `feat(frontend): list recents with rename and delete`
+  2. `feat(frontend): add projects list and project page`
+  3. `feat(frontend): create and edit projects with a skill picker`
+  4. `docs: record F34 projects ui decisions`
+- **Acceptance criteria:**
+  - [ ] User membuat project dengan instruksi + skill, chat di dalamnya, dan thread muncul di project
+        tersebut.
+  - [ ] Project built-in tampil read-only.
+- **Squash title:** `feat(frontend): add projects and thread sidebar (F34)`
+- **Setelah merge:** rilis **v0.6.0** (demo showcase).
+
+---
+
+## M7: Files & Execution → v0.7.0
+
+### F35: Artifact storage
+
+- **Branch:** `feature/F35-artifact-storage`
+- **FR:** FR-46
+- **File:** `files/artifacts.py` (`ArtifactStore`, `LocalArtifactStore`), `memory/artifacts.py`
+  (metadata), migrasi, `schema/artifacts.py`, `ChatMessage.artifacts`, `service/converters.py`,
+  `service/routes/artifacts.py`, `client/`, `compose.yaml` (volume artifact), `tests/`
+- **Catatan desain:**
+  - Message menyimpan referensi artifact di `additional_kwargs["artifacts"]` (pola penanda F17),
+    lalu converter mengubahnya menjadi `ChatMessage.artifacts`.
+  - Download memakai streaming response dengan `Content-Disposition`. Tipe file disimpan saat upload,
+    dan nama file disanitasi.
+  - `ArtifactStore` berupa protocol, supaya penyimpanan S3-compatible (backlog B7) bisa ditambah.
+- **Rencana commit:**
+  1. `feat(schema): add artifact references to chat messages`
+  2. `feat(files): add local artifact store with metadata in postgres`
+  3. `feat(service): add artifact upload and download routes`
+  4. `feat(client): upload and download artifacts`
+  5. `docs: record F35 artifact decisions`
+- **Acceptance criteria:**
+  - [ ] Artifact user lain → 404. File lebih besar dari `ARTIFACT_MAX_BYTES` → 413.
+- **Squash title:** `feat(files): add artifact storage and download api (F35)`
+
+### F36: Workspace & file tools
+
+- **Branch:** `feature/F36-workspace`
+- **FR:** FR-47, FR-48
+- **File:** `files/workspace.py` (`Workspace`, `PostgresWorkspace`, `InMemoryWorkspace`),
+  `harness/tools/files.py`, `harness/offload.py`, migrasi `workspace_files`, `tests/`
+- **Catatan desain:**
+  - Path diperlakukan sebagai `PurePosixPath` relatif. `..` dan path absolut ditolak.
+  - `edit_file` berupa penggantian string persis (old → new, harus unik).
+  - Tool `share_file(path)` menjadikan file workspace sebagai artifact di message jawaban.
+  - Output tool yang terlalu besar ditulis ke `tool-outputs/<id>.txt`, dan model menerima cuplikan
+    + path.
+- **Rencana commit:**
+  1. `feat(files): add per-thread workspace with path validation`
+  2. `feat(harness): add read, write, edit, list and grep file tools`
+  3. `feat(harness): offload large tool outputs to the workspace`
+  4. `feat(harness): share workspace files as artifacts`
+  5. `docs: record F36 workspace decisions`
+- **Acceptance criteria:**
+  - [ ] Path traversal ditolak. Workspace thread lain tidak terbaca.
+  - [ ] Output tool besar diganti cuplikan + path.
+- **Squash title:** `feat(harness): add workspace file tools and output offloading (F36)`
+
+### F37: Sandbox
+
+- **Branch:** `feature/F37-sandbox`
+- **FR/NFR:** FR-49, NFR-10
+- **File:** `sandbox/` (`Sandbox`, `DockerSandbox`, `FakeSandbox`, `ExecutionResult`),
+  `docker/sandbox.Dockerfile` (Python + pandas + numpy + matplotlib, non-root),
+  `harness/tools/execute.py` (`run_python`, `run_shell`), `compose.yaml`, `tests/`
+- **Langkah 1 (klarifikasi):** cara service menjalankan container. Rekomendasi: service kecil
+  `sandbox-runner` yang memegang akses Docker, supaya container API tidak pernah me-mount
+  `docker.sock` (akses `docker.sock` setara root di host).
+- **Catatan desain:**
+  - Container per eksekusi: `network=none`, rootfs read-only + tmpfs `/workspace`, batas memori,
+    CPU, dan pids, serta timeout `SANDBOX_TIMEOUT_SECONDS`.
+  - File workspace disalin masuk. File baru atau yang berubah disalin keluar ke workspace.
+  - Persetujuan sebelum eksekusi mengikuti `ProjectSettings.tool_approval` (interrupt).
+  - Dependency berat analisa (pandas, matplotlib) hanya ada di image sandbox, bukan di image service.
+- **Rencana commit:**
+  1. `feat(sandbox): add Sandbox protocol and fake sandbox`
+  2. `build(docker): add sandbox image with data libraries`
+  3. `feat(sandbox): run code in hardened docker containers`
+  4. `feat(harness): add run_python and run_shell tools`
+  5. `feat(harness): ask for approval before execution when the project requires it`
+  6. `docs: record F37 sandbox decisions`
+- **Acceptance criteria:**
+  - [ ] Akses jaringan dari sandbox gagal. Infinite loop berhenti karena timeout.
+  - [ ] File yang ditulis di sandbox muncul di workspace.
+  - [ ] Test memastikan tidak ada `exec`/`eval`/subprocess untuk kode model di `service/`, `agents/`,
+        dan `harness/`.
+- **Squash title:** `feat(sandbox): run model code in an isolated docker sandbox (F37)`
+
+### F38: Artifact panel UI
+
+- **Branch:** `feature/F38-artifact-panel`
+- **FR:** FR-50
+- **File:** `frontend/src/features/artifacts/`, upload di composer, `tests`
+- **Catatan desain:** panel kanan memakai komponen shadcn (`Sheet`/`Resizable`, `Table`). PDF
+  ditampilkan dengan viewer bawaan browser, tanpa library viewer sendiri.
+- **Rencana commit:**
+  1. `feat(frontend): show message attachments`
+  2. `feat(frontend): preview artifacts in a side panel`
+  3. `feat(frontend): upload files from the composer`
+  4. `docs: record F38 artifact panel decisions`
+- **Acceptance criteria:**
+  - [ ] Gambar, CSV, dan PDF dari agent bisa dipreview dan diunduh.
+- **Squash title:** `feat(frontend): add artifact panel and file upload (F38)`
+- **Setelah merge:** rilis **v0.7.0**.
+
+---
+
+## M8: Data Analytics → v0.8.0
+
+### F39: SQL data source
+
+- **Branch:** `feature/F39-sql-data-source`
+- **FR:** FR-51
+- **File:** `datasource/` (`SqlDataSource`, `QueryGuard`), `agents/tools/sql.py` (`list_tables`,
+  `describe_table`, `run_sql`), seed database demo (`analytics_demo` di service `postgres`), extras
+  `analytics` (`sqlglot`), `tests/`
+- **Langkah 1 (klarifikasi):** PRD §11 no. 6 (replica, user read-only, masking PII).
+- **Catatan desain:**
+  - Pertahanan berlapis: user database read-only (utama), `sqlglot` menolak selain satu `SELECT`,
+    `LIMIT` dipaksa (`SQL_MAX_ROWS`), dan `statement_timeout` per sesi.
+  - Hasil query disimpan ke workspace sebagai CSV, dan model menerima pratinjau tabel + path.
+  - Data demo berisi transaksi dengan timestamp, supaya analisa per jendela 2 jam (F42) bisa
+    didemokan.
+- **Rencana commit:**
+  1. `feat(datasource): add read-only sql data source with a query guard`
+  2. `feat(agents): add schema introspection and run_sql tools`
+  3. `build(docker): seed a demo analytics database`
+  4. `docs: record F39 data source decisions`
+- **Acceptance criteria:**
+  - [ ] `INSERT`, `DROP`, dan multi-statement ditolak. Query lambat berhenti karena timeout.
+- **Squash title:** `feat(datasource): add guarded read-only sql tools (F39)`
+
+### F40: Data analyst project
+
+- **Branch:** `feature/F40-data-analyst`
+- **FR:** FR-52
+- **File:** agent data analyst (instance `ToolCallingAgent` dengan tool SQL, file, dan sandbox),
+  `skills/builtin/sql-analysis/`, `skills/builtin/chart-style/`, `skills/builtin/demo-metrics/`
+  (semantic layer database demo), seed project "Data Analyst", `evals/data-analyst.yaml`
+- **Catatan desain:**
+  - Prompt agent dibuat singkat. Prosedur (cara menulis SQL, gaya chart, definisi metrik) ada di
+    skill.
+  - Chart dibuat di sandbox (matplotlib → PNG), lalu dibagikan sebagai artifact.
+  - Tidak ada `exec` di proses service (pelajaran dari referensi
+    `langgraph_data_analytics_agents/src/agents/charting_agent.py`).
+- **Rencana commit:**
+  1. `feat(agents): add data analyst agent with sql, file and sandbox tools`
+  2. `feat(agents): add semantic layer skills for the demo database`
+  3. `feat(agents): seed the data analyst project`
+  4. `test(evals): add a data analyst eval set`
+  5. `docs: record F40 data analyst decisions`
+- **Acceptance criteria:**
+  - [ ] "Penjualan per kategori minggu ini dalam bar chart" → SQL → chart artifact → jawaban.
+  - [ ] Skor eval data analyst dengan `qwen3.5:9b` dicatat di memory.md.
+- **Squash title:** `feat(agents): add data analyst project (F40)`
+
+### F41: Worker & scheduler
+
+- **Branch:** `feature/F41-worker-scheduler`
+- **FR:** FR-53
+- **File:** `worker/` (entrypoint `run_worker`, `JobDefinition`, `JobSource`, `WindowCalculator`,
+  `JobRunner`), `jobs.yaml`, `memory/job_runs.py` + migrasi, `service/routes/jobs.py`,
+  `compose.yaml` (service `worker`), `tests/`
+- **Langkah 1 (klarifikasi):** library jadwal: `croniter` + loop sendiri dengan `clock` yang
+  di-inject (rekomendasi, mudah dites) atau APScheduler.
+- **Catatan desain:**
+  - Worker menjalankan agent lewat `AgentClient` dengan service account, sehingga jalur eksekusinya
+    sama dengan user.
+  - Jendela `[start, end)` dihitung dari waktu jadwal (UTC), bukan `now()`.
+  - Constraint unik `(job_id, window_start)` + status run mencegah run dobel, termasuk saat ada
+    dua worker. Catch-up dibatasi `MAX_CATCH_UP_WINDOWS`. Run baru tidak dimulai jika run
+    sebelumnya masih berjalan.
+  - `JobSource` berupa protocol (`YamlJobSource` sekarang), supaya job dari UI (backlog B2) hanya
+    menambah sumber.
+- **Rencana commit:**
+  1. `feat(worker): add job definitions and window calculation`
+  2. `feat(memory): add job runs table with unique windows`
+  3. `feat(worker): schedule and run jobs through AgentClient`
+  4. `feat(service): list jobs and their runs`
+  5. `build(docker): add the worker service to compose`
+  6. `docs: record F41 worker decisions`
+- **Acceptance criteria:**
+  - [ ] Test dengan clock palsu: jendela sejajar, catch-up, dan tidak ada duplikat saat dua worker
+        berjalan.
+  - [ ] Job demo per menit berjalan di compose.
+- **Squash title:** `feat(worker): add scheduler for windowed agent jobs (F41)`
+
+### F42: PDF report & scheduled analysis
+
+- **Branch:** `feature/F42-pdf-report`
+- **FR:** FR-54
+- **File:** `files/pdf.py` (`ReportRenderer`, `AnalysisReport`), agent data analyst (structured
+  output laporan), `worker/` (lampiran PDF), `jobs.yaml` (job demo 2 jam), `tests/`
+- **Langkah 1 (klarifikasi):** library PDF (PRD §11 no. 9).
+- **Catatan desain:**
+  - Agent menghasilkan `AnalysisReport` terstruktur (judul, ringkasan, bagian, path tabel dan chart di
+    workspace). PDF dirender di kode, bukan oleh LLM.
+  - Setiap run job membuat thread baru di project job (judul `<job> <window>`), berisi message
+    ringkasan + artifact PDF.
+- **Rencana commit:**
+  1. `feat(files): render analysis reports to pdf`
+  2. `feat(agents): let the data analyst produce a structured report`
+  3. `feat(worker): attach pdf reports to scheduled analysis threads`
+  4. `docs: record F42 report decisions`
+- **Acceptance criteria:**
+  - [ ] Job "setiap 2 jam, analisa data jendela 2 jam terakhir" pada database demo menghasilkan thread
+        berisi PDF. Isi PDF dicek dengan ekstraksi teks.
+- **Squash title:** `feat(worker): deliver scheduled analysis as pdf reports (F42)`
+- **Setelah merge:** rilis **v0.8.0**.
+
+---
+
+## M9: Knowledge → v0.9.0
+
+### F43: Knowledge ingestion
+
+- **Branch:** `feature/F43-knowledge-ingestion`
+- **FR:** FR-55
+- **File:** `knowledge/` (`DocumentParser` per tipe, `Chunker`, `Embedder` +
+  `OpenAICompatibleEmbedder` + `FakeEmbedder`, `KnowledgeRepository`), migrasi `documents`,
+  `chunks` (pgvector), `ingestion_tasks`, `worker/` (task ingestion), `service/routes/documents.py`,
+  extras `rag`, `tests/`
+- **Langkah 1 (klarifikasi):** parser (PRD §11 no. 10), model embedding yang tersedia di Ollama, dan
+  dimensinya.
+- **Catatan desain:**
+  - Antrian ingestion di Postgres (`SELECT ... FOR UPDATE SKIP LOCKED`), diproses worker F41.
+  - Hash konten mencegah ingestion ulang. Menghapus dokumen juga menghapus chunk-nya.
+- **Rencana commit:**
+  1. `feat(knowledge): add document parsers and chunker`
+  2. `feat(knowledge): add openai-compatible and fake embedders`
+  3. `feat(memory): add documents and chunks tables with pgvector`
+  4. `feat(worker): process ingestion tasks from a queue`
+  5. `feat(service): add project document routes`
+  6. `docs: record F43 ingestion decisions`
+- **Acceptance criteria:**
+  - [ ] Upload PDF → status `ready` → chunk tersimpan dengan embedding. Dokumen rusak → `failed`
+        dengan pesan.
+- **Squash title:** `feat(knowledge): add document ingestion pipeline (F43)`
+
+### F44: Knowledge retrieval
+
+- **Branch:** `feature/F44-knowledge-retrieval`
+- **FR:** FR-56
+- **File:** `knowledge/retriever.py`, `agents/tools/knowledge.py` (`search_knowledge`), integrasi
+  project (tool aktif jika project punya dokumen), `evals/knowledge.yaml`, `tests/`
+- **Catatan desain:** vector search difilter `project_id`, dengan top-k sebagai konstanta. Pencarian
+  hybrid (Postgres full-text + vector, digabung dengan RRF) ditambahkan setelah eval menunjukkan
+  recall kurang. Jawaban menyertakan sumber.
+- **Rencana commit:**
+  1. `feat(knowledge): add a project-scoped vector retriever`
+  2. `feat(agents): add search_knowledge tool with citations`
+  3. `feat(knowledge): combine vector and full-text search`
+  4. `test(evals): add a retrieval eval set`
+  5. `docs: record F44 retrieval decisions`
+- **Acceptance criteria:**
+  - [ ] Pertanyaan tentang dokumen dijawab dengan sumber. Dokumen project lain tidak pernah terambil.
+- **Squash title:** `feat(knowledge): add project knowledge retrieval (F44)`
+
+### F45: Knowledge UI
+
+- **Branch:** `feature/F45-knowledge-ui`
+- **FR:** FR-57
+- **File:** `frontend/src/features/knowledge/`, render sumber di jawaban, `tests`
+- **Rencana commit:**
+  1. `feat(frontend): add a knowledge tab with upload and status`
+  2. `feat(frontend): show sources in answers`
+  3. `docs: record F45 knowledge ui decisions`
+- **Acceptance criteria:**
+  - [ ] Upload, pantau status, dan hapus dokumen dari halaman Project.
+- **Squash title:** `feat(frontend): add project knowledge tab (F45)`
+- **Setelah merge:** rilis **v0.9.0**.
+
+---
+
+## M10: Interop → v0.10.0
+
+### F46: OpenAI-compatible endpoint
+
+- **Branch:** `feature/F46-openai-compatible`
+- **FR:** FR-58
+- **File:** `schema/openai_compat.py`, `service/routes/openai_compat.py`, `service/converters.py`,
+  `tests/` (dengan SDK `openai` sebagai dev dependency)
+- **Langkah 1 (klarifikasi):** penamaan model (`project:<id>` / `agent:<id>`), dan apakah thread
+  bisa diteruskan lewat header.
+- **Catatan desain:** stateless secara default (riwayat dari `messages`). Reasoning dikirim sebagai
+  `delta.reasoning_content`. Interrupt dikirim sebagai teks pertanyaan, dan artifact sebagai link.
+- **Rencana commit:**
+  1. `feat(schema): add openai chat completion models`
+  2. `feat(service): add the v1 models endpoint`
+  3. `feat(service): add non-streaming chat completions`
+  4. `feat(service): stream chat completion chunks`
+  5. `test: verify the endpoint with the official openai sdk`
+  6. `docs: record F46 interop decisions`
+- **Acceptance criteria:**
+  - [ ] `AsyncOpenAI` (dengan `httpx.AsyncClient` + `ASGITransport`) bisa chat dan streaming dengan
+        sebuah Project.
+- **Squash title:** `feat(service): add openai-compatible chat endpoint (F46)`
+- **Setelah merge:** rilis **v0.10.0**.
+
+---
+
+## Backlog (belum dijadwalkan)
+
+Fitur yang desainnya sudah disiapkan di fitur lain, tetapi belum masuk milestone. Saat dijadwalkan,
+setiap item mendapat ID `Fxx` baru.
+
+| ID | Fitur | Prasyarat | Titik ekstensi yang sudah disiapkan |
+|---|---|---|---|
+| B1 | Skill lewat UI (buat, edit, hapus) | F28, F34, F35 | `SkillSource` protocol, model `Skill` dengan `scope`/`owner_id`/`version` (ADR 0005) |
+| B2 | Job terjadwal lewat UI | F41, F34 | `JobSource` protocol (F41) |
+| B3 | Pensiunkan Streamlit dev console | F38 (frontend setara) | Extra `ui` dan target Docker `ui` terpisah (F22) |
+| B4 | Adapter protokol AG-UI | F33 | Kontrak SSE native (F25) |
+| B5 | Sandbox production (managed atau self-hosted gVisor/Kubernetes) | F37 | `Sandbox` protocol |
+| B6 | SSO / OIDC | F24 | Klaim JWT dan `UserRepository` |
+| B7 | Artifact storage S3-compatible | F35 | `ArtifactStore` protocol |

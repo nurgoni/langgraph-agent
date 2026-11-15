@@ -83,7 +83,8 @@ Mengikuti [Conventional Commits](https://www.conventionalcommits.org/), dalam ba
 ### Scope
 
 Sesuai layer: `core`, `llm`, `memory`, `schema`, `agents`, `service`, `client`, `ui`, `docker`, `ci`,
-`release`. Untuk perubahan di `.agents/memory.md` gunakan `memory-md` agar tidak tertukar dengan
+`release`. Scope Fase 2: `harness`, `files`, `sandbox`, `datasource`, `knowledge`, `worker`,
+`evals`, `frontend`. Untuk perubahan di `.agents/memory.md` gunakan `memory-md` agar tidak tertukar dengan
 layer `memory`. Scope boleh dikosongkan untuk perubahan lintas layer (contoh `docs: ...`).
 
 ### Aturan subject
