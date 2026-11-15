@@ -22,10 +22,13 @@ Streamlit.
 | Bahasa | Python 3.12+ |
 | Agent | LangGraph, LangChain |
 | API | FastAPI + Uvicorn, SSE |
-| Persistence | SQLite checkpointer (`langgraph-checkpoint-sqlite`) |
+| Persistence | SQLite checkpointer (`langgraph-checkpoint-sqlite`). **Mulai F23:** Postgres-only ([ADR 0001](docs/adr/0001-postgres-only.md)) |
 | Client | httpx (sync + async) |
-| UI | Streamlit |
+| UI | Streamlit. **Mulai F32:** frontend React + TypeScript di `frontend/` ([ADR 0003](docs/adr/0003-frontend-stack.md)), Streamlit menjadi dev console |
 | Tooling | uv, ruff, pyrefly, pytest, pre-commit |
+
+Arah Fase 2 (M4–M10) ada di [docs/ROADMAP.md](docs/ROADMAP.md) dan keputusan besarnya di
+[docs/adr/](docs/adr/README.md).
 
 ## Perintah
 
@@ -58,6 +61,23 @@ src/agent_service/
 tests/         # mirror struktur src/
 ```
 
+**Tambahan Fase 2** (dibuat oleh fitur di kolom kanan, bukan sebelumnya):
+
+```text
+src/agent_service/
+├── harness/     # ContextBuilder, SkillRegistry, ContextPolicy, tool harness   F27–F30, F36
+├── skills/      # skill built-in: builtin/<name>/SKILL.md (data, bukan kode)   F28
+├── files/       # ArtifactStore, Workspace, renderer PDF                       F35, F36, F42
+├── sandbox/     # Sandbox protocol, DockerSandbox, FakeSandbox                 F37
+├── datasource/  # SqlDataSource read-only, QueryGuard                          F39
+├── knowledge/   # parser, chunker, embedder, retriever                         F43, F44
+├── worker/      # scheduler, job runner, task ingestion                        F41, F43
+└── evals/       # runner dan scorer eval                                       F31
+frontend/        # React + TypeScript (Vite, shadcn/ui, assistant-ui)           F32
+contracts/       # openapi.json, stream-event.schema.json (hasil generate)      F25
+evals/           # dataset eval (YAML)                                          F31
+```
+
 ### Batas dependensi antar layer
 
 Panah berarti "boleh import". Import ke arah sebaliknya **dilarang**.
@@ -73,6 +93,23 @@ service ──► schema
   `streamlit`, `fastapi`, atau `langgraph`.
 - `client/` dan `ui/` tidak boleh import `agents/`, `service/`, atau `llm/`. Keduanya bicara ke
   service hanya lewat HTTP.
+
+**Batas layer Fase 2:**
+
+```text
+service ──► agents ──► harness ──► llm, memory, files, sandbox ──► core
+agents ──► datasource, knowledge ──► memory ──► core
+worker ──► client (menjalankan agent lewat HTTP), knowledge, memory
+evals ──► client
+frontend ──► contracts (tipe hasil generate), lewat HTTP saja
+```
+
+- `harness/` tidak boleh import `agents/` atau `service/`. Agent memakai harness lewat komposisi
+  ([ADR 0002](docs/adr/0002-own-harness.md)).
+- Kode buatan model **tidak pernah** dijalankan di proses service (`exec`, `eval`, subprocess).
+  Semua eksekusi lewat `sandbox/` (NFR-10).
+- `frontend/src/components/ui/` adalah salinan vendor shadcn/ui dan tidak diedit. Komponen
+  aplikasi hanya menyusun komponen vendor ([ADR 0003](docs/adr/0003-frontend-stack.md)).
 
 ## Prosedur Penulisan Kode
 

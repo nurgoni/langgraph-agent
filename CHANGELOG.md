@@ -6,6 +6,12 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 
 ## [Unreleased]
 
+### Added
+
+- Rencana Fase 2 (M4–M10, F21–F46): requirement FR-30–FR-58 dan NFR-9–NFR-12 di PRD, rincian
+  fitur dan backlog di ROADMAP, serta ADR 0001–0005 (Postgres-only, harness sendiri, frontend
+  React, Project sebagai agent deklaratif, format skill) di `docs/adr/`.
+
 ## [0.3.0] - 2026-11-12
 
 ### Added

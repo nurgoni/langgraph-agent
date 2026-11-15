@@ -16,6 +16,10 @@ Service ini membungkus graph LangGraph dengan API FastAPI. Satu proses berisi:
 Client dan UI (M2) berkomunikasi dengan service hanya lewat HTTP, dengan schema dari
 `agent_service.schema`.
 
+Dokumen ini menjelaskan arsitektur yang **sudah dibangun** (`v0.3.0`). Arah Fase 2 (Postgres,
+harness, Project, frontend React, sandbox) ada di [ADR](adr/README.md) dan
+[ROADMAP](ROADMAP.md). Bagian dokumen ini diperbarui oleh fitur yang mengubahnya.
+
 ## Layer
 
 ```text
