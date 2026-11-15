@@ -1,4 +1,4 @@
-"""Smoke test end-to-end stack Docker Compose: service + UI, FakeModel, tanpa API key.
+"""Smoke test end-to-end stack Docker Compose: Postgres, migrasi, service + UI, FakeModel.
 
 Dijalankan manual atau di CI: `uv run pytest -m integration`. Butuh Docker dengan Compose v2.
 """
@@ -92,11 +92,13 @@ def free_port() -> int:
 def stack() -> Iterator[ComposeStack]:
     if shutil.which("docker") is None:
         pytest.skip("docker is not installed")
-    service_port, ui_port = free_port(), free_port()
+    service_port, ui_port, postgres_port = free_port(), free_port(), free_port()
     env = {
         **os.environ,
         "SERVICE_PORT": str(service_port),
         "UI_PORT": str(ui_port),
+        # Port acak supaya tidak bentrok dengan `docker compose up -d postgres` milik dev.
+        "POSTGRES_PORT": str(postgres_port),
         "AUTH_SECRET": E2E_SECRET,
     }
     running = ComposeStack(
@@ -172,3 +174,10 @@ def test_image_ships_only_its_extra(
     )
 
     assert json.loads(output.strip().splitlines()[-1]) == []
+
+
+def test_migrate_finished_before_service_started(stack: ComposeStack) -> None:
+    output = stack.compose("ps", "--all", "--format", "json", "migrate")
+
+    [migrate] = [json.loads(line) for line in output.strip().splitlines()]
+    assert (migrate["State"], migrate["ExitCode"]) == ("exited", 0)

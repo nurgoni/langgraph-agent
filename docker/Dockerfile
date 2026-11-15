@@ -15,9 +15,7 @@ ENV UV_COMPILE_BYTECODE=1 \
     PATH="/opt/venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1
 WORKDIR /app
-RUN useradd --create-home --uid 10001 app \
-    && mkdir -p /data \
-    && chown app:app /data
+RUN useradd --create-home --uid 10001 app
 COPY pyproject.toml uv.lock README.md ./
 
 FROM base AS service
@@ -28,11 +26,10 @@ COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-editable --extra service
 USER app
+# DATABASE_URL diberikan compose. Migrasi: `python -m agent_service.run_migrate` (service migrate).
 ENV HOST=0.0.0.0 \
-    PORT=8080 \
-    SQLITE_DB_PATH=/data/checkpoints.db
+    PORT=8080
 EXPOSE 8080
-VOLUME ["/data"]
 HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=10 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=2)"]
 CMD ["python", "-m", "agent_service.run_service"]

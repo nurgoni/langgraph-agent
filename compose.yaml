@@ -1,10 +1,53 @@
-# Stack lokal: service API (:8080) + UI Streamlit (:8501).
+# Stack lokal: Postgres, migrasi, service API (:8080), dan UI Streamlit (:8501).
 #   docker compose up --build
+#   docker compose up -d postgres     # hanya database, untuk dev lokal dan test
 # Default-nya FakeModel, jadi stack berjalan tanpa API key. Untuk LLM asli, tambahkan
 # compose.llm.yaml (lihat README).
 name: agent-service
 
+# Kredensial dev. Nilainya sama dengan DEFAULT_DATABASE_URL di core/constants.py, jadi
+# `uv run python -m agent_service.run_service` di host langsung terhubung ke service postgres.
+x-database-url: &database-url "postgresql://${POSTGRES_USER:-agent}:${POSTGRES_PASSWORD:-agent}@postgres:5432/${POSTGRES_DB:-agent_service}"
+
 services:
+  postgres:
+    # Image pgvector supaya fitur RAG (F43) tidak perlu mengganti image.
+    image: pgvector/pgvector:0.8.1-pg18
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-agent}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agent}
+      POSTGRES_DB: ${POSTGRES_DB:-agent_service}
+    ports:
+      # Hanya loopback: dipakai service di host saat dev dan oleh test database.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # Postgres 18 menyimpan data di subfolder per versi, jadi yang di-mount adalah induknya.
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  migrate:
+    # Sekali jalan: migrasi Alembic + tabel checkpointer, lalu selesai. Service API baru start
+    # setelah migrasi sukses, jadi beberapa replika tidak pernah menjalankan migrasi bersamaan.
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: service
+    image: agent-service:local
+    command: ["python", "-m", "agent_service.run_migrate"]
+    environment:
+      DATABASE_URL: *database-url
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      USE_FAKE_MODEL: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   agent-service:
     build:
       context: .
@@ -16,16 +59,18 @@ services:
     environment:
       # Ditulis eksplisit, bukan env_file: konfigurasi LLM di .env (misalnya LLM_BASE_URL ke
       # localhost) tidak berlaku dari dalam container. Yang diambil dari .env hanya AUTH_SECRET,
-      # LOG_LEVEL, dan FIRECRAWL_API_KEY.
+      # LOG_LEVEL, FIRECRAWL_API_KEY, dan kredensial POSTGRES_*.
       USE_FAKE_MODEL: "true"
       DEFAULT_MODEL: fake
       AVAILABLE_MODELS: fake
+      DATABASE_URL: *database-url
       AUTH_SECRET: ${AUTH_SECRET:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       # Kosong: tool web_search menjawab "not configured", agent tetap berjalan.
       FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
-    volumes:
-      - agent-data:/data
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   ui:
@@ -45,4 +90,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  agent-data:
+  postgres-data:
