@@ -13,17 +13,38 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** Fase 2 dimulai. Dokumen Fase 2 (ROADMAP, PRD FR-30–FR-58, ADR 0001–0005) sudah
-  masuk `develop` lewat PR #25. **F21** (LLM token limit) selesai di
-  `feature/F21-llm-token-limit`, termasuk smoke test dengan Ollama. Menunggu user commit, push,
-  dan PR.
-- **Berikutnya:** **F22** (dependency extras).
+- **Fase:** Fase 2 (M4). F21 sudah di-merge. **F22** (dependency extras) selesai di
+  `feature/F22-dependency-extras`, menunggu user commit, push, dan PR.
+- **Berikutnya:** **F23** (Postgres migration).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Terakhir diperbarui:** 2026-11-15
 
 ## Decision Log
+
+### 2026-11-15: Dependency extras dari F22
+
+- **Supersedes:** "Utang" di entri F14 (image ±1 GB karena dependency belum dipisah).
+- **Keputusan desain:**
+  - Dependency dasar `httpx` + `pydantic`. Extra `service` (fastapi, uvicorn, langgraph,
+    langchain-*, checkpoint SQLite, aiosqlite, numexpr, pydantic-settings) dan `ui` (streamlit,
+    pydantic-settings). Pembagian dari pemetaan import per layer, bukan tebakan.
+  - Grup `dev` mereferensikan `agent-service[service,ui]`, bukan `uv sync --all-extras`. Alasan:
+    `uv sync` bersifat exact, jadi tanpa flag ia menghapus extras dari `.venv`.
+  - Dockerfile: `base` hanya berisi uv, user, dan file lock. Target `service`/`ui` masing-masing
+    menjalankan `uv sync --frozen --no-dev --extra <nama>`.
+  - Test e2e `test_image_ships_only_its_extra` memastikan modul terlarang tidak ada di image.
+- **Hasil ukur (Docker 29, disk / venv):** `service` ±1.000 / 551 MB → 505 / 187 MB, `ui`
+  ±1.000 / 551 MB → 881 / 458 MB. Paket terbesar di UI: pyarrow (167 MB) dan pandas (72 MB),
+  keduanya dependency Streamlit.
+- **Pelajaran:**
+  - Streamlit 1.66 bergantung pada `uvicorn` (`uv tree --invert --package uvicorn`).
+  - Dengan containerd image store (Docker 29), `docker images` menampilkan ukuran disk (`1e+03MB`
+    untuk ±1 GB), sedangkan `docker image inspect --format '{{.Size}}'` memberi ukuran konten
+    terkompresi. Untuk perbandingan, ukur juga `du -sm /opt/venv` di dalam image.
+  - `uv tree` di uv 0.12 tidak menerima `--extra`. Pakai `uv export --no-dev --extra <nama>`
+    untuk melihat isi satu extra.
 
 ### 2026-11-15: Batas token jawaban dari F21
 
@@ -619,9 +640,9 @@ Langkah 1 fitur terkait:
 
 - [ ] User: isi `FIRECRAWL_API_KEY` di `.env`, lalu minta agent menjalankan smoke test Firecrawl
       asli.
-- [ ] User: hentikan service/UI yang sedang berjalan, lalu `uv sync` untuk membuang `ddgs`/`lxml`
-      dari `.venv` (`lxml-6.1.3.dist-info` setengah terhapus memicu 51 DeprecationWarning di test
-      UI).
+- [ ] User: hapus folder `.venv/Lib/site-packages/lxml-6.1.3.dist-info` (sisa setengah terhapus,
+      tidak dikenal uv lagi setelah `uv sync` di F22). Folder ini memicu ±54 DeprecationWarning
+      di test UI.
 - [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
       (CONTRIBUTING.md § Setup Awal Repo).
 - [ ] **Ingatkan user: saatnya memakai dev-time skill** (skill untuk coding agent yang

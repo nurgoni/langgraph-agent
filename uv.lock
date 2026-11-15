@@ -18,22 +18,30 @@ name = "agent-service"
 version = "0.3.0"
 source = { editable = "." }
 dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+]
+
+[package.optional-dependencies]
+service = [
     { name = "aiosqlite" },
     { name = "fastapi" },
-    { name = "httpx" },
     { name = "langchain-core" },
     { name = "langchain-openai" },
     { name = "langgraph" },
     { name = "langgraph-checkpoint-sqlite" },
     { name = "numexpr" },
-    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "uvicorn" },
+]
+ui = [
     { name = "pydantic-settings" },
     { name = "streamlit" },
-    { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "agent-service", extra = ["service", "ui"] },
     { name = "pre-commit" },
     { name = "pyrefly" },
     { name = "pytest" },
@@ -44,22 +52,25 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiosqlite", specifier = "~=0.22" },
-    { name = "fastapi", specifier = "~=0.143" },
+    { name = "aiosqlite", marker = "extra == 'service'", specifier = "~=0.22" },
+    { name = "fastapi", marker = "extra == 'service'", specifier = "~=0.143" },
     { name = "httpx", specifier = "~=0.28" },
-    { name = "langchain-core", specifier = "~=1.6" },
-    { name = "langchain-openai", specifier = "~=1.7" },
-    { name = "langgraph", specifier = "~=1.2" },
-    { name = "langgraph-checkpoint-sqlite", specifier = "~=3.1" },
-    { name = "numexpr", specifier = "~=2.14" },
+    { name = "langchain-core", marker = "extra == 'service'", specifier = "~=1.6" },
+    { name = "langchain-openai", marker = "extra == 'service'", specifier = "~=1.7" },
+    { name = "langgraph", marker = "extra == 'service'", specifier = "~=1.2" },
+    { name = "langgraph-checkpoint-sqlite", marker = "extra == 'service'", specifier = "~=3.1" },
+    { name = "numexpr", marker = "extra == 'service'", specifier = "~=2.14" },
     { name = "pydantic", specifier = "~=2.14" },
-    { name = "pydantic-settings", specifier = "~=2.16" },
-    { name = "streamlit", specifier = "~=1.66" },
-    { name = "uvicorn", specifier = "~=0.54" },
+    { name = "pydantic-settings", marker = "extra == 'service'", specifier = "~=2.16" },
+    { name = "pydantic-settings", marker = "extra == 'ui'", specifier = "~=2.16" },
+    { name = "streamlit", marker = "extra == 'ui'", specifier = "~=1.66" },
+    { name = "uvicorn", marker = "extra == 'service'", specifier = "~=0.54" },
 ]
+provides-extras = ["service", "ui"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "agent-service", extras = ["service", "ui"] },
     { name = "pre-commit", specifier = "~=4.7.0" },
     { name = "pyrefly", specifier = "~=1.4.0" },
     { name = "pytest", specifier = "~=8.4.2" },
