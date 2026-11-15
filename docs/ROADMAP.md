@@ -35,7 +35,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F16 | Interrupt agent | M3 | done |
 | F17 | Supervisor agent | M3 | done |
 | F20 | Firecrawl web search | M3 | done |
-| F21 | LLM token limit | M4 | todo |
+| F21 | LLM token limit | M4 | done |
 | F22 | Dependency extras | M4 | todo |
 | F23 | Postgres migration | M4 | todo |
 | F24 | User auth & CORS | M4 | todo |
@@ -954,10 +954,25 @@ F32 → F33 → F34 → *rilis v0.6.0* → F35 → F36 → F37 → F38 → *rili
   4. `feat(service): flag messages stopped by the token limit`
   5. `feat(ui): warn when an answer is truncated`
   6. `docs: record F21 token limit decisions`
+- **Penyesuaian saat implementasi:**
+  - `FakeModel` tidak mendapat field baru. `finish_reason` di-script lewat `response_metadata`
+    `AIMessage` respons, dan dikirim sebagai satu chunk penutup saat streaming (string metadata
+    digabung LangChain antar chunk, jadi tidak boleh berulang). Perubahan ini masuk commit 2.
+  - Hasil ukur Langkah 1 (Ollama 0.40.2, `qwen3.5:9b`): token reasoning **ikut dihitung**. Tanpa
+    batas, jawaban memakai 442–3265 token (sapaan hingga penjelasan quicksort dengan kode), jadi
+    default `DEFAULT_LLM_MAX_TOKENS = 8192`. Dengan batas 200–300, seluruh token habis untuk
+    reasoning dan jawabannya kosong (`finish_reason = "length"`).
+  - `ChatOpenAI` (langchain-openai 1.7) selalu mengirim `max_completion_tokens`, dan **Ollama
+    mengabaikannya** (762 token keluar walau batasnya 200). Keputusan user: env baru
+    `LLM_MAX_TOKENS_PARAM` (`max_tokens` default, atau `max_completion_tokens` untuk model
+    reasoning OpenAI). `ReasoningChatOpenAI._get_request_payload` mengganti nama field. Perubahan
+    ini masuk commit 1 (setting) dan commit 2 (llm).
 - **Acceptance criteria:**
-  - [ ] `FakeModel` dengan `finish_reason="length"` menghasilkan `truncated=true` di `/invoke`,
+  - [x] `FakeModel` dengan `finish_reason="length"` menghasilkan `truncated=true` di `/invoke`,
         frame `message` `/stream`, dan `/history`.
-  - [ ] Smoke test dengan model reasoning asli dan batas kecil: peringatan muncul di UI.
+  - [x] Smoke test dengan model reasoning asli dan batas kecil: peringatan muncul di UI.
+        (`LLM_MAX_TOKENS=300`: `/invoke`, frame `message` `/stream`, dan `/history` berisi
+        `truncated=true`, dan app Streamlit menampilkan peringatan di kedua jawaban.)
 - **Squash title:** `feat(llm): add answer token limit and truncation flag (F21)`
 
 ### F22: Dependency extras

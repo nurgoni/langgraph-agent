@@ -13,16 +13,46 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** Fase 1 selesai, `v0.3.0` dirilis dan di-tag (PR #24, back-merge ke `develop`). Fase 2
-  (M4–M10, F21–F46) sudah direncanakan di ROADMAP, PRD (FR-30–FR-58), dan ADR 0001–0005, di branch
-  `docs/phase2-roadmap` (belum di-commit).
-- **Berikutnya:** commit dan PR dokumen Fase 2, lalu mulai **F21** (LLM token limit).
+- **Fase:** Fase 2 dimulai. Dokumen Fase 2 (ROADMAP, PRD FR-30–FR-58, ADR 0001–0005) sudah
+  masuk `develop` lewat PR #25. **F21** (LLM token limit) selesai di
+  `feature/F21-llm-token-limit`, termasuk smoke test dengan Ollama. Menunggu user commit, push,
+  dan PR.
+- **Berikutnya:** **F22** (dependency extras).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Terakhir diperbarui:** 2026-11-15
 
 ## Decision Log
+
+### 2026-11-15: Batas token jawaban dari F21
+
+- **Aturan kerja baru dari user:** **semua command git dijalankan oleh user**, termasuk yang
+  read-only (`git status`, `git log`). Agent hanya menulis daftar command yang akan dieksekusi.
+  Setiap branch yang dibuat langsung dihapus (lokal dan remote) setelah selesai di-merge.
+- **Keputusan desain:**
+  - `LLM_MAX_TOKENS` (`Settings.llm_max_tokens`, `ge=1`), default `DEFAULT_LLM_MAX_TOKENS = 8192`
+    di `core/constants.py`. Batas ini berlaku **per panggilan model** (satu giliran LLM), bukan per
+    thread, dan tidak membatasi input/konteks.
+  - Hasil ukur (Ollama 0.40.2, `qwen3.5:9b`): reasoning ikut dihitung. Tanpa batas, 442–3265
+    token per jawaban (10–58 detik). Batas 200–300 → jawaban kosong, `finish_reason = "length"`.
+  - **Keputusan user:** env `LLM_MAX_TOKENS_PARAM` (`max_tokens` default, atau
+    `max_completion_tokens`). `ReasoningChatOpenAI._get_request_payload` mengganti nama field.
+  - `ModelFactory.create(name, max_tokens=None)`: `None` berarti `LLM_MAX_TOKENS`. Cache per
+    `(nama, max_tokens)`. `AgentRegistry` belum meneruskan override (baru dibutuhkan di F26).
+  - `truncated` diturunkan dari `response_metadata["finish_reason"] == "length"` di converter
+    (`is_truncated`), jadi `/invoke`, `/stream`, dan `/history` memakai satu jalur.
+  - `FakeModel` tidak mendapat field baru: `finish_reason` di-script lewat `response_metadata`
+    `AIMessage`, lalu dikirim sebagai satu chunk penutup saat streaming.
+  - UI: `st.warning` di bawah jawaban (teks Inggris), juga untuk riwayat.
+- **Pelajaran:**
+  - `ChatOpenAI` di langchain-openai 1.7 selalu mengirim `max_completion_tokens`, dan Ollama
+    0.40.2 diam-diam mengabaikannya. Hanya smoke test dengan provider asli yang menangkap ini,
+    karena test `MockTransport` hanya memeriksa body yang dikirim. Model reasoning OpenAI justru
+    menolak `max_tokens`, jadi nama field harus bisa dikonfigurasi.
+  - `generation_info` (berisi `finish_reason`) digabung LangChain ke `response_metadata`, baik di
+    jalur `invoke` maupun streaming. String di `response_metadata` digabung antar chunk, jadi
+    metadata hanya boleh ada di satu chunk.
 
 ### 2026-11-15: Rencana Fase 2 (M4–M10)
 

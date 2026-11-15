@@ -389,6 +389,8 @@ Node yang LLM-nya diberi tag `skip_stream` tidak menghasilkan frame `token`.
 | `DEFAULT_MODEL` | – | Model default |
 | `AVAILABLE_MODELS` | `DEFAULT_MODEL` | Allowlist, dipisah koma |
 | `USE_FAKE_MODEL` | `false` | Pakai FakeModel (dev/test) |
+| `LLM_MAX_TOKENS` | `8192` | Batas token jawaban per giliran, termasuk reasoning pada provider yang menghitungnya bersama (FR-30) |
+| `LLM_MAX_TOKENS_PARAM` | `max_tokens` | Nama parameter batas token di request. `max_completion_tokens` untuk model reasoning OpenAI. Ollama hanya membaca `max_tokens` |
 | `SQLITE_DB_PATH` | `checkpoints.db` | Lokasi DB checkpointer |
 | `AUTH_SECRET` | – | Bearer token. Kosong = tanpa auth |
 | `FIRECRAWL_API_KEY` | – | Key Firecrawl untuk tool `web_search`. Kosong = tool menjawab "not configured", agent tetap berjalan |
