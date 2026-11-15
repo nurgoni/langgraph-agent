@@ -36,7 +36,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F17 | Supervisor agent | M3 | done |
 | F20 | Firecrawl web search | M3 | done |
 | F21 | LLM token limit | M4 | done |
-| F22 | Dependency extras | M4 | todo |
+| F22 | Dependency extras | M4 | done |
 | F23 | Postgres migration | M4 | todo |
 | F24 | User auth & CORS | M4 | todo |
 | F25 | API contract export | M4 | todo |
@@ -992,9 +992,20 @@ F32 → F33 → F34 → *rilis v0.6.0* → F35 → F36 → F37 → F38 → *rili
   2. `build(docker): install only the extras each image needs`
   3. `ci: install all extras in ci jobs`
   4. `docs: document extras and image sizes`
+- **Penyesuaian saat implementasi:**
+  - Bukan `uv sync --all-extras`: grup `dev` mereferensikan `agent-service[service,ui]`. Dengan
+    `--all-extras`, `uv sync` biasa (perintah di AGENTS.md) akan menghapus extras dari `.venv` dan
+    merusak hook pre-commit. CI tetap `uv sync --frozen`, jadi commit 3 (`ci:`) tidak dibutuhkan.
+    Penggantinya: `test(docker): assert each image ships only its extra`.
+  - `pydantic-settings` ada di extra `service` dan `ui`, karena keduanya punya settings sendiri.
+  - Streamlit 1.66 bergantung pada `uvicorn`, jadi uvicorn tetap ada di image UI.
+  - Ukuran (Docker 29, disk / venv): `service` ±1.000 MB / 551 MB → 505 MB / 187 MB, `ui`
+    ±1.000 MB / 551 MB → 881 MB / 458 MB. Sisa besar image UI berasal dari pyarrow dan pandas,
+    yang dibawa Streamlit.
 - **Acceptance criteria:**
-  - [ ] Image `service` tidak berisi Streamlit, dan image `ui` tidak berisi langgraph.
-  - [ ] Test e2e (`-m integration`) tetap hijau.
+  - [x] Image `service` tidak berisi Streamlit, dan image `ui` tidak berisi langgraph
+        (dijaga oleh `test_image_ships_only_its_extra`).
+  - [x] Test e2e (`-m integration`) tetap hijau.
 - **Squash title:** `build: split dependencies into extras per image (F22)`
 
 ### F23: Postgres migration

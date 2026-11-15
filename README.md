@@ -41,7 +41,7 @@ kode yang sederhana, eksplisit, dan mudah dites (Zen of Python).
 Prasyarat: Python 3.12+ dan [uv](https://docs.astral.sh/uv/).
 
 ```bash
-# 1. Install dependency
+# 1. Install dependency (semua extra + tool dev)
 uv sync
 
 # 2. Konfigurasi
@@ -59,6 +59,18 @@ uv run streamlit run src/agent_service/ui/app.py
 UI hanya client: service (langkah 3) harus sudah berjalan di `AGENT_URL`. Jika belum, UI
 menampilkan pesan "Cannot reach the agent service at ..." saat pesan dikirim.
 
+**Extras.** Install dasar hanya berisi `schema` + `client` (pydantic, httpx). Komponen lain
+dipasang lewat extra:
+
+| Extra | Untuk | Isi utama |
+|---|---|---|
+| (dasar) | `AgentClient` sebagai library | pydantic, httpx |
+| `service` | API FastAPI | fastapi, uvicorn, langgraph, langchain, SQLite checkpointer |
+| `ui` | UI Streamlit | streamlit, pydantic-settings |
+
+`uv sync` untuk development meng-install semuanya, karena grup `dev` mereferensikan
+`agent-service[service,ui]`. Untuk satu komponen saja: `uv sync --no-dev --extra service`.
+
 URL UI berisi `user_id`, `thread_id`, dan `agent`. Simpan atau bagikan URL itu untuk membuka ulang
 percakapan. Siapa pun yang memegang URL tersebut bisa membaca thread-nya.
 
@@ -74,6 +86,8 @@ docker compose down              # hentikan (tambahkan -v untuk menghapus data S
 - **Variabel yang diambil dari shell atau `.env`:** `AUTH_SECRET` (dipakai service dan UI) dan
   `LOG_LEVEL`. Port bisa dipindah dengan `SERVICE_PORT` dan `UI_PORT`.
 - **Data:** thread tersimpan di volume `agent-data`, jadi tetap ada setelah container di-restart.
+- **Image:** setiap image hanya membawa extra-nya. Image `service` sekitar 505 MB (tanpa
+  Streamlit), dan image `ui` sekitar 881 MB (tanpa LangGraph). Sebelumnya keduanya sekitar 1 GB.
 
 Untuk LLM OpenAI-compatible asli (nilai `LLM_*` dan `DEFAULT_MODEL` dibaca dari `.env`):
 

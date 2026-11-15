@@ -344,6 +344,9 @@ dan `/history`. UI menampilkan peringatan di bawah jawaban. `FakeModel` menerusk
 
 `docker/Dockerfile` punya dua target dari base yang sama: `service`
 (`python -m agent_service.run_service`, SQLite di volume `/data`) dan `ui` (`streamlit run`).
+Setiap target meng-install hanya extra miliknya (`uv sync --frozen --no-dev --extra service` atau
+`--extra ui`), sehingga image service tanpa Streamlit dan image UI tanpa LangGraph. Test e2e
+`test_image_ships_only_its_extra` menjaga batas ini.
 `compose.yaml` menjalankan keduanya. Service memakai FakeModel secara default, dan UI menunggu
 healthcheck service, lalu menghubunginya di `http://agent-service:8080`. `compose.llm.yaml`
 menimpa konfigurasi model dengan LLM asli.

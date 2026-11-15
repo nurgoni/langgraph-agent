@@ -14,6 +14,10 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
   `/history`, dan UI menampilkan peringatan "jawaban terpotong". `LLM_MAX_TOKENS_PARAM` memilih nama
   parameter di request (`max_tokens` untuk Ollama, `max_completion_tokens` untuk model reasoning
   OpenAI) (F21).
+- Dependency dipisah menjadi extras: install dasar hanya `schema` + `client` (pydantic, httpx),
+  extra `service` untuk API, dan extra `ui` untuk Streamlit. Image Docker hanya meng-install
+  extra-nya: image `service` turun dari ±1 GB ke ±505 MB dan tanpa Streamlit, image `ui` ±881 MB
+  dan tanpa LangGraph (F22).
 - Rencana Fase 2 (M4–M10, F21–F46): requirement FR-30–FR-58 dan NFR-9–NFR-12 di PRD, rincian
   fitur dan backlog di ROADMAP, serta ADR 0001–0005 (Postgres-only, harness sendiri, frontend
   React, Project sebagai agent deklaratif, format skill) di `docs/adr/`.
