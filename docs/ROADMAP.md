@@ -40,7 +40,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F23 | Postgres migration | M4 | done |
 | F24 | User auth & CORS | M4 | done |
 | F25 | API contract export | M4 | done |
-| F26 | Projects | M5 | todo |
+| F26 | Projects | M5 | done |
 | F27 | Context builder | M5 | todo |
 | F28 | Built-in skills | M5 | todo |
 | F29 | Context policy | M5 | todo |
@@ -1182,10 +1182,29 @@ F32 → F33 → F34 → *rilis v0.6.0* → F35 → F36 → F37 → F38 → *rili
   5. `feat(agents): seed built-in projects`
   6. `feat(client): add project methods`
   7. `docs: record F26 project decisions`
+- **Langkah 1 (keputusan user):** route baru `/projects/{project_id}/...` (PRD §11 no. 8). Model:
+  request → project → default. Menghapus project ikut menghapus thread-nya. `ProjectSettings`
+  hanya `max_tokens`; field lain (mis. `tool_approval`) ditambah fitur yang memakainya.
+- **Penyesuaian saat implementasi:**
+  - `base_agent_id` tidak bisa diubah (`ProjectUpdate` tanpa field itu, `extra="forbid"` → 422).
+    Thread menyimpan `agent_id` di metadata checkpoint.
+  - `project_id` disimpan di metadata run hanya untuk thread project, dan ikut dicek
+    `is_thread_owner`. Thread project tidak bisa dibuka lewat route agent atau project lain.
+  - `RunTarget` (agent, model, `max_tokens`, project) dipakai bersama route agent dan project,
+    supaya `invoke`/`stream` hanya punya satu jalur. Cache graph registry menjadi per
+    `(agent, model, max_tokens)`.
+  - Built-in hanya di-seed jika agent dasarnya terdaftar (`create_app(builtin_projects=...)` untuk
+    test), dan diurutkan berdasarkan nama.
+  - Commit 1 dan 2 digabung (schema + tabel/repository), dan commit 3–5 digabung (route CRUD, chat
+    di project, seed built-in), karena `app.py`, `run_input.py`, dan `threads.py` dipakai bersama.
+  - UI Streamlit belum mendapat pemilih project; UI project dibangun di React (F34).
 - **Acceptance criteria:**
-  - [ ] User bisa CRUD project miliknya. Project built-in read-only.
-  - [ ] Run di dalam project memakai model dan `max_tokens` project.
-  - [ ] Thread tercatat di project dan bisa difilter.
+  - [x] User bisa CRUD project miliknya. Project built-in read-only (403), dan project user lain
+        404 di semua endpoint.
+  - [x] Run di dalam project memakai model dan `max_tokens` project (dites dengan agent perekam
+        dan `ReasoningChatOpenAI`, termasuk prioritas model request).
+  - [x] Thread tercatat di project (`ThreadSummary.project_id`) dan bisa difilter
+        (`/projects/{project_id}/threads`).
 - **Squash title:** `feat(service): add projects as declarative agents (F26)`
 
 ### F27: Context builder

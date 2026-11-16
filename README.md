@@ -149,6 +149,10 @@ menunjuk ke container itu sendiri.
 | GET | `/{agent_id}/threads` | Daftar thread milik user |
 | PATCH | `/{agent_id}/threads/{thread_id}` | Ganti judul thread |
 | DELETE | `/{agent_id}/threads/{thread_id}` | Hapus thread beserta riwayatnya |
+| GET, POST | `/projects` | Daftar project (built-in + milik user), buat project |
+| GET, PATCH, DELETE | `/projects/{project_id}` | Satu project. Built-in read-only (403). Hapus = ikut hapus thread-nya |
+| POST | `/projects/{project_id}/invoke`, `/stream`, `/history` | Chat di dalam project |
+| GET, PATCH, DELETE | `/projects/{project_id}/threads[/{thread_id}]` | Thread di dalam project |
 | GET | `/health` | Health check, selalu tanpa auth |
 
 Semua endpoint selain `/health` dan `/auth/login` butuh `Authorization: Bearer <access_token>`.
@@ -168,6 +172,30 @@ curl -N -X POST http://localhost:8080/chatbot/stream \
 Kontrak lengkap ada di [`contracts/openapi.json`](contracts/openapi.json) dan
 [`contracts/stream-event.schema.json`](contracts/stream-event.schema.json) (satu frame SSE). Keduanya
 dihasilkan dari kode dan dicek CI, jadi aman dipakai untuk generate client bertipe.
+
+### Project
+
+Project adalah agent deklaratif ([ADR 0004](docs/adr/0004-project-as-declarative-agent.md)): satu
+agent kode (`base_agent_id`, tidak bisa diganti), ditambah model, instruksi, skill, dan
+`settings.max_tokens`. Chat di project memakai route `/projects/{project_id}/...`. Model yang
+dipakai: model di request, lalu model project, lalu `DEFAULT_MODEL`. Thread project hanya bisa
+dibuka lewat project-nya. Project built-in (`general-assistant`, `research-assistant`) di-seed saat
+startup dan read-only.
+
+```python
+from agent_service.schema.projects import ProjectCreate
+
+project = client.create_project(
+    ProjectCreate(
+        name="Riset pasar",
+        base_agent_id="research-assistant",
+        instructions="Jawab dalam Bahasa Indonesia.",
+        settings={"max_tokens": 2048},
+    )
+)
+client.project_id = project.id  # chat dan thread berikutnya masuk ke project ini
+reply = client.invoke("Siapa pemain utama pasar EV di Asia Tenggara?")
+```
 
 ## Menggunakan AgentClient
 
