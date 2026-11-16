@@ -13,15 +13,36 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** M5 Harness Core. `v0.4.0` sudah dirilis. **F26** (Projects) selesai di
-  `feature/F26-projects`, menunggu user commit, push, dan PR.
-- **Berikutnya:** **F27** (Context builder): membaca `project_instructions` dari `configurable`.
+- **Fase:** M5 Harness Core. `v0.4.0` sudah dirilis. **F26** (Projects) menunggu push/PR user,
+  dan **F27** (Context builder) selesai di `feature/F27-context-builder` di atasnya.
+- **Berikutnya:** **F28** (Built-in skills): provider slot `skills` di `ContextBuilder`.
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Terakhir diperbarui:** 2026-11-15
 
 ## Decision Log
+
+### 2026-11-16: ContextBuilder dari F27
+
+- **Keputusan user:** bagian lingkungan (tanggal + timezone) selalu ada di semua agent, walaupun
+  prompt v1 berubah (chatbot kini punya system prompt).
+- **Keputusan desain:**
+  - `harness/context.py`: `PromptSection` (`max_chars`, penanda `[truncated]`) dan
+    `ContextBuilder(instructions, clock, use_project_instructions, skills, memory)`. Urutan tetap:
+    agent → project → skills → memory → environment. Bagian kosong dilewati.
+  - Agent menerima `ContextBuilder` lewat konstruktor dan memanggil `system_message(config)` di
+    node yang menerima `config`. Placeholder `{current_date}` dihapus dari prompt.
+  - Expert supervisor tanpa instruksi project (`expert_context()`).
+  - `Clock`/`local_now` di harness. Test layering harness melarang import `agents/`, `service/`,
+    `schema/`, `client/`, `ui/`, `langchain`, dan `deepagents`.
+- **Pelajaran:**
+  - `SystemMessage.content` bertipe `str | list`. Untuk pyrefly, pakai `message.text`.
+  - Saat menulis file lewat script Python di heredoc, `\n` di dalam string bisa berubah menjadi
+    baris baru sungguhan di file tujuan. Periksa hasilnya atau pakai Edit.
+  - `.env.example` jangan berisi nilai yang hanya cocok untuk satu provider. Developer menyalinnya
+    apa adanya (`LLM_MAX_TOKENS_PARAM=max_completion_tokens` membuat batas token tidak berlaku di
+    Ollama).
 
 ### 2026-11-15: Projects dari F26
 

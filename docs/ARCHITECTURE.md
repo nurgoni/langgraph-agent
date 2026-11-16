@@ -185,6 +185,32 @@ Auth per user dengan JWT (FR-33), tanpa mode anonim: `JWT_SECRET` wajib diisi.
   API, header `Authorization`/`Content-Type`, dan mengekspos `X-Thread-Id`. Token dikirim lewat
   header, bukan cookie, jadi `allow_credentials` tidak dipakai.
 
+## System Prompt
+
+`ContextBuilder` (`harness/context.py`, FR-37, [ADR 0002](adr/0002-own-harness.md)) merakit system
+prompt di **setiap** panggilan model, dengan urutan bagian yang tetap:
+
+| Urutan | Bagian | Sumber | Batas |
+|---|---|---|---|
+| 1 | Instruksi agent (tanpa judul) | Konstruktor `ContextBuilder(instructions)` | 8000 |
+| 2 | `## Project instructions` | `configurable["project_instructions"]` (F26) | 8000 |
+| 3 | `## Skills` | `SectionProvider` slot `skills` (F28) | 4000 |
+| 4 | `## Memory` | `SectionProvider` slot `memory` (F30) | 4000 |
+| 5 | `## Environment` | `clock` yang di-inject: tanggal dan timezone | 300 |
+
+- **Batas per bagian.** Bagian yang melebihi batas dipotong dan diberi penanda `[truncated]`, jadi
+  satu sumber yang panjang tidak bisa mendorong bagian lain keluar. Bagian kosong dilewati.
+- **Komposisi, bukan base class.** `ChatbotAgent`, `ToolCallingAgent`, dan `SupervisorAgent`
+  menerima `ContextBuilder` lewat konstruktor dan memanggil `system_message(config)` di node, yang
+  menerima `config` dari LangGraph. Agent tidak lagi memformat `{current_date}` sendiri.
+- **Bagian lingkungan selalu ada** (keputusan user, F27), termasuk untuk `chatbot` yang di v1 tidak
+  punya system prompt. Prompt v1 hanya bertambah bagian ini; isi dan urutan instruksi agent tetap.
+- **Expert supervisor tidak menerima instruksi project** (`use_project_instructions=False`).
+  Expert tidak melihat percakapan dan hanya mengerjakan satu tugas teknis. Supervisor, yang
+  menyusun jawaban akhir, yang menerapkan instruksi project.
+- `interrupt-agent` masih memakai prompt tetap untuk ekstraksi dan jawaban, sehingga instruksi
+  project belum berlaku untuknya.
+
 ## Project
 
 Project adalah agent deklaratif (FR-36, [ADR 0004](adr/0004-project-as-declarative-agent.md)):
@@ -267,8 +293,8 @@ tool dan system prompt. Graph-nya `agent → tools → agent`: node `agent` mema
 tool yang sudah di-bind, `tools_condition` mengarahkan tool call ke `ToolNode`, lalu hasilnya kembali
 ke model sampai model menjawab tanpa tool call.
 
-- **Tanggal di prompt** (`{current_date}`) dihitung setiap kali model dipanggil. System message
-  tidak disimpan di riwayat.
+- **System prompt dirakit `ContextBuilder`** setiap kali model dipanggil (lihat
+  [System Prompt](#system-prompt)). System message tidak disimpan di riwayat.
 - **`ToolException`** dari tool dikembalikan ke model sebagai `ToolMessage` berstatus `error`, jadi
   model bisa mencoba lagi. Exception lain tetap menggagalkan run.
 - **Jika sisa langkah kurang dari `MIN_REMAINING_STEPS`**, model tidak boleh memanggil tool baru dan

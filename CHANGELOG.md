@@ -15,6 +15,20 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
   `settings.max_tokens` (FR-30). Menghapus project ikut menghapus thread-nya.
   `ThreadSummary.project_id`, dan `AgentClient` mendapat `project_id` serta method CRUD project
   (F26).
+- System prompt dirakit setiap giliran oleh `ContextBuilder` (FR-37): instruksi agent, instruksi
+  project, slot skill (F28) dan memory (F30), lalu bagian lingkungan (tanggal dan timezone), masing-
+  masing dengan batas ukuran. Instruksi project kini benar-benar sampai ke model (F27).
+
+### Changed
+
+- Semua agent, termasuk `chatbot`, mendapat bagian lingkungan di akhir system prompt, sehingga
+  model tahu tanggal hari ini. `ToolCallingAgent` menerima `ContextBuilder` alih-alih
+  `system_prompt` + `clock`, dan placeholder `{current_date}` tidak dipakai lagi (F27).
+
+### Fixed
+
+- `.env.example` tidak lagi mengisi `LLM_MAX_TOKENS_PARAM=max_completion_tokens`. Ollama
+  mengabaikan parameter itu, sehingga batas token tidak berlaku bagi yang menyalin contoh ini.
 
 ## [0.4.0] - 2026-11-15
 

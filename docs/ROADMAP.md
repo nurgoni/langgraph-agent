@@ -41,7 +41,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F24 | User auth & CORS | M4 | done |
 | F25 | API contract export | M4 | done |
 | F26 | Projects | M5 | done |
-| F27 | Context builder | M5 | todo |
+| F27 | Context builder | M5 | done |
 | F28 | Built-in skills | M5 | todo |
 | F29 | Context policy | M5 | todo |
 | F30 | Long-term memory | M5 | todo |
@@ -1225,9 +1225,25 @@ F32 → F33 → F34 → *rilis v0.6.0* → F35 → F36 → F37 → F38 → *rili
   2. `feat(agents): build system prompts through ContextBuilder`
   3. `feat(agents): include project instructions in prompts`
   4. `docs: record F27 context builder decisions`
+- **Langkah 1 (keputusan user):** bagian lingkungan selalu ada di semua agent (FR-37), termasuk
+  `chatbot` yang di v1 tanpa system prompt. Acceptance "prompt sama dengan v1" direvisi menjadi
+  "isi dan urutan instruksi agent v1 tetap, hanya ditambah bagian lingkungan".
+- **Penyesuaian saat implementasi:**
+  - Slot skill dan memory berupa `SectionProvider` opsional, supaya F28/F30 hanya menambah provider.
+  - `Clock`/`local_now` pindah dari `agents/tool_calling.py` ke `harness/context.py`, karena
+    harness tidak boleh meng-import `agents/`. Test layering `tests/harness/test_layering.py`
+    menegakkan batas import harness.
+  - Expert supervisor memakai `use_project_instructions=False`; instruksi project diterapkan
+    supervisor.
+  - Commit 2 dan 3 digabung, karena node agent membaca `config` untuk keduanya sekaligus.
+  - `interrupt-agent` belum memakai `ContextBuilder` (di luar daftar file F27).
+  - Smoke test `qwen3.5:9b`: chatbot tanpa project menjawab tanggal hari ini dengan benar, dan di
+    project dengan instruksi "jawab dalam Bahasa Indonesia, satu kalimat" menjawab pertanyaan
+    berbahasa Inggris dalam satu kalimat Bahasa Indonesia.
 - **Acceptance criteria:**
-  - [ ] Test snapshot prompt yang dirakit, termasuk batas ukuran per bagian.
-  - [ ] Perilaku agent v1 tanpa project tidak berubah (test lama hijau).
+  - [x] Test snapshot prompt yang dirakit, termasuk batas ukuran per bagian.
+  - [x] Instruksi dan urutan prompt agent v1 tetap (test lama hijau setelah disesuaikan untuk
+        bagian lingkungan).
 - **Squash title:** `feat(harness): assemble prompts per turn with ContextBuilder (F27)`
 
 ### F28: Built-in skills
