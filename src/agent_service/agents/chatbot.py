@@ -3,9 +3,11 @@
 from typing import Final
 
 from langchain_core.language_models import BaseChatModel
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, MessagesState, StateGraph
 
 from agent_service.agents.base import AgentGraph, BaseAgent, Checkpointer
+from agent_service.harness.context import ContextBuilder
 
 CHATBOT_AGENT_ID: Final = "chatbot"
 CHATBOT_DESCRIPTION: Final = "A simple chatbot that answers using the conversation history."
@@ -15,7 +17,9 @@ CHAT_NODE: Final = "chat"
 class ChatbotAgent(BaseAgent):
     """Agent referensi: graph `START → chat → END` yang menyimpan riwayat lewat checkpointer.
 
-    Node-nya async, jadi graph dijalankan lewat API async (`ainvoke`, `astream`).
+    Node-nya async, jadi graph dijalankan lewat API async (`ainvoke`, `astream`). System prompt
+    dirakit `ContextBuilder` setiap giliran: instruksi agent (kosong secara default), instruksi
+    project, dan lingkungan (tanggal).
 
     >>> import asyncio
     >>> from langgraph.checkpoint.memory import InMemorySaver
@@ -28,15 +32,20 @@ class ChatbotAgent(BaseAgent):
     """
 
     def __init__(
-        self, agent_id: str = CHATBOT_AGENT_ID, description: str = CHATBOT_DESCRIPTION
+        self,
+        agent_id: str = CHATBOT_AGENT_ID,
+        description: str = CHATBOT_DESCRIPTION,
+        context: ContextBuilder | None = None,
     ) -> None:
         """Inisialisasi chatbot.
 
         Args:
             agent_id: ID agent di registry.
             description: Deskripsi untuk `/info`.
+            context: Perakit system prompt. Default: tanpa instruksi agent.
         """
         super().__init__(agent_id=agent_id, description=description)
+        self._context = ContextBuilder() if context is None else context
 
     def build(self, model: BaseChatModel, checkpointer: Checkpointer) -> AgentGraph:
         """Compile graph satu node yang memanggil `model` dengan seluruh riwayat thread.
@@ -50,8 +59,9 @@ class ChatbotAgent(BaseAgent):
         """
 
         # Closure, bukan method: satu instance agent membangun graph untuk beberapa model.
-        async def chat(state: MessagesState) -> MessagesState:
-            response = await model.ainvoke(state["messages"])
+        async def chat(state: MessagesState, config: RunnableConfig) -> MessagesState:
+            prompt = self._context.system_message(config)
+            response = await model.ainvoke([prompt, *state["messages"]])
             return {"messages": [response]}
 
         # pyrefly tidak mengenali TypedDict sebagai TypedDictLike milik LangGraph.

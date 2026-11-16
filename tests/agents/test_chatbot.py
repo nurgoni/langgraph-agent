@@ -1,8 +1,15 @@
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from datetime import UTC, datetime
+from typing import Any
+
+from langchain_core.callbacks import CallbackManagerForLLMRun
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.outputs import ChatResult
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
+from pydantic import PrivateAttr
 
 from agent_service.agents.chatbot import CHATBOT_AGENT_ID, ChatbotAgent
+from agent_service.harness.context import ContextBuilder
 from agent_service.llm.fake import FakeModel
 
 
@@ -57,3 +64,58 @@ async def test_graph_streams_tokens_from_model() -> None:
             tokens.append(str(chunk.content))
 
     assert tokens == ["Halo ", "dunia"]
+
+
+class PromptRecorder(FakeModel):
+    """FakeModel yang merekam message yang diterima di setiap panggilan."""
+
+    _seen: list[list[BaseMessage]] = PrivateAttr(default_factory=list)
+
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
+        **kwargs: Any,  # Any: API induk
+    ) -> ChatResult:
+        self._seen.append(list(messages))
+        return super()._generate(messages, stop, run_manager, **kwargs)
+
+    @property
+    def seen(self) -> list[list[BaseMessage]]:
+        return self._seen
+
+
+FIXED_NOW = datetime(2026, 11, 16, 8, 0, tzinfo=UTC)
+
+
+async def test_model_gets_environment_prompt_that_is_not_stored() -> None:
+    model = PromptRecorder(responses=["Halo!"])
+    agent = ChatbotAgent(context=ContextBuilder(clock=lambda: FIXED_NOW))
+
+    result = await agent.build(model, InMemorySaver()).ainvoke(
+        {"messages": [HumanMessage("Tanggal berapa?")]}, thread_config("t1")
+    )
+
+    [prompt, question] = model.seen[0]
+    assert isinstance(prompt, SystemMessage)
+    assert prompt.content == (
+        "## Environment\nCurrent date: Monday, November 16, 2026. Timezone: UTC (UTC+00:00)."
+    )
+    assert question.content == "Tanggal berapa?"
+    assert not any(isinstance(m, SystemMessage) for m in result["messages"])
+
+
+async def test_project_instructions_are_added_to_the_prompt() -> None:
+    model = PromptRecorder(responses=["Halo!"])
+    config = thread_config("t1")
+    config["configurable"]["project_instructions"] = "Jawab dalam Bahasa Indonesia."
+
+    await (
+        ChatbotAgent()
+        .build(model, InMemorySaver())
+        .ainvoke({"messages": [HumanMessage("Hi")]}, config)
+    )
+
+    prompt = str(model.seen[0][0].content)
+    assert "## Project instructions\nJawab dalam Bahasa Indonesia." in prompt

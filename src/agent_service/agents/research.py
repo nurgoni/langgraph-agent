@@ -9,15 +9,16 @@ from agent_service.agents.tools.web_search import (
     UnconfiguredSearch,
     create_web_search_tool,
 )
+from agent_service.harness.context import ContextBuilder
 
 RESEARCH_ASSISTANT_ID: Final = "research-assistant"
 RESEARCH_ASSISTANT_DESCRIPTION: Final = (
     "A research assistant that searches the web and uses a calculator, citing its sources."
 )
-# Prompt berbahasa Inggris karena dibaca model. `{current_date}` diisi saat model dipanggil.
+# Prompt berbahasa Inggris karena dibaca model. Tanggal hari ini ditambahkan ContextBuilder
+# (bagian lingkungan) setiap kali model dipanggil.
 RESEARCH_SYSTEM_PROMPT: Final = """\
 You are a helpful research assistant with access to web search and a calculator.
-Today's date is {current_date}.
 
 The user cannot see tool results, so put everything that matters into your answer.
 - Use web_search for current events or facts you are not sure about. Cite one or two sources as
@@ -50,5 +51,5 @@ def create_research_assistant(search_backend: SearchBackend | None = None) -> To
         agent_id=RESEARCH_ASSISTANT_ID,
         description=RESEARCH_ASSISTANT_DESCRIPTION,
         tools=tools,
-        system_prompt=RESEARCH_SYSTEM_PROMPT,
+        context=ContextBuilder(RESEARCH_SYSTEM_PROMPT),
     )

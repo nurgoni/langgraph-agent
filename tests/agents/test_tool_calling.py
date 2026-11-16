@@ -13,12 +13,13 @@ from langgraph.checkpoint.memory import InMemorySaver
 from pydantic import PrivateAttr
 
 from agent_service.agents.base import AgentGraph
-from agent_service.agents.tool_calling import STEP_LIMIT_MESSAGE, ToolCallingAgent, local_now
+from agent_service.agents.tool_calling import STEP_LIMIT_MESSAGE, ToolCallingAgent
 from agent_service.agents.tools.calculator import calculator
+from agent_service.harness.context import ContextBuilder
 from agent_service.llm.fake import FakeModel
 
 FIXED_NOW = datetime(2026, 11, 12, 9, 30, tzinfo=UTC)
-PROMPT = "You are a test agent. Today's date is {current_date}."
+PROMPT = "You are a test agent."
 
 
 class RecordingModel(FakeModel):
@@ -74,7 +75,8 @@ def calculator_call(expression: str, call_id: str = "c1") -> AIMessage:
 
 
 def make_agent(tools: Sequence[BaseTool] = (calculator,)) -> ToolCallingAgent:
-    return ToolCallingAgent("tester", "Test agent", tools, PROMPT, clock=lambda: FIXED_NOW)
+    context = ContextBuilder(PROMPT, clock=lambda: FIXED_NOW)
+    return ToolCallingAgent("tester", "Test agent", tools, context)
 
 
 def thread(thread_id: str = "t1", recursion_limit: int | None = None) -> RunnableConfig:
@@ -115,8 +117,26 @@ async def test_model_sees_dated_system_prompt_and_bound_tools() -> None:
 
     first_prompt = model.seen[0][0]
     assert isinstance(first_prompt, SystemMessage)
-    assert first_prompt.content == "You are a test agent. Today's date is November 12, 2026."
+    assert first_prompt.content == (
+        "You are a test agent.\n\n## Environment\n"
+        "Current date: Thursday, November 12, 2026. Timezone: UTC (UTC+00:00)."
+    )
     assert model.bound_tools == ["calculator"]
+
+
+async def test_project_instructions_reach_the_model_every_turn() -> None:
+    model = RecordingModel(responses=["satu", "dua"])
+    graph = make_agent().build(model, InMemorySaver())
+    config = thread()
+
+    config["configurable"]["project_instructions"] = "Versi 1"
+    await run(graph, "a", config)
+    config["configurable"]["project_instructions"] = "Versi 2"
+    await run(graph, "b", config)
+
+    prompts = [str(seen[0].content) for seen in model.seen]
+    assert "## Project instructions\nVersi 1" in prompts[0]
+    assert "## Project instructions\nVersi 2" in prompts[1]
 
 
 async def test_system_prompt_is_not_stored_in_history() -> None:
@@ -130,14 +150,15 @@ async def test_system_prompt_is_not_stored_in_history() -> None:
 async def test_date_is_computed_at_call_time() -> None:
     moments = iter([datetime(2026, 1, 1, tzinfo=UTC), datetime(2026, 1, 2, tzinfo=UTC)])
     model = RecordingModel(responses=["satu", "dua"])
-    agent = ToolCallingAgent("t", "T", [calculator], PROMPT, clock=lambda: next(moments))
-    graph = agent.build(model, InMemorySaver())
+    context = ContextBuilder(PROMPT, clock=lambda: next(moments))
+    graph = ToolCallingAgent("t", "T", [calculator], context).build(model, InMemorySaver())
 
     await run(graph, "a", thread())
     await run(graph, "b", thread())
 
-    dates = [str(seen[0].content).rsplit(" ", 3)[-3:] for seen in model.seen]
-    assert dates == [["January", "01,", "2026."], ["January", "02,", "2026."]]
+    prompts = [str(seen[0].content) for seen in model.seen]
+    assert "January 01, 2026" in prompts[0]
+    assert "January 02, 2026" in prompts[1]
 
 
 async def test_tool_error_is_returned_to_model_which_can_retry() -> None:
@@ -204,10 +225,6 @@ async def test_tool_exception_from_any_tool_is_reported() -> None:
 
     assert "service down" in str(messages[2].content)
     assert messages[-1].content == "Maaf, layanan sedang tidak tersedia."
-
-
-def test_local_now_is_timezone_aware() -> None:
-    assert local_now().tzinfo is not None
 
 
 async def test_stateless_graph_starts_fresh_on_every_call() -> None:

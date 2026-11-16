@@ -193,3 +193,19 @@ def test_delegation_tool_schema_has_single_task_argument() -> None:
 
 def test_registered_in_default_catalog() -> None:
     assert SUPERVISOR_AGENT_ID in [agent.agent_id for agent in create_default_agents()]
+
+
+async def test_project_instructions_reach_supervisor_but_not_experts() -> None:
+    model = RecordingModel(
+        responses=[DELEGATE_TO_MATH, MATH_USES_CALCULATOR, "12 * 7 = 84", "Jawabannya 84."]
+    )
+    run_config = config()
+    run_config["configurable"]["project_instructions"] = "Selalu jawab dalam satu kalimat."
+
+    await build(model).ainvoke({"messages": [HumanMessage("12 * 7?")]}, run_config)
+
+    supervisor_prompts = [str(model.seen[0][0].content), str(model.seen[-1][0].content)]
+    expert_prompts = [str(model.seen[1][0].content), str(model.seen[2][0].content)]
+    assert all("Selalu jawab dalam satu kalimat." in prompt for prompt in supervisor_prompts)
+    assert all("Selalu jawab" not in prompt for prompt in expert_prompts)
+    assert all("## Environment" in prompt for prompt in supervisor_prompts + expert_prompts)
