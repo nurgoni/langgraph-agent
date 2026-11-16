@@ -220,6 +220,279 @@
         "title": "LoginRequest",
         "type": "object"
       },
+      "Project": {
+        "description": "Project yang terlihat oleh user: miliknya sendiri atau built-in.",
+        "properties": {
+          "base_agent_id": {
+            "title": "Base Agent Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "instructions": {
+            "title": "Instructions",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "read_only": {
+            "title": "Read Only",
+            "type": "boolean"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ProjectScope",
+            "description": "`builtin` projects are shared and read-only."
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ProjectSettings"
+          },
+          "skill_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Skill Ids",
+            "type": "array"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "scope",
+          "read_only",
+          "base_agent_id",
+          "model",
+          "instructions",
+          "skill_ids",
+          "settings",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "Project",
+        "type": "object"
+      },
+      "ProjectCreate": {
+        "additionalProperties": false,
+        "description": "Body `POST /projects`.",
+        "properties": {
+          "base_agent_id": {
+            "description": "Code agent that runs the project's chats (see /info). Cannot be changed.",
+            "examples": [
+              "research-assistant"
+            ],
+            "minLength": 1,
+            "title": "Base Agent Id",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Description",
+            "type": "string"
+          },
+          "instructions": {
+            "default": "",
+            "description": "Extra instructions added to the system prompt of every run.",
+            "maxLength": 8000,
+            "title": "Instructions",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default model for the project. Empty uses the service default.",
+            "title": "Model"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ProjectSettings"
+          },
+          "skill_ids": {
+            "items": {
+              "maxLength": 64,
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Skill Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "base_agent_id"
+        ],
+        "title": "ProjectCreate",
+        "type": "object"
+      },
+      "ProjectList": {
+        "description": "Isi `GET /projects`: project built-in lebih dulu, lalu milik user, terbaru diubah dulu.",
+        "properties": {
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/Project"
+            },
+            "title": "Projects",
+            "type": "array"
+          }
+        },
+        "required": [
+          "projects"
+        ],
+        "title": "ProjectList",
+        "type": "object"
+      },
+      "ProjectScope": {
+        "enum": [
+          "builtin",
+          "user"
+        ],
+        "type": "string"
+      },
+      "ProjectSettings": {
+        "additionalProperties": false,
+        "description": "Pengaturan run di dalam project. Field baru selalu opsional, supaya tidak breaking.",
+        "properties": {
+          "max_tokens": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Answer token limit for runs in this project. Empty uses LLM_MAX_TOKENS.",
+            "title": "Max Tokens"
+          }
+        },
+        "title": "ProjectSettings",
+        "type": "object"
+      },
+      "ProjectUpdate": {
+        "additionalProperties": false,
+        "description": "Body `PATCH /projects/{project_id}`. Hanya field yang dikirim yang diubah.\n\n`model: null` menghapus model project. `base_agent_id` tidak bisa diubah, karena thread lama\nterikat pada agent yang menjalankannya.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "instructions": {
+            "anyOf": [
+              {
+                "maxLength": 8000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructions"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProjectSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "skill_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 64,
+                  "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skill Ids"
+          }
+        },
+        "title": "ProjectUpdate",
+        "type": "object"
+      },
       "ServiceMetadata": {
         "description": "Isi endpoint `/info`: agent dan model yang tersedia.",
         "properties": {
@@ -344,6 +617,18 @@
             "description": "Agent yang menjalankan thread ini.",
             "title": "Agent Id",
             "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Project tempat thread ini, atau kosong untuk chat tanpa project.",
+            "title": "Project Id"
           },
           "thread_id": {
             "title": "Thread Id",
@@ -788,6 +1073,582 @@
         "summary": "Invoke Default Agent",
         "tags": [
           "agents"
+        ]
+      }
+    },
+    "/projects": {
+      "get": {
+        "description": "Project built-in, lalu project milik user (terbaru diubah dulu).",
+        "operationId": "list_projects_projects_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Projects",
+        "tags": [
+          "projects"
+        ]
+      },
+      "post": {
+        "description": "Buat project milik user. Agent atau model yang tidak dikenal → 422.",
+        "operationId": "create_project_projects_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Project",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/projects/{project_id}": {
+      "delete": {
+        "description": "Hapus project beserta semua thread di dalamnya. Project built-in → 403.",
+        "operationId": "delete_project_projects__project_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Project",
+        "tags": [
+          "projects"
+        ]
+      },
+      "get": {
+        "description": "Satu project built-in atau milik user. Project milik user lain → 404.",
+        "operationId": "get_project_projects__project_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Project",
+        "tags": [
+          "projects"
+        ]
+      },
+      "patch": {
+        "description": "Ubah field yang dikirim saja. Project built-in → 403.",
+        "operationId": "update_project_projects__project_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Project",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/projects/{project_id}/history": {
+      "post": {
+        "description": "Riwayat satu thread di project ini. Thread di luar project ini → 404.",
+        "operationId": "project_history_projects__project_id__history_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatHistoryInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatHistory"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Project History",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/projects/{project_id}/invoke": {
+      "post": {
+        "description": "Jalankan agent project sampai selesai, dengan instruksi dan pengaturan project.",
+        "operationId": "invoke_in_project_projects__project_id__invoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatMessage"
+                }
+              }
+            },
+            "description": "Successful Response",
+            "headers": {
+              "X-Thread-Id": {
+                "description": "Thread used by this run. Send it as `thread_id` to continue the thread.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Invoke In Project",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/projects/{project_id}/stream": {
+      "post": {
+        "description": "Alirkan run agent project sebagai SSE, sama seperti `/{agent_id}/stream`.",
+        "operationId": "stream_in_project_projects__project_id__stream_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {}
+            },
+            "description": "SSE frames, see contracts/stream-event.schema.json.",
+            "headers": {
+              "X-Thread-Id": {
+                "description": "Thread used by this run. Send it as `thread_id` to continue the thread.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Stream In Project",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/projects/{project_id}/threads": {
+      "get": {
+        "description": "Thread milik user di project ini, yang terakhir di-update lebih dulu.",
+        "operationId": "project_threads_projects__project_id__threads_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserThreads"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Project Threads",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/projects/{project_id}/threads/{thread_id}": {
+      "delete": {
+        "description": "Hapus satu thread di project ini beserta riwayatnya.",
+        "operationId": "delete_project_thread_projects__project_id__threads__thread_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Project Thread",
+        "tags": [
+          "projects"
+        ]
+      },
+      "patch": {
+        "description": "Ganti judul thread di project ini.",
+        "operationId": "rename_project_thread_projects__project_id__threads__thread_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreadRenameInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Rename Project Thread",
+        "tags": [
+          "projects"
         ]
       }
     },

@@ -15,6 +15,7 @@ from agent_service.agents.registry import AgentRegistry
 from agent_service.core.settings import Settings
 from agent_service.llm.factory import ModelFactory
 from agent_service.service.auth import Authenticator, InvalidTokenError, Principal
+from agent_service.service.projects import ProjectService
 from agent_service.service.threads import ThreadRepository
 
 # auto_error=False: header yang hilang dijawab InvalidTokenError (401 + WWW-Authenticate), sama
@@ -40,6 +41,11 @@ def get_model_factory(request: Request) -> ModelFactory:
 def get_thread_repository(request: Request) -> ThreadRepository:
     """Ambil `ThreadRepository` yang dibuat di lifespan."""
     return request.app.state.thread_repository
+
+
+def get_project_service(request: Request) -> ProjectService:
+    """Ambil `ProjectService` yang dibuat di lifespan."""
+    return request.app.state.project_service
 
 
 def get_default_agent_id(request: Request) -> str:
@@ -75,4 +81,5 @@ ModelFactoryDep = Annotated[ModelFactory, Depends(get_model_factory)]
 ThreadRepositoryDep = Annotated[ThreadRepository, Depends(get_thread_repository)]
 DefaultAgentIdDep = Annotated[str, Depends(get_default_agent_id)]
 AuthenticatorDep = Annotated[Authenticator, Depends(get_authenticator)]
+ProjectServiceDep = Annotated[ProjectService, Depends(get_project_service)]
 PrincipalDep = Annotated[Principal, Depends(current_principal)]

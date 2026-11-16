@@ -1,11 +1,16 @@
-"""Daftar agent bawaan yang didaftarkan service saat startup."""
+"""Daftar agent bawaan dan project built-in yang disiapkan service saat startup.
 
+>>> [project.base_agent_id for project in BUILTIN_PROJECTS]
+['chatbot', 'research-assistant']
+"""
+
+from dataclasses import dataclass
 from typing import Final
 
 from agent_service.agents.base import BaseAgent
 from agent_service.agents.chatbot import CHATBOT_AGENT_ID, ChatbotAgent
 from agent_service.agents.interrupt import InterruptAgent
-from agent_service.agents.research import create_research_assistant
+from agent_service.agents.research import RESEARCH_ASSISTANT_ID, create_research_assistant
 from agent_service.agents.supervisor import create_supervisor_agent
 from agent_service.agents.tools.web_search import SearchBackend
 
@@ -35,3 +40,40 @@ def create_default_agents(search_backend: SearchBackend | None = None) -> list[B
         InterruptAgent(),
         create_supervisor_agent(search_backend),
     ]
+
+
+@dataclass(frozen=True)
+class BuiltinProject:
+    """Project built-in (ADR 0004): read-only, terlihat oleh semua user, di-seed saat startup.
+
+    Didefinisikan sebagai data di sini, bukan di database, supaya isinya ikut versi kode. Service
+    meng-upsert-nya berdasarkan `project_id` di setiap startup.
+    """
+
+    project_id: str
+    name: str
+    description: str
+    base_agent_id: str
+    instructions: str = ""
+    skill_ids: tuple[str, ...] = ()
+
+
+BUILTIN_PROJECTS: Final = (
+    BuiltinProject(
+        project_id="general-assistant",
+        name="General Assistant",
+        description="Everyday questions, writing, and brainstorming.",
+        base_agent_id=CHATBOT_AGENT_ID,
+        instructions="Keep answers concise. Use bullet points when listing several items.",
+    ),
+    BuiltinProject(
+        project_id="research-assistant",
+        name="Research Assistant",
+        description="Researches a topic on the web and answers with cited sources.",
+        base_agent_id=RESEARCH_ASSISTANT_ID,
+        instructions=(
+            "Search before answering questions about recent events or facts you are unsure of. "
+            "End every answer with a short list of the sources you used."
+        ),
+    ),
+)

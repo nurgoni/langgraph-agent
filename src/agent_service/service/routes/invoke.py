@@ -10,7 +10,7 @@ from agent_service.schema.requests import UserInput
 from agent_service.schema.responses import ChatMessage
 from agent_service.service.converters import final_chat_message
 from agent_service.service.dependencies import DefaultAgentIdDep, PrincipalDep, RegistryDep
-from agent_service.service.run_input import RUN_RESPONSE_HEADERS, build_run_input
+from agent_service.service.run_input import RUN_RESPONSE_HEADERS, RunTarget, build_run_input
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,8 @@ async def invoke_default_agent(
     default_agent_id: DefaultAgentIdDep,
 ) -> ChatMessage:
     """Sama dengan `POST /{agent_id}/invoke` untuk agent default."""
-    return await invoke(default_agent_id, user_input, principal.user_id, response, registry)
+    target = RunTarget(default_agent_id, user_input.model)
+    return await invoke(target, user_input, principal.user_id, response, registry)
 
 
 @router.post("/{agent_id}/invoke", responses=INVOKE_RESPONSES)
@@ -44,11 +45,12 @@ async def invoke_agent(
 
     Header `X-Thread-Id` berisi ID thread yang dipakai run, untuk melanjutkan thread.
     """
-    return await invoke(agent_id, user_input, principal.user_id, response, registry)
+    target = RunTarget(agent_id, user_input.model)
+    return await invoke(target, user_input, principal.user_id, response, registry)
 
 
 async def invoke(
-    agent_id: str,
+    target: RunTarget,
     user_input: UserInput,
     user_id: str,
     response: Response,
@@ -57,7 +59,7 @@ async def invoke(
     """Jalankan satu run agent sampai selesai.
 
     Args:
-        agent_id: Agent tujuan.
+        target: Agent, model, batas token, dan project untuk run ini.
         user_input: Body request.
         user_id: Pemilik run, dari access token.
         response: Response FastAPI, untuk header ID thread.
@@ -71,12 +73,18 @@ async def invoke(
         AgentUnavailableError: Agent gagal dimuat (503).
         UnknownModelError: Model di luar allowlist (422).
         RequestValidationError: `agent_config` tidak valid (422).
-        ThreadNotFoundError: Thread milik user atau agent lain (404).
+        ThreadNotFoundError: Thread milik user, agent, atau project lain (404).
     """
-    agent = registry.get_agent(agent_id)
-    graph = registry.get_graph(agent_id, user_input.model)
-    run = await build_run_input(user_input, user_id, agent, graph)
-    logger.info("Invoke agent=%s run_id=%s thread_id=%s", agent_id, run.run_id, run.thread_id)
+    agent = registry.get_agent(target.agent_id)
+    graph = registry.get_graph(target.agent_id, target.model, target.max_tokens)
+    run = await build_run_input(user_input, user_id, agent, graph, target.project)
+    logger.info(
+        "Invoke agent=%s project=%s run_id=%s thread_id=%s",
+        target.agent_id,
+        target.project_id,
+        run.run_id,
+        run.thread_id,
+    )
     state = await graph.ainvoke(run.graph_input, run.config)
     response.headers.update(run.response_headers())
     return final_chat_message(state).model_copy(update={"run_id": str(run.run_id)})

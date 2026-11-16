@@ -20,6 +20,7 @@ from agent_service.schema.responses import ThreadSummary
 from agent_service.service.converters import MESSAGES_KEY, content_to_text
 from agent_service.service.thread_access import (
     AGENT_ID_METADATA_KEY,
+    PROJECT_ID_METADATA_KEY,
     USER_ID_METADATA_KEY,
     ThreadNotFoundError,
     ensure_thread_owner,
@@ -75,20 +76,23 @@ class ThreadRepository:
         self._max_threads = max_threads
         self._max_rows = max_rows
 
-    async def list_threads(self, user_id: str, agent_id: str, limit: int) -> list[ThreadSummary]:
-        """Daftar thread milik user untuk satu agent, yang terakhir di-update lebih dulu.
+    async def list_threads(
+        self, user_id: str, agent_id: str, limit: int, project_id: str | None = None
+    ) -> list[ThreadSummary]:
+        """Daftar thread milik user untuk satu agent atau project, yang terakhir di-update dulu.
 
         Args:
             user_id: Pemilik thread.
-            agent_id: Agent yang menjalankan thread.
+            agent_id: Agent yang menjalankan thread (agent dasar untuk project).
             limit: Jumlah maksimum thread yang dikembalikan.
+            project_id: Project thread, atau `None` untuk thread tanpa project.
 
         Returns:
             Ringkasan thread. Judulnya judul custom jika thread pernah di-rename, selain itu
             message human pertama.
         """
         tips: list[CheckpointTuple] = []
-        for thread_id in await self._list_thread_ids(user_id, agent_id):
+        for thread_id in await self._list_thread_ids(user_id, agent_id, project_id):
             tip = await self._checkpointer.aget_tuple(
                 RunnableConfig(configurable={"thread_id": thread_id})
             )
@@ -100,11 +104,18 @@ class ThreadRepository:
         custom_titles = await self._titles.get_titles(_thread_id(tip) for tip in selected)
         summaries: list[ThreadSummary] = []
         for tip in selected:
-            summaries.append(_summarize(tip, agent_id, custom_titles.get(_thread_id(tip))))
+            summaries.append(
+                _summarize(tip, agent_id, project_id, custom_titles.get(_thread_id(tip)))
+            )
         return summaries
 
     async def rename(
-        self, thread_id: str, user_id: str, agent_id: str, title: str
+        self,
+        thread_id: str,
+        user_id: str,
+        agent_id: str,
+        title: str,
+        project_id: str | None = None,
     ) -> ThreadSummary:
         """Ganti judul thread dengan judul custom (FR-25).
 
@@ -113,54 +124,89 @@ class ThreadRepository:
             user_id: User yang meminta, harus pemilik thread.
             agent_id: Agent di URL, harus agent yang menjalankan thread.
             title: Judul baru yang sudah divalidasi schema.
+            project_id: Project di URL, atau `None` untuk route agent.
 
         Returns:
             Ringkasan thread dengan judul baru.
 
         Raises:
-            ThreadNotFoundError: Thread tidak ada, atau milik user/agent lain (404).
+            ThreadNotFoundError: Thread tidak ada, atau milik user/agent/project lain (404).
         """
-        tip = await self._get_owned_tip(thread_id, user_id, agent_id)
+        tip = await self._get_owned_tip(thread_id, user_id, agent_id, project_id)
         await self._titles.set_title(thread_id, title)
-        return _summarize(tip, agent_id, custom_title=title)
+        return _summarize(tip, agent_id, project_id, custom_title=title)
 
-    async def delete(self, thread_id: str, user_id: str, agent_id: str) -> None:
+    async def delete(
+        self, thread_id: str, user_id: str, agent_id: str, project_id: str | None = None
+    ) -> None:
         """Hapus semua checkpoint thread beserta judul custom-nya (FR-26).
 
         Args:
             thread_id: Thread yang dihapus.
             user_id: User yang meminta, harus pemilik thread.
             agent_id: Agent di URL, harus agent yang menjalankan thread.
+            project_id: Project di URL, atau `None` untuk route agent.
 
         Raises:
-            ThreadNotFoundError: Thread tidak ada, atau milik user/agent lain (404).
+            ThreadNotFoundError: Thread tidak ada, atau milik user/agent/project lain (404).
         """
-        await self._get_owned_tip(thread_id, user_id, agent_id)
-        await self._checkpointer.adelete_thread(thread_id)
-        await self._titles.delete(thread_id)
+        await self._get_owned_tip(thread_id, user_id, agent_id, project_id)
+        await self._remove(thread_id)
         logger.info("Deleted thread %s for agent %s", thread_id, agent_id)
 
-    async def _get_owned_tip(self, thread_id: str, user_id: str, agent_id: str) -> CheckpointTuple:
+    async def delete_project_threads(self, user_id: str, agent_id: str, project_id: str) -> int:
+        """Hapus semua thread milik user di satu project, saat project dihapus.
+
+        Args:
+            user_id: Pemilik project, satu-satunya yang bisa membuat thread di dalamnya.
+            agent_id: Agent dasar project.
+            project_id: Project yang dihapus.
+
+        Returns:
+            Jumlah thread yang dihapus.
+        """
+        thread_ids = await self._list_thread_ids(user_id, agent_id, project_id)
+        for thread_id in thread_ids:
+            await self._remove(thread_id)
+        logger.info("Deleted %d threads of project %s", len(thread_ids), project_id)
+        return len(thread_ids)
+
+    async def _remove(self, thread_id: str) -> None:
+        """Hapus checkpoint dan judul custom satu thread, tanpa cek pemilik."""
+        await self._checkpointer.adelete_thread(thread_id)
+        await self._titles.delete(thread_id)
+
+    async def _get_owned_tip(
+        self, thread_id: str, user_id: str, agent_id: str, project_id: str | None
+    ) -> CheckpointTuple:
         """Checkpoint terakhir thread, setelah memastikan pemiliknya.
 
         Raises:
-            ThreadNotFoundError: Thread tidak ada, atau milik user/agent lain.
+            ThreadNotFoundError: Thread tidak ada, atau milik user/agent/project lain.
         """
         tip = await self._checkpointer.aget_tuple(
             RunnableConfig(configurable={"thread_id": thread_id})
         )
         if tip is None:
             raise ThreadNotFoundError(thread_id)
-        ensure_thread_owner(tip.metadata, thread_id, user_id, agent_id)
+        ensure_thread_owner(tip.metadata, thread_id, user_id, agent_id, project_id)
         return tip
 
-    async def _list_thread_ids(self, user_id: str, agent_id: str) -> list[str]:
-        """Kumpulkan ID thread dari head checkpoint, dari thread terbaru dibuat."""
-        metadata_filter = {
+    async def _list_thread_ids(
+        self, user_id: str, agent_id: str, project_id: str | None
+    ) -> list[str]:
+        """Kumpulkan ID thread dari head checkpoint, dari thread terbaru dibuat.
+
+        Thread tanpa project tidak bisa difilter di database (key `project_id` tidak ada), jadi
+        thread project disaring oleh cek pemilik di `_collect_owned_thread_ids`.
+        """
+        metadata_filter: dict[str, object] = {
             USER_ID_METADATA_KEY: user_id,
             AGENT_ID_METADATA_KEY: agent_id,
             STEP_METADATA_KEY: THREAD_HEAD_STEP,
         }
+        if project_id is not None:
+            metadata_filter[PROJECT_ID_METADATA_KEY] = project_id
         thread_ids: list[str] = []
         rows_scanned = 0
         before: RunnableConfig | None = None
@@ -172,7 +218,7 @@ class ThreadRepository:
                 )
             ]
             rows_scanned += len(page)
-            self._collect_owned_thread_ids(page, user_id, agent_id, thread_ids)
+            self._collect_owned_thread_ids(page, user_id, agent_id, project_id, thread_ids)
             if len(page) < self._page_size:
                 break
             before = RunnableConfig(configurable={"checkpoint_id": _checkpoint_id(page[-1])})
@@ -180,20 +226,25 @@ class ThreadRepository:
 
     @staticmethod
     def _collect_owned_thread_ids(
-        heads: Iterable[CheckpointTuple], user_id: str, agent_id: str, thread_ids: list[str]
+        heads: Iterable[CheckpointTuple],
+        user_id: str,
+        agent_id: str,
+        project_id: str | None,
+        thread_ids: list[str],
     ) -> None:
         """Tambahkan ID thread baru ke `thread_ids`, dengan cek ulang pemilik di setiap head.
 
-        Filter checkpointer seharusnya sudah benar. Cek ulang ini mencegah thread bocor lintas
-        user jika implementasi saver mengabaikan filter.
+        Filter checkpointer seharusnya sudah benar untuk user dan agent. Cek ulang ini mencegah
+        thread bocor lintas user jika saver mengabaikan filter, dan menyaring thread project dari
+        daftar thread tanpa project.
         """
         for head in heads:
             thread_id = _thread_id(head)
             if thread_id in thread_ids:
                 continue
-            if is_thread_owner(head.metadata, user_id, agent_id):
+            if is_thread_owner(head.metadata, user_id, agent_id, project_id):
                 thread_ids.append(thread_id)
-            else:
+            elif head.metadata.get(USER_ID_METADATA_KEY) != user_id:
                 logger.warning("Skipping thread %s: checkpointer ignored owner filter", thread_id)
 
 
@@ -208,7 +259,10 @@ def _checkpoint_id(checkpoint: CheckpointTuple) -> str:
 
 
 def _summarize(
-    tip: CheckpointTuple, agent_id: str, custom_title: str | None = None
+    tip: CheckpointTuple,
+    agent_id: str,
+    project_id: str | None = None,
+    custom_title: str | None = None,
 ) -> ThreadSummary:
     """Ringkas checkpoint terakhir thread. Judul custom menimpa judul dari message human."""
     messages = tip.checkpoint["channel_values"].get(MESSAGES_KEY, [])
@@ -216,6 +270,7 @@ def _summarize(
     return ThreadSummary(
         thread_id=_thread_id(tip),
         agent_id=agent_id,
+        project_id=project_id,
         title=title,
         updated_at=tip.checkpoint["ts"],
     )

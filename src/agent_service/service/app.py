@@ -9,7 +9,12 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from agent_service.agents.base import BaseAgent
-from agent_service.agents.catalog import DEFAULT_AGENT_ID, create_default_agents
+from agent_service.agents.catalog import (
+    BUILTIN_PROJECTS,
+    DEFAULT_AGENT_ID,
+    BuiltinProject,
+    create_default_agents,
+)
 from agent_service.agents.registry import AgentRegistry
 from agent_service.agents.tools.web_search import SearchBackend, create_search_backend
 from agent_service.core.settings import Settings
@@ -17,13 +22,24 @@ from agent_service.llm.factory import ModelFactory
 from agent_service.memory.checkpointer import CheckpointerProvider
 from agent_service.memory.database import DatabaseEngineProvider
 from agent_service.memory.migrator import ensure_database_migrated
+from agent_service.memory.projects import ProjectRepository
 from agent_service.memory.thread_metadata import ThreadMetadataRepository
 from agent_service.memory.users import UserRepository
 from agent_service.schema.headers import THREAD_ID_HEADER
 from agent_service.service.auth import Authenticator
 from agent_service.service.dependencies import current_principal
 from agent_service.service.errors import register_exception_handlers
-from agent_service.service.routes import auth, health, history, info, invoke, stream, threads
+from agent_service.service.projects import ProjectService
+from agent_service.service.routes import (
+    auth,
+    health,
+    history,
+    info,
+    invoke,
+    projects,
+    stream,
+    threads,
+)
 from agent_service.service.threads import ThreadRepository
 
 logger = logging.getLogger(__name__)
@@ -44,6 +60,7 @@ def create_app(
     settings: Settings | None = None,
     agents: Sequence[BaseAgent] | None = None,
     default_agent_id: str = DEFAULT_AGENT_ID,
+    builtin_projects: Sequence[BuiltinProject] = BUILTIN_PROJECTS,
 ) -> FastAPI:
     """Bangun app FastAPI. Tidak ada koneksi atau load agent sebelum lifespan berjalan.
 
@@ -55,6 +72,8 @@ def create_app(
         agents: Agent yang didaftarkan. Default: `create_default_agents()` dengan web search
             dari `FIRECRAWL_API_KEY`.
         default_agent_id: Agent untuk `/info` dan route tanpa `{agent_id}`.
+        builtin_projects: Project built-in yang di-seed saat startup, jika agent dasarnya
+            terdaftar.
 
     Returns:
         App yang siap dijalankan.
@@ -78,7 +97,8 @@ def create_app(
             f"Default agent {default_agent_id!r} is not in registered agents {agent_ids}"
         )
 
-    app = FastAPI(title=APP_TITLE, lifespan=_build_lifespan(resolved_settings, resolved_agents))
+    lifespan = _build_lifespan(resolved_settings, resolved_agents, builtin_projects)
+    app = FastAPI(title=APP_TITLE, lifespan=lifespan)
     register_exception_handlers(app)
     app.add_middleware(
         CORSMiddleware,
@@ -95,6 +115,7 @@ def create_app(
     app.include_router(stream.router, dependencies=protected)
     app.include_router(history.router, dependencies=protected)
     app.include_router(threads.router, dependencies=protected)
+    app.include_router(projects.router, dependencies=protected)
     app.state.settings = resolved_settings
     app.state.default_agent_id = default_agent_id
     return app
@@ -111,13 +132,16 @@ def build_search_backend(settings: Settings) -> SearchBackend:
     return create_search_backend(None if secret is None else secret.get_secret_value())
 
 
-def _build_lifespan(settings: Settings, agents: Sequence[BaseAgent]) -> Lifespan:
+def _build_lifespan(
+    settings: Settings, agents: Sequence[BaseAgent], builtin_projects: Sequence[BuiltinProject]
+) -> Lifespan:
     """Buat lifespan yang membuka database, mendaftarkan, dan memuat semua agent.
 
     Urutan: `ModelFactory` → engine + `CheckpointerProvider` → cek migrasi →
-    `AgentRegistry.load_all()`. Factory, registry, `ThreadRepository`, dan `Authenticator`
-    disimpan di `app.state`. Engine dan pool checkpointer ditutup saat shutdown. Startup gagal
-    jika Postgres tidak terjangkau atau migrasi belum dijalankan.
+    `AgentRegistry.load_all()` → seed project built-in. Factory, registry, `ThreadRepository`,
+    `ProjectService`, dan `Authenticator` disimpan di `app.state`. Engine dan pool checkpointer
+    ditutup saat shutdown. Startup gagal jika Postgres tidak terjangkau atau migrasi belum
+    dijalankan.
     """
 
     @asynccontextmanager
@@ -141,7 +165,13 @@ def _build_lifespan(settings: Settings, agents: Sequence[BaseAgent]) -> Lifespan
             await registry.load_all()
             app.state.model_factory = model_factory
             app.state.registry = registry
-            app.state.thread_repository = ThreadRepository(checkpointer, titles)
+            thread_repository = ThreadRepository(checkpointer, titles)
+            project_service = ProjectService(
+                ProjectRepository(engine), thread_repository, registry, model_factory
+            )
+            await project_service.seed_builtin(builtin_projects)
+            app.state.thread_repository = thread_repository
+            app.state.project_service = project_service
             yield
         logger.info("Service shut down")
 
