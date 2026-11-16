@@ -69,6 +69,9 @@ class ThreadSummary(BaseModel):
 
     thread_id: str
     agent_id: str = Field(description="Agent yang menjalankan thread ini.")
+    project_id: str | None = Field(
+        default=None, description="Project tempat thread ini, atau kosong untuk chat tanpa project."
+    )
     title: str = Field(description="Judul custom (jika di-rename) atau dari pesan human pertama.")
     updated_at: datetime | None = Field(default=None, description="Waktu checkpoint terakhir.")
 

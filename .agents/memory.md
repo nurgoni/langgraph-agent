@@ -13,16 +13,39 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** M4 selesai (F21–F25). Rilis **v0.4.0** disiapkan di `release/v0.4.0` (versi,
-  changelog dengan catatan upgrade breaking, lock, kontrak), menunggu user merge ke `main`, tag,
-  dan back-merge.
-- **Berikutnya:** **F26** (Projects), awal M5 Harness Core.
+- **Fase:** M5 Harness Core. `v0.4.0` sudah dirilis. **F26** (Projects) selesai di
+  `feature/F26-projects`, menunggu user commit, push, dan PR.
+- **Berikutnya:** **F27** (Context builder): membaca `project_instructions` dari `configurable`.
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Terakhir diperbarui:** 2026-11-15
 
 ## Decision Log
+
+### 2026-11-15: Projects dari F26
+
+- **Keputusan user:** route `/projects/{project_id}/...` (PRD §11 no. 8 terjawab). Model: request →
+  project → default. Hapus project = hapus thread-nya. `ProjectSettings` hanya `max_tokens`.
+- **Keputusan desain:**
+  - `ProjectRepository` (memory, tanpa aturan akses) + `ProjectService` (service: 404/403/422,
+    seed, hapus berantai). `ProjectRecord` memakai tipe biasa (`settings` berupa dict), karena
+    `memory/` tidak boleh import `schema/`.
+  - `base_agent_id` immutable. `owner_id` berisi `sub` token (Text, bukan FK ke users).
+  - `project_id` di metadata run hanya untuk thread project. `is_thread_owner(..., project_id)`
+    membandingkannya, sehingga `None` cocok dengan key yang tidak ada (thread lama).
+  - `RunTarget` + `ProjectRunContext` di `service/run_input.py`. Kunci `configurable` project ada
+    di `core/constants.py` dan juga di `RESERVED_AGENT_CONFIG_KEYS` (schema).
+  - Built-in project sebagai data di `agents/catalog.py`, di-upsert di lifespan.
+- **Pelajaran:**
+  - Containment JSONB (`metadata @> filter`) tidak bisa memilih "key tidak ada", jadi listing
+    thread tanpa project disaring di Python oleh cek pemilik.
+  - Built-in yang di-upsert setiap startup tidak boleh diurutkan berdasarkan `updated_at`; urutan
+    berubah setiap restart. Urutkan berdasarkan nama.
+  - Iterasi `model_fields_set` (sebuah `set`) tidak berurutan. Iterasi `Model.model_fields`, lalu
+    saring dengan `model_fields_set`, supaya hasilnya deterministik.
+  - Mutation check (patahkan logika sebentar, pastikan test gagal) berguna saat test baru lulus
+    di percobaan pertama.
 
 ### 2026-11-15: Kontrak API dari F25
 

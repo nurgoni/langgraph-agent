@@ -18,6 +18,7 @@ from agent_service.client.requests import (
 )
 from agent_service.client.stream import AsyncStreamRun, StreamRun
 from agent_service.schema.auth import LoginRequest, TokenResponse
+from agent_service.schema.projects import Project, ProjectCreate, ProjectList, ProjectUpdate
 from agent_service.schema.requests import (
     THREADS_LIMIT_DEFAULT,
     ChatHistoryInput,
@@ -41,21 +42,24 @@ DEFAULT_TIMEOUT_SECONDS: Final = 60.0
 AUTHORIZATION_HEADER: Final = "Authorization"
 BEARER_PREFIX: Final = "Bearer "
 LOGIN_PATH: Final = "/auth/login"
+PROJECTS_PATH: Final = "/projects"
 
 
 class AgentClient:
     """Client untuk agent service. Tidak ada request di konstruktor (FR-19).
 
     `agent_id=None` berarti route agent default (`/invoke`, `/stream`, dan seterusnya). Ganti
-    `agent_id` kapan saja untuk berpindah agent. Semua endpoint selain `/health` dan
+    `agent_id` kapan saja untuk berpindah agent. Jika `project_id` diisi, chat dan thread memakai
+    route project (`/projects/{project_id}/...`) dan `agent_id` diabaikan, karena agent ditentukan
+    project. Semua endpoint selain `/health` dan
     `/auth/login` butuh access token: panggil `login()` atau berikan `access_token`. Satu koneksi
     HTTP dipakai ulang sampai `close()` atau `aclose()`, atau gunakan `with` / `async with`.
     Setiap method sync punya pasangan async berawalan `a` (`invoke` menjadi `ainvoke`, `stream`
     menjadi `astream`).
 
     >>> client = AgentClient(base_url="http://localhost:8080", agent_id="chatbot")
-    >>> client.agent_id
-    'chatbot'
+    >>> client.agent_id, client.project_id
+    ('chatbot', None)
     >>> client.close()
     """
 
@@ -65,6 +69,7 @@ class AgentClient:
         agent_id: str | None = None,
         access_token: str | None = None,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
+        project_id: str | None = None,
         transport: httpx.BaseTransport | None = None,
         async_transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
@@ -75,10 +80,12 @@ class AgentClient:
             agent_id: Agent tujuan, atau `None` untuk agent default service.
             access_token: Token dari `login()` sebelumnya, misalnya yang disimpan UI.
             timeout: Batas waktu per operasi HTTP, dalam detik.
+            project_id: Project tujuan chat dan thread, atau `None` untuk route agent.
             transport: Transport httpx sync, misalnya `httpx.MockTransport` untuk test.
             async_transport: Transport httpx async.
         """
         self.agent_id = agent_id
+        self.project_id = project_id
         self._http_client = httpx.Client(base_url=base_url, timeout=timeout, transport=transport)
         self._async_http_client = httpx.AsyncClient(
             base_url=base_url, timeout=timeout, transport=async_transport
@@ -263,6 +270,70 @@ class AgentClient:
         """
         self._send(self._delete_spec(thread_id))
 
+    def list_projects(self) -> ProjectList:
+        """Project built-in dan milik user (FR-36).
+
+        Raises:
+            AgentClientError: Request gagal.
+        """
+        return parse_model(self._send(RequestSpec("GET", PROJECTS_PATH)), ProjectList)
+
+    def get_project(self, project_id: str) -> Project:
+        """Satu project.
+
+        Raises:
+            AgentClientError: 404 jika project tidak ada atau milik user lain.
+        """
+        return parse_model(self._send(RequestSpec("GET", _project_path(project_id))), Project)
+
+    def create_project(self, project: ProjectCreate) -> Project:
+        """Buat project milik user.
+
+        Raises:
+            AgentClientError: 422 jika agent, model, atau isinya tidak valid.
+        """
+        spec = RequestSpec("POST", PROJECTS_PATH, json=_json_body(project))
+        return parse_model(self._send(spec), Project)
+
+    def update_project(self, project_id: str, changes: ProjectUpdate) -> Project:
+        """Ubah field yang diisi di `changes` saja.
+
+        Raises:
+            AgentClientError: 403 untuk project built-in, 404 jika milik user lain.
+        """
+        return parse_model(self._send(_update_project_spec(project_id, changes)), Project)
+
+    def delete_project(self, project_id: str) -> None:
+        """Hapus project beserta semua thread di dalamnya.
+
+        Raises:
+            AgentClientError: 403 untuk project built-in, 404 jika milik user lain.
+        """
+        self._send(RequestSpec("DELETE", _project_path(project_id)))
+
+    async def alist_projects(self) -> ProjectList:
+        """Versi async `list_projects`."""
+        return parse_model(await self._asend(RequestSpec("GET", PROJECTS_PATH)), ProjectList)
+
+    async def aget_project(self, project_id: str) -> Project:
+        """Versi async `get_project`."""
+        response = await self._asend(RequestSpec("GET", _project_path(project_id)))
+        return parse_model(response, Project)
+
+    async def acreate_project(self, project: ProjectCreate) -> Project:
+        """Versi async `create_project`."""
+        spec = RequestSpec("POST", PROJECTS_PATH, json=_json_body(project))
+        return parse_model(await self._asend(spec), Project)
+
+    async def aupdate_project(self, project_id: str, changes: ProjectUpdate) -> Project:
+        """Versi async `update_project`."""
+        response = await self._asend(_update_project_spec(project_id, changes))
+        return parse_model(response, Project)
+
+    async def adelete_project(self, project_id: str) -> None:
+        """Versi async `delete_project`."""
+        await self._asend(RequestSpec("DELETE", _project_path(project_id)))
+
     async def aget_info(self, refresh: bool = False) -> ServiceMetadata:
         """Versi async `get_info`. Cache dipakai bersama dengan versi sync."""
         if self._info is None or refresh:
@@ -359,7 +430,9 @@ class AgentClient:
         return response
 
     def _agent_path(self, suffix: str) -> str:
-        """Path untuk agent terpilih, atau path agent default jika `agent_id` kosong."""
+        """Path chat/thread: project terpilih, agent terpilih, atau agent default."""
+        if self.project_id is not None:
+            return _project_path(self.project_id) + suffix
         if self.agent_id is None:
             return suffix
         return f"/{path_segment(self.agent_id)}{suffix}"
@@ -404,6 +477,24 @@ class AgentClient:
     def _thread_path(self, thread_id: str) -> str:
         """Path satu thread milik agent terpilih."""
         return self._agent_path(f"/threads/{path_segment(thread_id)}")
+
+
+def _project_path(project_id: str) -> str:
+    """Path satu project, dengan ID di-escape.
+
+    >>> _project_path("p/1")
+    '/projects/p%2F1'
+    """
+    return f"{PROJECTS_PATH}/{path_segment(project_id)}"
+
+
+def _update_project_spec(project_id: str, changes: ProjectUpdate) -> RequestSpec:
+    """Request `PATCH /projects/{project_id}` berisi field yang diisi saja.
+
+    `model=None` yang diisi eksplisit tetap dikirim, supaya model project bisa dihapus.
+    """
+    body = changes.model_dump(mode="json", exclude_unset=True)
+    return RequestSpec("PATCH", _project_path(project_id), json=body)
 
 
 def _json_body(payload: BaseModel) -> dict[str, JsonValue]:

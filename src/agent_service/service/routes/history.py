@@ -33,7 +33,11 @@ async def history_agent(
 
 
 async def read_history(
-    agent_id: str, history_input: ChatHistoryInput, user_id: str, registry: AgentRegistry
+    agent_id: str,
+    history_input: ChatHistoryInput,
+    user_id: str,
+    registry: AgentRegistry,
+    project_id: str | None = None,
 ) -> ChatHistory:
     """Baca state terakhir thread dan ubah channel `messages` menjadi `ChatMessage`.
 
@@ -41,6 +45,7 @@ async def read_history(
         agent_id: Agent pemilik thread.
         history_input: ID thread yang diminta.
         user_id: User yang meminta, dari access token.
+        project_id: Project di URL, atau `None` untuk route agent.
         registry: Registry agent milik app.
 
     Returns:
@@ -49,11 +54,11 @@ async def read_history(
     Raises:
         AgentNotFoundError: Agent tidak terdaftar (404).
         AgentUnavailableError: Agent gagal dimuat (503).
-        ThreadNotFoundError: Thread tidak ada, atau milik user/agent lain (404).
+        ThreadNotFoundError: Thread tidak ada, atau milik user/agent/project lain (404).
     """
     # Semua graph agent berbagi checkpointer, jadi graph model default cukup untuk membaca state.
     graph = registry.get_graph(agent_id)
     config = RunnableConfig(configurable={"thread_id": history_input.thread_id})
     snapshot = await graph.aget_state(config)
-    ensure_thread_owner(snapshot.metadata, history_input.thread_id, user_id, agent_id)
+    ensure_thread_owner(snapshot.metadata, history_input.thread_id, user_id, agent_id, project_id)
     return ChatHistory(messages=state_to_chat_messages(snapshot.values))

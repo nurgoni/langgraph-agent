@@ -6,6 +6,16 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 
 ## [Unreleased]
 
+### Added
+
+- Project sebagai agent deklaratif (FR-36, ADR 0004): CRUD `/projects`, chat di
+  `/projects/{project_id}/invoke|stream|history|threads`, dan project built-in read-only
+  (`general-assistant`, `research-assistant`) yang di-seed saat startup. Project memilih agent
+  dasar (tidak bisa diganti), model (request → project → default), instruksi, skill, dan
+  `settings.max_tokens` (FR-30). Menghapus project ikut menghapus thread-nya.
+  `ThreadSummary.project_id`, dan `AgentClient` mendapat `project_id` serta method CRUD project
+  (F26).
+
 ## [0.4.0] - 2026-11-15
 
 M4 Foundation: Postgres, login per user, batas token jawaban, image lebih kecil, dan kontrak API

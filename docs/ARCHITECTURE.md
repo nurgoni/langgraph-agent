@@ -185,6 +185,32 @@ Auth per user dengan JWT (FR-33), tanpa mode anonim: `JWT_SECRET` wajib diisi.
   API, header `Authorization`/`Content-Type`, dan mengekspos `X-Thread-Id`. Token dikirim lewat
   header, bukan cookie, jadi `allow_credentials` tidak dipakai.
 
+## Project
+
+Project adalah agent deklaratif (FR-36, [ADR 0004](adr/0004-project-as-declarative-agent.md)):
+satu agent kode plus konfigurasi.
+
+- **Penyimpanan.** Tabel `projects` (`ProjectRepository`), dengan `skill_ids` dan `settings` sebagai
+  JSONB. `scope = builtin` berarti `owner_id` kosong (dijaga check constraint).
+- **Akses** ada di `ProjectService` (`service/projects.py`). Project milik user lain → 404,
+  mengubah atau menghapus built-in → 403, dan agent yang tidak tersedia → 422. Menghapus project
+  menghapus semua thread di dalamnya lebih dulu (`ThreadRepository.delete_project_threads`).
+- **`base_agent_id` tidak bisa diubah**, karena thread menyimpan `agent_id` di metadata checkpoint.
+  Mengganti agent akan membuat thread lama tidak bisa dibuka, atau dijalankan dengan graph yang
+  tidak cocok dengan state-nya.
+- **Built-in** didefinisikan sebagai data (`BUILTIN_PROJECTS` di `agents/catalog.py`) dan di-upsert
+  di lifespan, hanya jika agent dasarnya terdaftar. Urutannya di daftar berdasarkan nama.
+- **Run di project.** Route `/projects/{project_id}/...` membaca project di awal setiap run, lalu
+  membentuk `RunTarget`: agent dasar, model (request → project → default), `max_tokens` project,
+  dan `ProjectRunContext`. `AgentRegistry.get_graph(agent, model, max_tokens)` meng-cache graph per
+  ketiganya. Instruksi dan skill project diteruskan lewat `configurable` (`project_id`,
+  `project_instructions`, `project_skill_ids`, kuncinya di `core/constants.py`) untuk F27/F28.
+- **Isolasi thread.** `run_metadata` menulis `project_id` untuk thread project, dan
+  `is_thread_owner` membandingkannya. Thread project tidak bisa dibuka lewat route agent atau
+  project lain, dan sebaliknya. Thread tanpa key `project_id` (termasuk thread sebelum F26) adalah
+  thread tanpa project. Listing route agent menyaring thread project di Python, karena key yang
+  tidak ada tidak bisa difilter dengan containment JSONB.
+
 ## Kontrak API
 
 `service/contracts.py` membuat dua file di `contracts/` (FR-35):
@@ -214,6 +240,7 @@ Satu database Postgres di `DATABASE_URL` ([ADR 0001](adr/0001-postgres-only.md))
 | `checkpoints`, `checkpoint_blobs`, `checkpoint_writes`, `checkpoint_migrations` | `AsyncPostgresSaver` (via `CheckpointerProvider`) | State graph per langkah, termasuk metadata `user_id`/`agent_id` |
 | `thread_metadata` | `ThreadMetadataRepository` (SQLAlchemy Core) | Judul custom hasil rename |
 | `users` | `UserRepository` (SQLAlchemy Core) | Akun login: username, hash argon2, role |
+| `projects` | `ProjectRepository` (SQLAlchemy Core) | Project built-in dan milik user |
 | `alembic_version` | Alembic | Revisi skema tabel aplikasi |
 
 - **Satu driver.** Checkpointer dan SQLAlchemy sama-sama memakai psycopg 3. `DATABASE_URL` ditulis

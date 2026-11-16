@@ -12,6 +12,11 @@ from langgraph.types import Command, StateSnapshot
 from pydantic import BaseModel, JsonValue, ValidationError
 
 from agent_service.agents.base import AgentGraph, BaseAgent
+from agent_service.core.constants import (
+    PROJECT_ID_CONFIG_KEY,
+    PROJECT_INSTRUCTIONS_CONFIG_KEY,
+    PROJECT_SKILL_IDS_CONFIG_KEY,
+)
 from agent_service.schema.headers import THREAD_ID_HEADER
 from agent_service.schema.requests import UserInput
 from agent_service.service.thread_access import ensure_thread_owner, is_new_thread, run_metadata
@@ -31,6 +36,54 @@ type GraphInput = dict[str, Any] | Command
 
 
 @dataclass(frozen=True)
+class ProjectRunContext:
+    """Konfigurasi project yang ikut ke setiap run di dalamnya (ADR 0004).
+
+    Dibaca dari database di awal setiap run, jadi perubahan project langsung berlaku di giliran
+    berikutnya. Isinya diteruskan ke agent lewat `configurable` (dipakai F27/F28).
+    """
+
+    project_id: str
+    instructions: str = ""
+    skill_ids: tuple[str, ...] = ()
+
+    def configurable(self) -> dict[str, Any]:  # Any: nilai configurable LangGraph
+        """Kunci `configurable` untuk project ini.
+
+        >>> config = ProjectRunContext("p1", "Ringkas.", ("meeting-notes",)).configurable()
+        >>> config["project_id"], config["project_instructions"], config["project_skill_ids"]
+        ('p1', 'Ringkas.', ['meeting-notes'])
+        """
+        return {
+            PROJECT_ID_CONFIG_KEY: self.project_id,
+            PROJECT_INSTRUCTIONS_CONFIG_KEY: self.instructions,
+            PROJECT_SKILL_IDS_CONFIG_KEY: list(self.skill_ids),
+        }
+
+
+@dataclass(frozen=True)
+class RunTarget:
+    """Agent, model, batas token, dan project untuk satu run.
+
+    Route agent memakai agent dari URL dan model dari request. Route project memakai agent dasar
+    project, model request → model project → default, dan `max_tokens` project.
+
+    >>> RunTarget("chatbot").project_id is None
+    True
+    """
+
+    agent_id: str
+    model: str | None = None
+    max_tokens: int | None = None
+    project: ProjectRunContext | None = None
+
+    @property
+    def project_id(self) -> str | None:
+        """ID project run ini, atau `None` untuk route agent."""
+        return None if self.project is None else self.project.project_id
+
+
+@dataclass(frozen=True)
 class RunInput:
     """Semua yang dibutuhkan untuk menjalankan graph satu kali."""
 
@@ -46,7 +99,11 @@ class RunInput:
 
 
 async def build_run_input(
-    user_input: UserInput, user_id: str, agent: BaseAgent, graph: AgentGraph
+    user_input: UserInput,
+    user_id: str,
+    agent: BaseAgent,
+    graph: AgentGraph,
+    project: ProjectRunContext | None = None,
 ) -> RunInput:
     """Siapkan input graph untuk request, termasuk ID baru dan resume interrupt.
 
@@ -57,27 +114,31 @@ async def build_run_input(
         user_id: Pemilik run, dari access token.
         agent: Agent tujuan, untuk validasi `agent_config`.
         graph: Graph agent untuk model yang dipilih.
+        project: Project tempat run berjalan, atau `None` untuk route agent.
 
     Returns:
         Input dan config run. `thread_id` yang kosong diisi UUID baru (FR-13).
 
     Raises:
         RequestValidationError: Jika `agent_config` tidak lolos `config_schema` agent (422).
-        ThreadNotFoundError: Jika thread sudah ada tapi milik user atau agent lain (404).
+        ThreadNotFoundError: Jika thread sudah ada tapi milik user, agent, atau project lain (404).
     """
     agent_config = parse_agent_config(agent, user_input.agent_config)
     thread_id = user_input.thread_id or str(uuid4())
     run_id = uuid7()
     configurable: dict[str, Any] = {"thread_id": thread_id, "user_id": user_id}
     configurable.update(agent_config.model_dump(mode="json"))
+    project_id = None if project is None else project.project_id
+    if project is not None:
+        configurable.update(project.configurable())
     config = RunnableConfig(
         configurable=configurable,
-        metadata=run_metadata(user_id, agent.agent_id),
+        metadata=run_metadata(user_id, agent.agent_id, project_id),
         run_id=run_id,
     )
     snapshot = await graph.aget_state(config)
     if not is_new_thread(snapshot):
-        ensure_thread_owner(snapshot.metadata, thread_id, user_id, agent.agent_id)
+        ensure_thread_owner(snapshot.metadata, thread_id, user_id, agent.agent_id, project_id)
     return RunInput(
         graph_input=_graph_input_for(snapshot, user_input.message),
         config=config,

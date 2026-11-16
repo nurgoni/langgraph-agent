@@ -329,6 +329,10 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
 | GET | `/{agent_id}/threads` | query `limit` (1–100, default 20) | `UserThreads` |
 | PATCH | `/{agent_id}/threads/{thread_id}` | `ThreadRenameInput` | `ThreadSummary` |
 | DELETE | `/{agent_id}/threads/{thread_id}` | – | 204 |
+| GET, POST | `/projects` | – / `ProjectCreate` | `ProjectList` / `Project` (201) |
+| GET, PATCH, DELETE | `/projects/{project_id}` | – / `ProjectUpdate` / – | `Project` / `Project` / 204 |
+| POST | `/projects/{project_id}/invoke`, `/stream`, `/history` | sama dengan route agent | sama dengan route agent |
+| GET, PATCH, DELETE | `/projects/{project_id}/threads[/{thread_id}]` | sama dengan route agent | sama dengan route agent |
 | GET | `/health` | – | `{"status": "ok"}` |
 
 Varian tanpa `{agent_id}` (`/invoke`, `/stream`, dan seterusnya) memakai agent default. Mulai F24,
@@ -339,7 +343,6 @@ dan pemilik thread diambil dari token (FR-33).
 
 | Method | Path | FR | Fitur |
 |---|---|---|---|
-| GET, POST, PATCH, DELETE | `/projects`, `/projects/{project_id}` | FR-36 | F26 |
 | GET | `/skills`, `/skills/{skill_id}` | FR-38 | F28 |
 | GET, DELETE | `/memories`, `/memories/{memory_id}` | FR-40 | F30 |
 | POST, GET | `/artifacts`, `/artifacts/{artifact_id}` | FR-46 | F35 |
@@ -360,7 +363,14 @@ ChatMessage     { type: "human"|"ai"|"tool"|"custom", content: str, tool_calls: 
                   custom_data?: dict }
 ChatHistoryInput { thread_id: str }
 ChatHistory     { messages: list[ChatMessage] }
-ThreadSummary   { thread_id: str, agent_id: str, title: str, updated_at?: datetime }
+ThreadSummary   { thread_id: str, agent_id: str, project_id?: str, title: str,
+                  updated_at?: datetime }
+ProjectCreate   { name: str, base_agent_id: str, description?: str, model?: str,
+                  instructions?: str, skill_ids?: list[str], settings?: ProjectSettings }
+ProjectUpdate   ProjectCreate tanpa base_agent_id, semua opsional (PATCH)
+ProjectSettings { max_tokens?: int }
+Project         ProjectCreate + { id, scope: "builtin"|"user", read_only, created_at,
+                  updated_at }
 ThreadRenameInput { title: str (1–TITLE_MAX_LENGTH karakter) }
 AgentInfo       { key: str, description: str, config_schema: dict (JSON Schema) }
 ```
@@ -472,8 +482,10 @@ Rincian fitur per milestone, urutan eksekusi, dan rencana commit ada di
 6. Sumber data analisa: apakah sudah ada read replica atau user database read-only? Apakah data
    perlu di-mask (PII) sebelum dikirim ke LLM yang bukan lokal? (F39)
 7. Backend tracing: Langfuse self-hosted, OpenTelemetry, atau tabel trace sendiri di Postgres? (F31)
-8. Bentuk route chat berbasis Project: `project_id` di body route lama, atau route baru
-   `/projects/{project_id}/stream`? (F26)
+8. ~~Bentuk route chat berbasis Project: `project_id` di body route lama, atau route baru
+   `/projects/{project_id}/stream`? (F26)~~ **Terjawab (2026-11-15):** route baru
+   `/projects/{project_id}/invoke|stream|history|threads`. Route `/{agent_id}/...` tetap untuk
+   chat tanpa project.
 9. Library PDF: `fpdf2`/`reportlab` (pure Python) atau WeasyPrint (HTML → PDF, butuh library
    sistem)? (F42)
 10. Parser dokumen untuk ingestion: cukup pypdf + python-docx, atau perlu parser tabel/scan

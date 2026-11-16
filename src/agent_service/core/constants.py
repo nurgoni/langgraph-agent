@@ -31,6 +31,12 @@ FAKE_MODEL_NAME: Final = "fake"
 # Pemisah untuk env var berisi daftar, seperti AVAILABLE_MODELS dan CORS_ORIGINS.
 LIST_SEPARATOR: Final = ","
 
+# Kunci `configurable` yang diisi service untuk run di dalam project (FR-36), dibaca agent dan
+# harness (F27/F28). Sama dengan kunci reservasi di `schema/requests.py`.
+PROJECT_ID_CONFIG_KEY: Final = "project_id"
+PROJECT_INSTRUCTIONS_CONFIG_KEY: Final = "project_instructions"
+PROJECT_SKILL_IDS_CONFIG_KEY: Final = "project_skill_ids"
+
 # Auth per user (FR-33). Token tanpa refresh token, cukup untuk satu hari demo (keputusan user).
 SECONDS_PER_HOUR: Final = 3600
 DEFAULT_JWT_TTL_HOURS: Final = 12
