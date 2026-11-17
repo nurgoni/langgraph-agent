@@ -10,6 +10,7 @@ mulai bekerja.
 - Cara kerja service (lifespan, alur request, menambah agent) → [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - Daftar fitur dan urutan pengerjaan → [docs/ROADMAP.md](docs/ROADMAP.md)
 - Branch, commit, PR, dan release → [CONTRIBUTING.md](CONTRIBUTING.md)
+- Prosedur kerja berulang untuk coding agent → [Dev-time Skill](#dev-time-skill)
 
 ## Ringkasan Project
 
@@ -282,6 +283,22 @@ Ringkasan. Detail lengkap ada di [CONTRIBUTING.md](CONTRIBUTING.md).
 - Release per milestone lewat `release/vX.Y.Z` → `main` dengan **`--no-ff`** (bukan squash), tag
   annotated, lalu back-merge ke `develop`.
 - Commit atau push hanya dilakukan jika diminta user.
+
+## Dev-time Skill
+
+Prosedur kerja berulang ditulis sebagai skill (format [Agent Skills](https://agentskills.io)) di
+`.claude/skills/`. Claude Code memicunya otomatis dari deskripsinya. Agent lain dan manusia
+membaca file `SKILL.md`-nya langsung sebelum mengerjakan tugas yang cocok.
+
+| Skill | Kapan dipakai |
+|---|---|
+| [`feature-workflow`](.claude/skills/feature-workflow/SKILL.md) | Mengerjakan satu fitur ROADMAP: Langkah 1, implementasi, verifikasi, dokumentasi |
+| [`git-handoff`](.claude/skills/git-handoff/SKILL.md) | Menyusun daftar command git untuk user. Agent tidak pernah menjalankan git |
+| [`release`](.claude/skills/release/SKILL.md) | Menyiapkan rilis milestone: versi, CHANGELOG, kontrak, command release |
+| [`memory-maintenance`](.claude/skills/memory-maintenance/SKILL.md) | Entri Decision Log, Status, dan arsip memory.md saat > ±300 baris |
+
+Skill ini untuk **mengembangkan repo**, berbeda dengan skill runtime produk di
+`src/agent_service/skills/` (F28) yang dimuat oleh agent service.
 
 ## Definition of Done
 

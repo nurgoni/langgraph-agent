@@ -23,3 +23,6 @@ build/
 
 # Eval reports from real models are not committed (F31)
 eval-reports/
+
+# Claude Code: personal settings stay local; .claude/skills/ is shared
+.claude/settings.local.json
