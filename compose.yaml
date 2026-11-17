@@ -1,4 +1,5 @@
-# Stack lokal: Postgres, migrasi, service API (:8080), dan UI Streamlit (:8501).
+# Stack lokal: Postgres, migrasi, service API (:8080), frontend React (:3000), dan dev console
+# Streamlit (:8501).
 #   docker compose up --build
 #   docker compose up -d postgres     # hanya database, untuk dev lokal dan test
 #   docker compose exec agent-service python -m agent_service.manage create-user demo
@@ -89,6 +90,20 @@ services:
       - "${UI_PORT:-8501}:8501"
     environment:
       AGENT_URL: http://agent-service:8080
+    depends_on:
+      agent-service:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    # Frontend React (F32): file statis + proxy same-origin /api ke agent-service.
+    build:
+      context: frontend
+    image: agent-service-web:local
+    ports:
+      - "${WEB_PORT:-3000}:8080"
+    environment:
+      API_UPSTREAM: http://agent-service:8080
     depends_on:
       agent-service:
         condition: service_healthy
