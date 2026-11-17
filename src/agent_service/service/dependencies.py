@@ -13,8 +13,12 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from agent_service.agents.registry import AgentRegistry
 from agent_service.core.settings import Settings
+from agent_service.harness.skills.registry import SkillRegistry
 from agent_service.llm.factory import ModelFactory
+from agent_service.memory.traces import RunTraceRepository
+from agent_service.memory.user_memories import UserMemoryRepository
 from agent_service.service.auth import Authenticator, InvalidTokenError, Principal
+from agent_service.service.projects import ProjectService
 from agent_service.service.threads import ThreadRepository
 
 # auto_error=False: header yang hilang dijawab InvalidTokenError (401 + WWW-Authenticate), sama
@@ -40,6 +44,26 @@ def get_model_factory(request: Request) -> ModelFactory:
 def get_thread_repository(request: Request) -> ThreadRepository:
     """Ambil `ThreadRepository` yang dibuat di lifespan."""
     return request.app.state.thread_repository
+
+
+def get_project_service(request: Request) -> ProjectService:
+    """Ambil `ProjectService` yang dibuat di lifespan."""
+    return request.app.state.project_service
+
+
+def get_skill_registry(request: Request) -> SkillRegistry:
+    """Ambil `SkillRegistry` yang dimuat di lifespan."""
+    return request.app.state.skill_registry
+
+
+def get_memory_repository(request: Request) -> UserMemoryRepository:
+    """Ambil `UserMemoryRepository` yang dibuat di lifespan."""
+    return request.app.state.memory_repository
+
+
+def get_trace_repository(request: Request) -> RunTraceRepository:
+    """Ambil `RunTraceRepository` yang dibuat di lifespan."""
+    return request.app.state.trace_repository
 
 
 def get_default_agent_id(request: Request) -> str:
@@ -75,4 +99,8 @@ ModelFactoryDep = Annotated[ModelFactory, Depends(get_model_factory)]
 ThreadRepositoryDep = Annotated[ThreadRepository, Depends(get_thread_repository)]
 DefaultAgentIdDep = Annotated[str, Depends(get_default_agent_id)]
 AuthenticatorDep = Annotated[Authenticator, Depends(get_authenticator)]
+ProjectServiceDep = Annotated[ProjectService, Depends(get_project_service)]
+SkillRegistryDep = Annotated[SkillRegistry, Depends(get_skill_registry)]
+MemoryRepositoryDep = Annotated[UserMemoryRepository, Depends(get_memory_repository)]
+TraceRepositoryDep = Annotated[RunTraceRepository, Depends(get_trace_repository)]
 PrincipalDep = Annotated[Principal, Depends(current_principal)]

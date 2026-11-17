@@ -12,7 +12,11 @@ from typing import Annotated, Final
 
 from pydantic import BaseModel, Field, JsonValue, StringConstraints, field_validator
 
-RESERVED_AGENT_CONFIG_KEYS: Final = frozenset({"thread_id", "user_id", "model"})
+# Diisi service di `configurable`, jadi tidak boleh ditimpa `agent_config`. Kunci project sama
+# dengan `PROJECT_*_CONFIG_KEY` di `core/constants.py` (schema tidak boleh import core).
+RESERVED_AGENT_CONFIG_KEYS: Final = frozenset(
+    {"thread_id", "user_id", "model", "project_id", "project_instructions", "project_skill_ids"}
+)
 
 THREADS_LIMIT_DEFAULT: Final = 20
 THREADS_LIMIT_MIN: Final = 1
@@ -60,7 +64,7 @@ class UserInput(BaseModel):
             `agent_config` tanpa perubahan.
 
         Raises:
-            ValueError: Jika ada key reservasi (`thread_id`, `user_id`, `model`).
+            ValueError: Jika ada key reservasi (`RESERVED_AGENT_CONFIG_KEYS`).
         """
         reserved = sorted(RESERVED_AGENT_CONFIG_KEYS.intersection(agent_config))
         if reserved:

@@ -13,6 +13,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, MessagesState, StateGraph
+from langgraph.store.base import BaseStore
 from langgraph.types import interrupt
 from pydantic import BaseModel, ConfigDict
 
@@ -32,7 +33,9 @@ INTERRUPT_QUESTION = "What is your name?"
 class InterruptAgent(BaseAgent):
     """Bertanya lewat `interrupt()`, lalu menyapa dengan jawaban dari resume."""
 
-    def build(self, model: BaseChatModel, checkpointer: Checkpointer) -> AgentGraph:
+    def build(
+        self, model: BaseChatModel, checkpointer: Checkpointer, store: BaseStore | None = None
+    ) -> AgentGraph:
         async def ask(state: MessagesState) -> MessagesState:
             name = interrupt(INTERRUPT_QUESTION)
             return {"messages": [AIMessage(content=f"Hello {name}")]}
@@ -57,7 +60,9 @@ class ToneEchoAgent(BaseAgent):
 
     config_schema = ToneConfig
 
-    def build(self, model: BaseChatModel, checkpointer: Checkpointer) -> AgentGraph:
+    def build(
+        self, model: BaseChatModel, checkpointer: Checkpointer, store: BaseStore | None = None
+    ) -> AgentGraph:
         async def echo(state: MessagesState, config: RunnableConfig) -> MessagesState:
             tone = config["configurable"]["tone"]
             return {"messages": [AIMessage(content=f"tone={tone}")]}

@@ -31,6 +31,16 @@ FAKE_MODEL_NAME: Final = "fake"
 # Pemisah untuk env var berisi daftar, seperti AVAILABLE_MODELS dan CORS_ORIGINS.
 LIST_SEPARATOR: Final = ","
 
+# Pemilik run (`sub` token), diisi service di `configurable` setiap run. Dibaca harness untuk
+# memilih namespace memory user (FR-40).
+USER_ID_CONFIG_KEY: Final = "user_id"
+
+# Kunci `configurable` yang diisi service untuk run di dalam project (FR-36), dibaca agent dan
+# harness (F27/F28). Sama dengan kunci reservasi di `schema/requests.py`.
+PROJECT_ID_CONFIG_KEY: Final = "project_id"
+PROJECT_INSTRUCTIONS_CONFIG_KEY: Final = "project_instructions"
+PROJECT_SKILL_IDS_CONFIG_KEY: Final = "project_skill_ids"
+
 # Auth per user (FR-33). Token tanpa refresh token, cukup untuk satu hari demo (keputusan user).
 SECONDS_PER_HOUR: Final = 3600
 DEFAULT_JWT_TTL_HOURS: Final = 12
@@ -48,3 +58,12 @@ MIN_LLM_MAX_TOKENS: Final = 1
 # sedangkan model reasoning OpenAI (gpt-5, o-series) hanya menerima `max_completion_tokens`.
 MaxTokensParam = Literal["max_tokens", "max_completion_tokens"]
 DEFAULT_LLM_MAX_TOKENS_PARAM: Final[MaxTokensParam] = "max_tokens"
+
+# Anggaran token riwayat + ringkasan per panggilan model (FR-39, keputusan user F29). qwen3.5:9b
+# di Ollama terukur membaca prompt ±35k token tanpa pemotongan, dan 16k menjaga giliran tetap
+# cepat di model lokal. Batas bawah memberi ruang untuk ringkasan dan satu giliran pendek.
+DEFAULT_CONTEXT_MAX_TOKENS: Final = 16000
+MIN_CONTEXT_MAX_TOKENS: Final = 1000
+
+# Tag run model yang token/reasoning-nya tidak dialirkan ke chat (ekstraksi, peringkasan).
+SKIP_STREAM_TAG: Final = "skip_stream"

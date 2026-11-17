@@ -8,6 +8,7 @@ import os
 import shutil
 import socket
 import subprocess
+import sys
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -28,6 +29,7 @@ BUILD_TIMEOUT_SECONDS = 900
 COMMAND_TIMEOUT_SECONDS = 120
 USERNAME = "e2e-user"
 OTHER_USERNAME = "e2e-other"
+EVAL_USERNAME = "e2e-evals"
 PASSWORD = "e2e-password"
 
 UI_CHAT_SCRIPT = f"""
@@ -208,3 +210,56 @@ def test_other_user_cannot_read_thread(stack: ComposeStack) -> None:
         other.get_history(reply.thread_id)
 
     assert error_info.value.status_code == 404
+
+
+def test_builtin_skills_ship_in_the_service_image(stack: ComposeStack) -> None:
+    with stack.client() as client:
+        skills = client.list_skills()
+        notes = client.get_skill("builtin/meeting-notes")
+
+    assert [skill.id for skill in skills.skills] == [
+        "builtin/meeting-notes",
+        "builtin/research-report",
+    ]
+    assert notes.body.startswith("# Meeting notes")
+
+
+def test_memory_store_is_migrated(stack: ComposeStack) -> None:
+    with stack.client() as client:
+        memories = client.list_memories()
+
+    assert memories.memories == []
+
+
+def test_runs_are_traced(stack: ComposeStack) -> None:
+    with stack.client() as client:
+        reply = client.invoke("Halo")
+        trace = client.get_run_trace(reply.message.run_id or "")
+
+    assert (trace.status, [span.kind for span in trace.spans]) == ("ok", ["model"])
+
+
+def test_smoke_eval_cli_against_the_stack(stack: ComposeStack, tmp_path: Path) -> None:
+    stack.create_user(EVAL_USERNAME)
+    env = {
+        **os.environ,
+        "AGENT_URL": stack.service_url,
+        "EVAL_USERNAME": EVAL_USERNAME,
+        "EVAL_PASSWORD": PASSWORD,
+    }
+    command = [sys.executable, "-m", "agent_service.run_evals", "evals/smoke.yaml"]
+
+    result = subprocess.run(
+        [*command, "--output-dir", str(tmp_path)],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=COMMAND_TIMEOUT_SECONDS,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "smoke: 2/2 passed" in result.stderr
+    assert len(list(tmp_path.glob("eval-*.md"))) == 1

@@ -40,12 +40,12 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F23 | Postgres migration | M4 | done |
 | F24 | User auth & CORS | M4 | done |
 | F25 | API contract export | M4 | done |
-| F26 | Projects | M5 | todo |
-| F27 | Context builder | M5 | todo |
-| F28 | Built-in skills | M5 | todo |
-| F29 | Context policy | M5 | todo |
-| F30 | Long-term memory | M5 | todo |
-| F31 | Evals & tracing | M5 | todo |
+| F26 | Projects | M5 | done |
+| F27 | Context builder | M5 | done |
+| F28 | Built-in skills | M5 | done |
+| F29 | Context policy | M5 | done |
+| F30 | Long-term memory | M5 | done |
+| F31 | Evals & tracing | M5 | done |
 | F32 | Frontend scaffold & auth | M6 | todo |
 | F33 | Chat UI | M6 | todo |
 | F34 | Projects & threads UI | M6 | todo |
@@ -1182,10 +1182,29 @@ F32 → F33 → F34 → *rilis v0.6.0* → F35 → F36 → F37 → F38 → *rili
   5. `feat(agents): seed built-in projects`
   6. `feat(client): add project methods`
   7. `docs: record F26 project decisions`
+- **Langkah 1 (keputusan user):** route baru `/projects/{project_id}/...` (PRD §11 no. 8). Model:
+  request → project → default. Menghapus project ikut menghapus thread-nya. `ProjectSettings`
+  hanya `max_tokens`; field lain (mis. `tool_approval`) ditambah fitur yang memakainya.
+- **Penyesuaian saat implementasi:**
+  - `base_agent_id` tidak bisa diubah (`ProjectUpdate` tanpa field itu, `extra="forbid"` → 422).
+    Thread menyimpan `agent_id` di metadata checkpoint.
+  - `project_id` disimpan di metadata run hanya untuk thread project, dan ikut dicek
+    `is_thread_owner`. Thread project tidak bisa dibuka lewat route agent atau project lain.
+  - `RunTarget` (agent, model, `max_tokens`, project) dipakai bersama route agent dan project,
+    supaya `invoke`/`stream` hanya punya satu jalur. Cache graph registry menjadi per
+    `(agent, model, max_tokens)`.
+  - Built-in hanya di-seed jika agent dasarnya terdaftar (`create_app(builtin_projects=...)` untuk
+    test), dan diurutkan berdasarkan nama.
+  - Commit 1 dan 2 digabung (schema + tabel/repository), dan commit 3–5 digabung (route CRUD, chat
+    di project, seed built-in), karena `app.py`, `run_input.py`, dan `threads.py` dipakai bersama.
+  - UI Streamlit belum mendapat pemilih project; UI project dibangun di React (F34).
 - **Acceptance criteria:**
-  - [ ] User bisa CRUD project miliknya. Project built-in read-only.
-  - [ ] Run di dalam project memakai model dan `max_tokens` project.
-  - [ ] Thread tercatat di project dan bisa difilter.
+  - [x] User bisa CRUD project miliknya. Project built-in read-only (403), dan project user lain
+        404 di semua endpoint.
+  - [x] Run di dalam project memakai model dan `max_tokens` project (dites dengan agent perekam
+        dan `ReasoningChatOpenAI`, termasuk prioritas model request).
+  - [x] Thread tercatat di project (`ThreadSummary.project_id`) dan bisa difilter
+        (`/projects/{project_id}/threads`).
 - **Squash title:** `feat(service): add projects as declarative agents (F26)`
 
 ### F27: Context builder
@@ -1206,9 +1225,25 @@ F32 → F33 → F34 → *rilis v0.6.0* → F35 → F36 → F37 → F38 → *rili
   2. `feat(agents): build system prompts through ContextBuilder`
   3. `feat(agents): include project instructions in prompts`
   4. `docs: record F27 context builder decisions`
+- **Langkah 1 (keputusan user):** bagian lingkungan selalu ada di semua agent (FR-37), termasuk
+  `chatbot` yang di v1 tanpa system prompt. Acceptance "prompt sama dengan v1" direvisi menjadi
+  "isi dan urutan instruksi agent v1 tetap, hanya ditambah bagian lingkungan".
+- **Penyesuaian saat implementasi:**
+  - Slot skill dan memory berupa `SectionProvider` opsional, supaya F28/F30 hanya menambah provider.
+  - `Clock`/`local_now` pindah dari `agents/tool_calling.py` ke `harness/context.py`, karena
+    harness tidak boleh meng-import `agents/`. Test layering `tests/harness/test_layering.py`
+    menegakkan batas import harness.
+  - Expert supervisor memakai `use_project_instructions=False`; instruksi project diterapkan
+    supervisor.
+  - Commit 2 dan 3 digabung, karena node agent membaca `config` untuk keduanya sekaligus.
+  - `interrupt-agent` belum memakai `ContextBuilder` (di luar daftar file F27).
+  - Smoke test `qwen3.5:9b`: chatbot tanpa project menjawab tanggal hari ini dengan benar, dan di
+    project dengan instruksi "jawab dalam Bahasa Indonesia, satu kalimat" menjawab pertanyaan
+    berbahasa Inggris dalam satu kalimat Bahasa Indonesia.
 - **Acceptance criteria:**
-  - [ ] Test snapshot prompt yang dirakit, termasuk batas ukuran per bagian.
-  - [ ] Perilaku agent v1 tanpa project tidak berubah (test lama hijau).
+  - [x] Test snapshot prompt yang dirakit, termasuk batas ukuran per bagian.
+  - [x] Instruksi dan urutan prompt agent v1 tetap (test lama hijau setelah disesuaikan untuk
+        bagian lingkungan).
 - **Squash title:** `feat(harness): assemble prompts per turn with ContextBuilder (F27)`
 
 ### F28: Built-in skills
@@ -1236,11 +1271,30 @@ F32 → F33 → F34 → *rilis v0.6.0* → F35 → F36 → F37 → F38 → *rili
   5. `feat(service): add read-only skill routes`
   6. `feat(agents): add built-in demo skills`
   7. `docs: record F28 skill decisions`
+- **Langkah 1 (keputusan user):** `Project.skill_ids` memakai ID lengkap `<scope>/<name>` (ADR 0005),
+  sehingga pola `SkillId` dari F26 diubah (belum dirilis). `load_skill` di-bind hanya pada giliran
+  yang project-nya punya skill aktif, termasuk untuk chatbot.
+- **Penyesuaian saat implementasi:**
+  - Paket di `harness/skills/` (`model`, `parser`, `sources`, `registry`, `toolkit`) dan
+    `harness/tools/load_skill.py`. `SkillToolkit` menggabungkan indeks prompt dan tool, dan
+    `ContextBuilder.with_skills()` memasangnya, supaya indeks dan tool berasal dari sumber yang sama.
+  - `ChatbotAgent` menjadi subclass `ToolCallingAgent` tanpa tool bawaan. `ToolCallingAgent`
+    memilih model tanpa/dengan `load_skill` per giliran.
+  - `SkillRegistry` dibuat di `create_app` (agent memegang referensinya) dan dimuat di lifespan.
+  - `config` di tool disuntikkan LangChain (parameter `RunnableConfig`), tidak terlihat oleh model.
+  - Dependency: `pyyaml` dideklarasikan di extra `service` (sebelumnya hanya transitif), dan
+    `types-pyyaml` di grup dev untuk pyrefly.
+  - Ditambah `AgentClient.list_skills()`/`get_skill()` dan test e2e bahwa skill ada di image service
+    (data `.md` ikut di wheel).
+  - Commit 1–4 digabung menjadi commit harness, dan 5–6 menjadi commit service/agent, karena
+    `app.py`, `catalog.py`, dan `tool_calling.py` disentuh bersama.
 - **Acceptance criteria:**
-  - [ ] `FakeModel` yang di-script memanggil `load_skill` dan menerima isi skill.
-  - [ ] Skill yang tidak aktif di project → error tool, bukan isi skill.
-  - [ ] Skill tidak valid dilewati dan tercatat di log, dan startup tetap berjalan.
-  - [ ] Smoke test `qwen3.5:9b`: model memuat skill yang relevan dari deskripsinya.
+  - [x] `FakeModel` yang di-script memanggil `load_skill` dan menerima isi skill.
+  - [x] Skill yang tidak aktif di project → error tool, bukan isi skill.
+  - [x] Skill tidak valid dilewati dan tercatat di log, dan startup tetap berjalan.
+  - [x] Smoke test `qwen3.5:9b`: transkrip rapat → model memanggil `load_skill("meeting-notes")` dan
+        menulis catatan sesuai format skill. Pertanyaan umum ("capital of Japan") → tidak ada skill
+        yang dimuat.
 - **Squash title:** `feat(harness): add built-in skills with progressive disclosure (F28)`
 
 ### F29: Context policy
@@ -1258,9 +1312,23 @@ F32 → F33 → F34 → *rilis v0.6.0* → F35 → F36 → F37 → F38 → *rili
   2. `feat(harness): summarize older turns into thread state`
   3. `feat(agents): apply ContextPolicy before model calls`
   4. `docs: record F29 context policy decisions`
+- **Langkah 1 (keputusan user):** `CONTEXT_MAX_TOKENS` default 16.000 (qwen3.5:9b di Ollama
+  terukur membaca prompt ±35k token tanpa pemotongan). Peringkasan bertahap: saat anggaran
+  terlampaui, giliran lama diringkas sampai riwayat langsung tinggal ±50% anggaran.
+- **Penyesuaian saat implementasi:**
+  - `trim_messages` tidak dipakai. Pengelompokan unit sendiri (`message_units`) lebih jelas untuk
+    menjamin tool call tidak terpisah dan untuk memisahkan bagian yang diringkas.
+  - State: `summary` + `summarized_through` (ID message, bukan indeks). Ringkasan masuk
+    `ContextBuilder` sebagai bagian `## Summary of earlier conversation` (sebelum lingkungan),
+    bukan message tambahan, karena sebagian template chat menolak system message kedua.
+  - `SKIP_STREAM_TAG` pindah ke `core/constants.py` (dipakai harness, agent, dan service).
+  - Commit 1–2 digabung (satu modul `context_policy.py`), dan commit 3 membawa setting
+    `CONTEXT_MAX_TOKENS`.
 - **Acceptance criteria:**
-  - [ ] Thread panjang: input model selalu di bawah `CONTEXT_MAX_TOKENS`.
-  - [ ] Pasangan tool call tidak pernah terpotong. `/history` tetap lengkap.
+  - [x] Thread panjang: input model selalu di bawah `CONTEXT_MAX_TOKENS`.
+  - [x] Pasangan tool call tidak pernah terpotong. `/history` tetap lengkap.
+  - [x] Smoke test `qwen3.5:9b` (`CONTEXT_MAX_TOKENS=1000`): 8 giliran, satu peringkasan (±15
+        detik), dan fakta dari giliran pertama masih dijawab benar lewat ringkasan.
 - **Squash title:** `feat(harness): add context trimming and summarization (F29)`
 
 ### F30: Long-term memory
@@ -1279,10 +1347,33 @@ F32 → F33 → F34 → *rilis v0.6.0* → F35 → F36 → F37 → F38 → *rili
   3. `feat(harness): inject relevant memories into prompts`
   4. `feat(service): let users list and delete memories`
   5. `docs: record F30 memory decisions`
+- **Langkah 1 (keputusan user):** persetujuan lewat balasan teks pada interrupt (tanpa field API
+  baru): "yes"/"ya"/... menyimpan, balasan lain menolak dan diteruskan ke model. Prompt berisi
+  memory terbaru (maksimal 20, dibatasi 4000 karakter), dan `search_memory` mencari dengan kata
+  kunci. Memory untuk `chatbot` dan `research-assistant` saja.
+- **Penyesuaian saat implementasi:**
+  - Repository di `memory/user_memories.py` (`UserMemoryRepository`, dipakai harness dan route),
+    tool di `harness/tools/memory.py`, dan `MemoryToolkit` di `harness/memory.py`. Pool psycopg
+    bersama checkpointer dipindah ke `memory/pool.py`.
+  - Store diberikan lewat `BaseAgent.build(model, checkpointer, store=None)` dan
+    `AgentRegistry(..., store)`, karena pool baru ada di lifespan. Tool dibuat per graph dengan
+    closure atas repository, bukan `get_store()` (eksplisit). Slot `memory: SectionProvider` di
+    `ContextBuilder` diganti argumen `memories` per panggilan, karena pembacaan store bersifat async.
+  - ID memory = uuid5 dari teks. `ToolNode` menjalankan ulang tool call yang sudah disetujui saat
+    run dilanjutkan, dan ID deterministik mencegah duplikat (diukur dengan probe).
+  - Batas 200 memory dan 500 karakter per memory. Revisi Alembic `0004` (tanpa perubahan skema)
+    memaksa database lama menjalankan `run_migrate` sehingga tabel store dibuat.
+  - Ditambah `AgentClient.list_memories()`/`delete_memory()` dan test e2e tabel store di image.
+  - Commit 2–3 digabung (tool dan bagian prompt berada di toolkit yang sama), dan commit 4 membawa
+    perubahan agent, registry, dan client.
 - **Acceptance criteria:**
-  - [ ] Memory tersimpan hanya setelah disetujui, dan muncul di prompt thread lain milik user yang
-        sama.
-  - [ ] Memory user lain tidak pernah terbaca (NFR-9).
+  - [x] Memory tersimpan hanya setelah disetujui, dan muncul di prompt thread lain milik user yang
+        sama (test agent dan route).
+  - [x] Memory user lain tidak pernah terbaca (NFR-9): repository, prompt, tool, dan route dites.
+  - [x] Smoke test `qwen3.5:9b`: "remember my name is Rani, answer in Indonesian" → pertanyaan
+        persetujuan → "yes" → tersimpan. Thread baru menjawab "Namamu adalah Rani.", user lain
+        tidak tahu namanya, penolakan tidak menyimpan, dan pertanyaan umum tidak memicu
+        `save_memory`.
 - **Squash title:** `feat(harness): add long-term user memory (F30)`
 
 ### F31: Evals & tracing
@@ -1304,9 +1395,25 @@ F32 → F33 → F34 → *rilis v0.6.0* → F35 → F36 → F37 → F38 → *rili
   2. `feat(evals): add deterministic and llm judge scorers`
   3. `feat(service): record run traces`
   4. `docs: document how to run evals`
+- **Langkah 1 (keputusan user):** trace di tabel Postgres `run_traces` (tanpa infrastruktur baru),
+  dibaca lewat `GET /runs/{run_id}/trace` (pemilik run saja). LLM judge ditunda; F31 hanya memakai
+  cek deterministik.
+- **Penyesuaian saat implementasi:**
+  - Trace: `RunTraceCollector` (`service/tracing.py`, callback LangChain) dipasang per run di
+    `/invoke` dan `/stream` (termasuk route project), dan menulis semua span sekali di akhir run.
+    Repository di `memory/traces.py`. Isi prompt/jawaban/argumen tool tidak disimpan.
+  - Status `interrupted` untuk run yang berhenti bertanya, dan untuk `save_memory` yang memanggil
+    `interrupt()` (bukan error).
+  - `ModelFactory` memakai `stream_usage=True` supaya token tersedia saat streaming.
+  - Eval: `evals/` (dataset, scoring, runner, report, settings) hanya meng-import `client/` dan
+    `schema/`; extra `evals`; entrypoint `run_evals`. Skill yang dimuat dibaca dari argumen
+    `load_skill` di `/history`, latensi dan token dari trace.
+  - Smoke eval CI berjalan sebagai test pytest in-process (`tests/evals/test_datasets.py`), dan
+    test e2e menjalankan CLI terhadap stack Compose.
+  - Commit 2 (LLM judge) dihapus. Urutan commit: trace dulu (runner membutuhkan endpoint trace).
 - **Acceptance criteria:**
-  - [ ] Eval skill (F28) dengan model asli menghasilkan laporan skor.
-  - [ ] Trace satu run memuat panggilan model, tool, token, dan latensi.
+  - [x] Eval skill (F28) dengan model asli menghasilkan laporan skor (smoke `qwen3.5:9b`).
+  - [x] Trace satu run memuat panggilan model, tool, token, dan latensi.
 - **Squash title:** `feat(evals): add evaluation runner and run tracing (F31)`
 - **Setelah merge:** rilis **v0.5.0**.
 

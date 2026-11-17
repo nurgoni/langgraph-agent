@@ -2,12 +2,9 @@ import pytest
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import empty_checkpoint
 
-from agent_service.memory.checkpointer import (
-    SAVER_CONNECTION_KWARGS,
-    CheckpointerAlreadyOpenError,
-    CheckpointerProvider,
-)
+from agent_service.memory.checkpointer import CheckpointerAlreadyOpenError, CheckpointerProvider
 from agent_service.memory.database import DatabaseUnavailableError
+from agent_service.memory.pool import SAVER_CONNECTION_KWARGS
 
 THREAD_ID = "thread-1"
 # Port 1 di loopback: koneksi ditolak. Di Windows penolakan baru terlihat setelah timeout.
@@ -61,7 +58,7 @@ async def test_pool_is_closed_on_exit(database_url: str) -> None:
 
 
 async def test_unreachable_database_fails_fast_with_hint(monkeypatch: pytest.MonkeyPatch) -> None:
-    module = "agent_service.memory.checkpointer"
+    module = "agent_service.memory.pool"
     monkeypatch.setattr(f"{module}.POOL_OPEN_TIMEOUT_SECONDS", 1.0)
     monkeypatch.setitem(SAVER_CONNECTION_KWARGS, "connect_timeout", 1)
 

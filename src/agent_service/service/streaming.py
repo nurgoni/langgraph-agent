@@ -9,6 +9,7 @@ from langgraph.types import Interrupt, StreamMode
 
 from agent_service.agents.base import AgentGraph
 from agent_service.agents.supervisor import SUBAGENT_TAG
+from agent_service.core.constants import SKIP_STREAM_TAG
 from agent_service.llm.reasoning import message_reasoning
 from agent_service.schema.responses import ChatMessage
 from agent_service.schema.stream import (
@@ -28,6 +29,7 @@ from agent_service.service.converters import (
     langchain_to_chat_message,
 )
 from agent_service.service.run_input import RunInput
+from agent_service.service.tracing import RunTraceCollector
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +37,6 @@ UPDATES_MODE: Final = "updates"
 MESSAGES_MODE: Final = "messages"
 CUSTOM_MODE: Final = "custom"
 STREAM_MODES: Final[list[StreamMode]] = [UPDATES_MODE, MESSAGES_MODE, CUSTOM_MODE]
-# Node yang memanggil LLM untuk keperluan internal (misalnya klasifikasi) diberi tag ini supaya
-# tokennya tidak tampil ke user.
-SKIP_STREAM_TAG: Final = "skip_stream"
 STREAM_ERROR_DETAIL: Final = "Internal server error"
 
 SSE_DATA_PREFIX: Final = "data: "
@@ -66,17 +65,27 @@ class StreamService:
     event, sehingga tidak perlu dioper ke setiap function.
     """
 
-    def __init__(self, graph: AgentGraph, run: RunInput, stream_tokens: bool) -> None:
+    def __init__(
+        self,
+        graph: AgentGraph,
+        run: RunInput,
+        stream_tokens: bool,
+        tracer: RunTraceCollector | None = None,
+    ) -> None:
         """Inisialisasi streamer.
 
         Args:
             graph: Graph agent untuk model yang dipilih.
             run: Input dan config run dari `build_run_input`.
             stream_tokens: Kirim frame `token` dari LLM (`StreamInput.stream_tokens`).
+            tracer: Trace run (FR-41), sudah terpasang di `run.config`. Disimpan setelah run
+                selesai, gagal, atau terputus. `None` berarti tanpa trace.
         """
         self._graph = graph
         self._run = run
         self._stream_tokens = stream_tokens
+        self._tracer = tracer
+        self._interrupted = False
         self._run_id = str(run.run_id)
         # Message expert dikirim lebih awal lewat mode `custom`, lalu muncul lagi di update node
         # `delegate`. ID yang sudah terkirim dicatat supaya tidak dikirim dua kali.
@@ -92,10 +101,23 @@ class StreamService:
             async for event in self._events():
                 yield sse_frame(event)
         # Batas sistem: error apa pun dari agent tidak boleh memutus stream tanpa frame penutup.
-        except Exception:
+        except Exception as error:
             logger.exception("Stream failed run_id=%s", self._run_id)
+            await self._save_trace(error)
             yield sse_frame(ErrorEvent(content=STREAM_ERROR_DETAIL))
+            yield DONE_FRAME
+            return
+        await self._save_trace(None)
         yield DONE_FRAME
+
+    async def _save_trace(self, error: Exception | None) -> None:
+        """Simpan trace run dengan status akhirnya, jika streamer punya tracer."""
+        if self._tracer is None:
+            return
+        if error is not None:
+            await self._tracer.save("error", error)
+            return
+        await self._tracer.save("interrupted" if self._interrupted else "ok")
 
     async def _events(self) -> AsyncGenerator[StreamEvent]:
         """Teruskan setiap item `astream` ke handler sesuai stream mode."""
@@ -118,6 +140,7 @@ class StreamService:
         events: list[StreamEvent] = []
         for node, update in updates.items():
             if node == INTERRUPT_KEY:
+                self._interrupted = True
                 events.extend(self._interrupt_events(update))
             elif isinstance(update, Mapping):
                 events.extend(self._message_events(update.get(MESSAGES_KEY, [])))

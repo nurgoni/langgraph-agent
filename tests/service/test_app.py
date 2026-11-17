@@ -2,6 +2,7 @@ import psycopg
 import pytest
 from fastapi import FastAPI
 from langchain_core.language_models import BaseChatModel
+from langgraph.store.base import BaseStore
 from pydantic import SecretStr
 
 from agent_service.agents.base import AgentGraph, Checkpointer
@@ -19,7 +20,9 @@ from agent_service.service.threads import ThreadRepository
 
 
 class BrokenAgent(ChatbotAgent):
-    def build(self, model: BaseChatModel, checkpointer: Checkpointer) -> AgentGraph:
+    def build(
+        self, model: BaseChatModel, checkpointer: Checkpointer, store: BaseStore | None = None
+    ) -> AgentGraph:
         raise ValueError("cannot build")
 
 

@@ -16,21 +16,25 @@ valid untuk API OpenAI-compatible.
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, NotRequired
 from uuid import uuid4
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.messages.tool import ToolCall
+from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.managed import RemainingSteps
+from langgraph.store.base import BaseStore
 
 from agent_service.agents.base import AgentGraph, BaseAgent, Checkpointer
 from agent_service.agents.tool_calling import (
     MIN_REMAINING_STEPS,
     STEP_LIMIT_MESSAGE,
+    ModelTurnUpdate,
     ToolCallingAgent,
+    model_turn_update,
 )
 from agent_service.agents.tools.calculator import calculator
 from agent_service.agents.tools.web_search import (
@@ -38,6 +42,8 @@ from agent_service.agents.tools.web_search import (
     UnconfiguredSearch,
     create_web_search_tool,
 )
+from agent_service.harness.context import ContextBuilder
+from agent_service.harness.context_policy import ContextPolicy
 
 SUPERVISOR_AGENT_ID: Final = "supervisor"
 SUPERVISOR_DESCRIPTION: Final = (
@@ -70,9 +76,8 @@ You are a math expert. Solve the task with the calculator tool, one expression a
 reply with the result and a short explanation."""
 
 RESEARCH_EXPERT_PROMPT: Final = """\
-You are a research expert with web search. Today's date is {current_date}. Find the facts the
-task asks for and cite one or two sources as markdown links returned by web_search. Do not do
-arithmetic."""
+You are a research expert with web search. Find the facts the task asks for and cite one or two
+sources as markdown links returned by web_search. Do not do arithmetic."""
 
 
 @dataclass(frozen=True)
@@ -87,16 +92,19 @@ class Expert:
     def tool_name(self) -> str:
         """Nama tool delegasi untuk expert ini.
 
-        >>> Expert("math_expert", "Math", ToolCallingAgent("m", "M", [], "")).tool_name
+        >>> agent = ToolCallingAgent("m", "M", [], ContextBuilder())
+        >>> Expert("math_expert", "Math", agent).tool_name
         'ask_math_expert'
         """
         return DELEGATE_TOOL_PREFIX + self.name
 
 
 class SupervisorState(MessagesState):
-    """Riwayat message, termasuk message expert yang ditandai, dan sisa langkah."""
+    """Riwayat message (termasuk message expert yang ditandai), ringkasan, dan sisa langkah."""
 
     remaining_steps: RemainingSteps
+    summary: NotRequired[str]
+    summarized_through: NotRequired[str]
 
 
 def delegation_tool(expert: Expert) -> dict[str, object]:
@@ -178,7 +186,8 @@ class SupervisorAgent(BaseAgent):
         agent_id: str,
         description: str,
         experts: Sequence[Expert],
-        system_prompt: str = SUPERVISOR_PROMPT,
+        context: ContextBuilder | None = None,
+        context_policy: ContextPolicy | None = None,
     ) -> None:
         """Inisialisasi supervisor.
 
@@ -186,23 +195,31 @@ class SupervisorAgent(BaseAgent):
             agent_id: ID agent di registry.
             description: Deskripsi untuk `/info`.
             experts: Sub-agent yang bisa dipanggil. Nama harus unik.
-            system_prompt: Instruksi untuk supervisor.
+            context: Perakit system prompt supervisor. Default: `SUPERVISOR_PROMPT` dengan instruksi
+                project dan bagian lingkungan.
+            context_policy: Anggaran token riwayat yang dilihat supervisor. Default:
+                `ContextPolicy()`. Expert tidak butuh ini, karena setiap delegasi mulai bersih.
         """
         super().__init__(agent_id=agent_id, description=description)
         self._experts = list(experts)
-        self._system_prompt = system_prompt
+        self._policy = ContextPolicy() if context_policy is None else context_policy
+        self._context = ContextBuilder(SUPERVISOR_PROMPT) if context is None else context
 
     @property
     def experts(self) -> list[Expert]:
         """Expert yang bisa dipanggil supervisor, urut sesuai pendaftaran."""
         return list(self._experts)
 
-    def build(self, model: BaseChatModel, checkpointer: Checkpointer) -> AgentGraph:
+    def build(
+        self, model: BaseChatModel, checkpointer: Checkpointer, store: BaseStore | None = None
+    ) -> AgentGraph:
         """Compile graph `supervisor ⇄ delegate`. Supervisor dan semua expert memakai `model`.
 
         Args:
             model: Chat model dari request, dipakai juga oleh setiap expert (FR-4).
             checkpointer: Saver tempat riwayat thread, termasuk message expert, disimpan.
+            store: Tidak dipakai. Supervisor dan expert tidak memakai long-term memory, karena
+                interrupt persetujuan di dalam expert stateless tidak bisa dilanjutkan.
 
         Returns:
             Graph yang sudah di-compile.
@@ -214,13 +231,16 @@ class SupervisorAgent(BaseAgent):
         }
 
         # Closure, bukan method: satu instance agent membangun graph untuk beberapa model.
-        async def supervise(state: SupervisorState) -> dict[str, list[AIMessage]]:
+        async def supervise(state: SupervisorState, config: RunnableConfig) -> ModelTurnUpdate:
             visible = [m for m in state["messages"] if subagent_name(m) is None]
-            prompt = SystemMessage(content=self._system_prompt)
-            response = await supervisor_model.ainvoke([prompt, *visible])
+            window = await self._policy.prepare(
+                model, visible, state.get("summary", ""), state.get("summarized_through", "")
+            )
+            prompt = self._context.system_message(config, window.summary)
+            response = await supervisor_model.ainvoke([prompt, *window.messages])
             if response.tool_calls and state["remaining_steps"] < MIN_REMAINING_STEPS:
-                return {"messages": [AIMessage(id=response.id, content=STEP_LIMIT_MESSAGE)]}
-            return {"messages": [response]}
+                response = AIMessage(id=response.id, content=STEP_LIMIT_MESSAGE)
+            return model_turn_update(response, window)
 
         async def delegate(state: SupervisorState) -> dict[str, list[BaseMessage]]:
             last = state["messages"][-1]
@@ -279,13 +299,25 @@ async def run_expert(
     return [*expert_messages, summary]
 
 
-def create_supervisor_agent(search_backend: SearchBackend | None = None) -> SupervisorAgent:
+def expert_context(instructions: str) -> ContextBuilder:
+    """Prompt expert: instruksi expert dan lingkungan, tanpa instruksi project.
+
+    Expert tidak melihat percakapan dan hanya mengerjakan satu tugas teknis. Instruksi project
+    (misalnya gaya jawaban) diterapkan supervisor saat menyusun jawaban akhir.
+    """
+    return ContextBuilder(instructions, use_project_instructions=False)
+
+
+def create_supervisor_agent(
+    search_backend: SearchBackend | None = None, context_policy: ContextPolicy | None = None
+) -> SupervisorAgent:
     """Buat supervisor dengan `math_expert` (kalkulator) dan `research_expert` (web search).
 
     Function, bukan class: factory konfigurasi tanpa state sendiri.
 
     Args:
         search_backend: Mesin pencari untuk research expert. Default: `UnconfiguredSearch`.
+        context_policy: Anggaran token riwayat supervisor. Default: `ContextPolicy()`.
 
     Returns:
         Agent `supervisor` yang siap didaftarkan.
@@ -296,7 +328,9 @@ def create_supervisor_agent(search_backend: SearchBackend | None = None) -> Supe
     math_expert = Expert(
         name="math_expert",
         description="Solves arithmetic and math problems with a calculator.",
-        agent=ToolCallingAgent("math_expert", "Math expert", [calculator], MATH_EXPERT_PROMPT),
+        agent=ToolCallingAgent(
+            "math_expert", "Math expert", [calculator], expert_context(MATH_EXPERT_PROMPT)
+        ),
     )
     research_expert = Expert(
         name="research_expert",
@@ -305,11 +339,12 @@ def create_supervisor_agent(search_backend: SearchBackend | None = None) -> Supe
             "research_expert",
             "Research expert",
             [create_web_search_tool(search_backend or UnconfiguredSearch())],
-            RESEARCH_EXPERT_PROMPT,
+            expert_context(RESEARCH_EXPERT_PROMPT),
         ),
     )
     return SupervisorAgent(
         agent_id=SUPERVISOR_AGENT_ID,
         description=SUPERVISOR_DESCRIPTION,
         experts=[math_expert, research_expert],
+        context_policy=context_policy,
     )

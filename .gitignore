@@ -20,3 +20,6 @@ coverage.xml
 htmlcov/
 dist/
 build/
+
+# Eval reports from real models are not committed (F31)
+eval-reports/

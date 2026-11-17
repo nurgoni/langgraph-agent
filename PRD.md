@@ -217,21 +217,27 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
   berisi `base_agent_id`, `model`, `instructions`, `skill_ids`, dan `settings` yang divalidasi.
   Setiap thread punya `project_id`, dan listing thread bisa difilter per project.
 - **FR-37** System prompt dirakit setiap giliran oleh `ContextBuilder`, dengan urutan tetap: instruksi
-  agent, instruksi project, indeks skill, memory user, dan informasi lingkungan (tanggal,
-  timezone). Setiap bagian punya batas ukuran.
+  agent, instruksi project, indeks skill, memory user, ringkasan percakapan lama (FR-39), dan
+  informasi lingkungan (tanggal, timezone). Setiap bagian punya batas ukuran.
 - **FR-38** Skill built-in ([ADR 0005](docs/adr/0005-skill-format-and-sources.md)) berformat
   `SKILL.md` di `src/agent_service/skills/builtin/`. Skill divalidasi saat startup (yang tidak valid
   dilewati dan dicatat di log). `GET /skills` dan `GET /skills/{id}` (read-only). Tool
   `load_skill(name, path?)` hanya bisa memuat skill yang aktif di Project.
 - **FR-39** Context management. Sebelum memanggil model, riwayat dipangkas ke anggaran
-  `CONTEXT_MAX_TOKENS`. Giliran lama diringkas, dan ringkasannya disimpan di state thread. Riwayat
-  lengkap tetap tersedia di `/history`.
-- **FR-40** Long-term memory per user (`AsyncPostgresStore`). Tool `search_memory` membaca, dan
-  `save_memory` hanya menyimpan setelah user menyetujui (interrupt). User bisa melihat dan
-  menghapus memory lewat `GET`/`DELETE /memories`.
-- **FR-41** Evaluasi dan tracing. Dataset eval di `evals/` dijalankan lewat CLI dan menghasilkan
-  laporan skor (cek deterministik + LLM judge opsional). Setiap run mencatat trace (panggilan model,
-  tool, token, latensi). Backend tracing diputuskan di Langkah 1 F31.
+  `CONTEXT_MAX_TOKENS` (default 16.000, mencakup riwayat dan ringkasan). Saat anggaran terlampaui,
+  giliran lama diringkas sekaligus sampai riwayat langsung tinggal ±50% anggaran, dan ringkasannya
+  disimpan di state thread. Tool call dan hasilnya tidak pernah dipisah. Riwayat lengkap tetap
+  tersedia di `/history`.
+- **FR-40** Long-term memory per user (`AsyncPostgresStore`) untuk `chatbot` dan
+  `research-assistant`. Hingga 20 memory terbaru masuk ke system prompt. Tool `search_memory`
+  mencari dengan kata kunci, dan `save_memory` hanya menyimpan setelah user menyetujui lewat balasan
+  teks pada interrupt ("yes"/"ya"; balasan lain menolak dan diteruskan ke model). Maksimal 200
+  memory per user. User bisa melihat dan menghapus memory lewat `GET`/`DELETE /memories`.
+- **FR-41** Evaluasi dan tracing. Dataset eval di `evals/` dijalankan lewat CLI (`run_evals`) dan
+  menghasilkan laporan skor dengan cek deterministik (teks, tool, skill, latensi). LLM judge ditunda.
+  Setiap run `/invoke` dan `/stream` mencatat trace (panggilan model, tool, token, latensi, status)
+  di tabel Postgres `run_traces`, tanpa isi prompt/jawaban. Pemilik run membacanya lewat
+  `GET /runs/{run_id}/trace`.
 
 ### Fase 2: Frontend (M6)
 
@@ -329,6 +335,11 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
 | GET | `/{agent_id}/threads` | query `limit` (1–100, default 20) | `UserThreads` |
 | PATCH | `/{agent_id}/threads/{thread_id}` | `ThreadRenameInput` | `ThreadSummary` |
 | DELETE | `/{agent_id}/threads/{thread_id}` | – | 204 |
+| GET | `/skills`, `/skills/{scope}/{name}` | – | `SkillList` / `SkillDetail` |
+| GET, POST | `/projects` | – / `ProjectCreate` | `ProjectList` / `Project` (201) |
+| GET, PATCH, DELETE | `/projects/{project_id}` | – / `ProjectUpdate` / – | `Project` / `Project` / 204 |
+| POST | `/projects/{project_id}/invoke`, `/stream`, `/history` | sama dengan route agent | sama dengan route agent |
+| GET, PATCH, DELETE | `/projects/{project_id}/threads[/{thread_id}]` | sama dengan route agent | sama dengan route agent |
 | GET | `/health` | – | `{"status": "ok"}` |
 
 Varian tanpa `{agent_id}` (`/invoke`, `/stream`, dan seterusnya) memakai agent default. Mulai F24,
@@ -339,9 +350,8 @@ dan pemilik thread diambil dari token (FR-33).
 
 | Method | Path | FR | Fitur |
 |---|---|---|---|
-| GET, POST, PATCH, DELETE | `/projects`, `/projects/{project_id}` | FR-36 | F26 |
-| GET | `/skills`, `/skills/{skill_id}` | FR-38 | F28 |
 | GET, DELETE | `/memories`, `/memories/{memory_id}` | FR-40 | F30 |
+| GET | `/runs/{run_id}/trace` | FR-41 | F31 |
 | POST, GET | `/artifacts`, `/artifacts/{artifact_id}` | FR-46 | F35 |
 | GET | `/jobs`, `/jobs/{job_id}/runs` | FR-53 | F41 |
 | POST, GET, DELETE | `/projects/{project_id}/documents` | FR-55 | F43 |
@@ -360,7 +370,18 @@ ChatMessage     { type: "human"|"ai"|"tool"|"custom", content: str, tool_calls: 
                   custom_data?: dict }
 ChatHistoryInput { thread_id: str }
 ChatHistory     { messages: list[ChatMessage] }
-ThreadSummary   { thread_id: str, agent_id: str, title: str, updated_at?: datetime }
+ThreadSummary   { thread_id: str, agent_id: str, project_id?: str, title: str,
+                  updated_at?: datetime }
+ProjectCreate   { name: str, base_agent_id: str, description?: str, model?: str,
+                  instructions?: str, skill_ids?: list["<scope>/<name>"],
+                  settings?: ProjectSettings }
+ProjectUpdate   ProjectCreate tanpa base_agent_id, semua opsional (PATCH)
+ProjectSettings { max_tokens?: int }
+SkillSummary    { id: "<scope>/<name>", name, description, scope, version, read_only,
+                  resources: list[str] }
+SkillDetail     SkillSummary + { body: str }
+Project         ProjectCreate + { id, scope: "builtin"|"user", read_only, created_at,
+                  updated_at }
 ThreadRenameInput { title: str (1–TITLE_MAX_LENGTH karakter) }
 AgentInfo       { key: str, description: str, config_schema: dict (JSON Schema) }
 ```
@@ -471,9 +492,13 @@ Rincian fitur per milestone, urutan eksekusi, dan rencana commit ada di
 
 6. Sumber data analisa: apakah sudah ada read replica atau user database read-only? Apakah data
    perlu di-mask (PII) sebelum dikirim ke LLM yang bukan lokal? (F39)
-7. Backend tracing: Langfuse self-hosted, OpenTelemetry, atau tabel trace sendiri di Postgres? (F31)
-8. Bentuk route chat berbasis Project: `project_id` di body route lama, atau route baru
-   `/projects/{project_id}/stream`? (F26)
+7. ~~Backend tracing: Langfuse self-hosted, OpenTelemetry, atau tabel trace sendiri di Postgres?
+   (F31)~~ **Terjawab (2026-11-17):** tabel `run_traces` di Postgres, dibaca lewat
+   `GET /runs/{run_id}/trace`. Langfuse/OTel bisa ditambahkan kemudian sebagai exporter.
+8. ~~Bentuk route chat berbasis Project: `project_id` di body route lama, atau route baru
+   `/projects/{project_id}/stream`? (F26)~~ **Terjawab (2026-11-15):** route baru
+   `/projects/{project_id}/invoke|stream|history|threads`. Route `/{agent_id}/...` tetap untuk
+   chat tanpa project.
 9. Library PDF: `fpdf2`/`reportlab` (pure Python) atau WeasyPrint (HTML → PDF, butuh library
    sistem)? (F42)
 10. Parser dokumen untuk ingestion: cukup pypdf + python-docx, atau perlu parser tabel/scan

@@ -13,10 +13,12 @@ from typing import Final, Literal, NotRequired
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, START, MessagesState, StateGraph
+from langgraph.store.base import BaseStore
 from langgraph.types import interrupt
 from pydantic import BaseModel, Field
 
 from agent_service.agents.base import AgentGraph, BaseAgent, Checkpointer
+from agent_service.core.constants import SKIP_STREAM_TAG
 
 INTERRUPT_AGENT_ID: Final = "interrupt-agent"
 INTERRUPT_AGENT_DESCRIPTION: Final = (
@@ -25,8 +27,6 @@ INTERRUPT_AGENT_DESCRIPTION: Final = (
 EXTRACT_NODE: Final = "extract_birthdate"
 ASK_NODE: Final = "ask_birthdate"
 RESPOND_NODE: Final = "respond"
-# Panggilan LLM internal: hasilnya data terstruktur, bukan teks untuk user.
-SKIP_STREAM_TAG: Final = "skip_stream"
 DEFAULT_QUESTION: Final = "What is your birthdate? Please use YYYY-MM-DD, for example 1990-05-17."
 FUTURE_DATE_QUESTION: Final = (
     "That date is in the future. What is your birthdate? Please use YYYY-MM-DD."
@@ -154,12 +154,15 @@ class InterruptAgent(BaseAgent):
         super().__init__(agent_id=agent_id, description=description)
         self._today = today
 
-    def build(self, model: BaseChatModel, checkpointer: Checkpointer) -> AgentGraph:
+    def build(
+        self, model: BaseChatModel, checkpointer: Checkpointer, store: BaseStore | None = None
+    ) -> AgentGraph:
         """Compile graph `extract → (ask → extract)* → respond`.
 
         Args:
             model: Chat model untuk ekstraksi dan jawaban.
             checkpointer: Saver tempat riwayat dan tanggal lahir thread disimpan.
+            store: Tidak dipakai. Agent ini tidak memakai long-term memory.
 
         Returns:
             Graph yang sudah di-compile.

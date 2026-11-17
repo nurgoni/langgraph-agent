@@ -28,7 +28,8 @@ src/agent_service/
 ├── llm/       ModelFactory, FakeModel
 ├── agents/    BaseAgent, AgentRegistry, catalog, ChatbotAgent, ToolCallingAgent, InterruptAgent,
 │              SupervisorAgent, tools/
-├── memory/    DatabaseEngineProvider, migrator, CheckpointerProvider, ThreadMetadataRepository
+├── memory/    DatabaseEngineProvider, migrator, CheckpointerProvider, StoreProvider,
+│              ThreadMetadataRepository, UserMemoryRepository
 ├── schema/    Model Pydantic untuk API: request, response, event SSE, nama header
 ├── service/   create_app, lifespan, auth, route, StreamService, ThreadRepository
 ├── client/    AgentClient (sync + async), StreamRun, SseParser
@@ -185,6 +186,196 @@ Auth per user dengan JWT (FR-33), tanpa mode anonim: `JWT_SECRET` wajib diisi.
   API, header `Authorization`/`Content-Type`, dan mengekspos `X-Thread-Id`. Token dikirim lewat
   header, bukan cookie, jadi `allow_credentials` tidak dipakai.
 
+## System Prompt
+
+`ContextBuilder` (`harness/context.py`, FR-37, [ADR 0002](adr/0002-own-harness.md)) merakit system
+prompt di **setiap** panggilan model, dengan urutan bagian yang tetap:
+
+| Urutan | Bagian | Sumber | Batas |
+|---|---|---|---|
+| 1 | Instruksi agent (tanpa judul) | Konstruktor `ContextBuilder(instructions)` | 8000 |
+| 2 | `## Project instructions` | `configurable["project_instructions"]` (F26) | 8000 |
+| 3 | `## Skills` | `SkillToolkit` (F28): nama + deskripsi skill aktif | 4000 |
+| 4 | `## Memory` | `MemoryToolkit` (F30): 20 memory terbaru milik user | 4000 |
+| 5 | `## Summary of earlier conversation` | `ContextPolicy` (F29): ringkasan dari state thread | 4000 |
+| 6 | `## Environment` | `clock` yang di-inject: tanggal dan timezone | 300 |
+
+- **Batas per bagian.** Bagian yang melebihi batas dipotong dan diberi penanda `[truncated]`, jadi
+  satu sumber yang panjang tidak bisa mendorong bagian lain keluar. Bagian kosong dilewati.
+- **Komposisi, bukan base class.** `ChatbotAgent`, `ToolCallingAgent`, dan `SupervisorAgent`
+  menerima `ContextBuilder` lewat konstruktor dan memanggil `system_message(config)` di node, yang
+  menerima `config` dari LangGraph. Agent tidak lagi memformat `{current_date}` sendiri.
+- **Bagian lingkungan selalu ada** (keputusan user, F27), termasuk untuk `chatbot` yang di v1 tidak
+  punya system prompt. Prompt v1 hanya bertambah bagian ini; isi dan urutan instruksi agent tetap.
+- **Expert supervisor tidak menerima instruksi project** (`use_project_instructions=False`).
+  Expert tidak melihat percakapan dan hanya mengerjakan satu tugas teknis. Supervisor, yang
+  menyusun jawaban akhir, yang menerapkan instruksi project.
+- `interrupt-agent` masih memakai prompt tetap untuk ekstraksi dan jawaban, sehingga instruksi
+  project belum berlaku untuknya.
+
+## Context Policy
+
+`ContextPolicy` (`harness/context_policy.py`, FR-39) menjaga riwayat yang dikirim ke model tetap
+di bawah `CONTEXT_MAX_TOKENS` (default 16.000). Node model `ToolCallingAgent` dan `SupervisorAgent`
+memanggil `prepare()` sebelum setiap panggilan model.
+
+```text
+messages (state, lengkap) ──► sesudah summarized_through ──► muat di anggaran? ── ya ──► kirim
+                                                                   │ tidak
+                                                                   ▼
+                              unit lama ──► model (tag skip_stream) ──► summary baru (state)
+                              unit terbaru (≤ 50% anggaran) ──► kirim, ringkasan di system prompt
+```
+
+- **Unit.** `AIMessage` dengan `tool_calls` selalu satu unit dengan `ToolMessage`-nya, jadi
+  pemangkasan tidak pernah memisahkan tool call dari hasilnya. Unit terakhir selalu dikirim.
+- **Bertahap** (keputusan user F29). Saat anggaran terlampaui, unit lama diringkas sekaligus sampai
+  riwayat langsung tinggal `keep_ratio` (50%) anggaran. Giliran berikutnya tidak meringkas lagi
+  sampai anggaran penuh lagi, jadi panggilan model tambahan jarang terjadi.
+- **State thread.** `summary` dan `summarized_through` (ID message terakhir yang sudah diringkas)
+  disimpan di state graph. `messages` tidak pernah diubah, jadi `/history` tetap lengkap. Thread
+  lama tanpa field ini dianggap belum punya ringkasan.
+- **Batas.** Anggaran mencakup riwayat dan ringkasan. Ringkasan dibatasi `SUMMARY_MAX_CHARS` atau
+  seperempat anggaran. System prompt lain di luar anggaran karena setiap bagiannya sudah dibatasi.
+  Unit tunggal yang lebih besar dari anggaran (misalnya hasil tool yang sangat panjang) dipotong di
+  salinan yang dikirim, dengan penanda `[truncated]`.
+- **Peringkasan.** Model yang sama tanpa tool, bertag `skip_stream` (token dan reasoning-nya tidak
+  dialirkan ke chat). Backlog yang lebih besar dari anggaran diringkas per batch. Respons kosong
+  mempertahankan ringkasan lama. Kegagalan panggilan model tidak ditangkap, jadi run gagal seperti
+  kegagalan model biasa.
+- Token dihitung dengan `count_tokens_approximately` (±4 karakter per token). Pada `qwen3.5:9b`
+  perkiraan ini 1–8% di atas hitungan Ollama, jadi meleset ke sisi aman.
+- Expert supervisor memakai `ContextPolicy()` default (setiap delegasi mulai dari state kosong,
+  jadi praktis tidak pernah meringkas). `interrupt-agent` tidak memakainya karena percakapannya
+  pendek.
+
+## Long-Term Memory
+
+Memory user (FR-40) disimpan di `AsyncPostgresStore` dengan namespace
+`("users", user_id, "memories")`.
+
+```text
+model ──► save_memory(memory) ──► interrupt("Save this...?") ──► balasan user (pesan berikutnya)
+                                                                   │ "yes"/"ya"/...  │ lainnya
+                                                                   ▼                 ▼
+                                               UserMemoryRepository.save   ToolMessage "did not approve"
+setiap giliran: UserMemoryRepository.list_memories(user, 20) ──► ## Memory di system prompt
+```
+
+- **Store per graph.** Pool store baru dibuka di lifespan, sedangkan agent dibuat di `create_app`.
+  Karena itu `BaseAgent.build(model, checkpointer, store=None)` menerima store, dan
+  `AgentRegistry(model_factory, checkpointer, store)` meneruskannya. `ToolCallingAgent` dengan
+  `use_memory=True` membuat `MemoryToolkit(store)` per graph. Tanpa store, graph sama seperti
+  sebelum F30.
+- **Agent.** `chatbot` dan `research-assistant` (keputusan user F30). Supervisor dan expert-nya
+  tidak, karena expert dijalankan tanpa checkpoint sehingga interrupt persetujuan tidak bisa
+  dilanjutkan. Tool memory selalu di-bind di agent ber-memory.
+- **Persetujuan.** `save_memory` memanggil `interrupt()` dari dalam `ToolNode`. Run berhenti, dan
+  pertanyaannya tampil sebagai message AI. Pesan user berikutnya menjadi nilai resume. Jawaban
+  dianggap setuju jika diawali kata setuju (`yes`, `ya`, `ok`, `simpan`, ...) dan hanya berisi kata
+  setuju/pengisi, jadi "ya tapi ganti jadi X" adalah penolakan yang diteruskan ke model.
+- **Idempoten.** Saat run dilanjutkan, `ToolNode` menjalankan ulang semua tool call di giliran
+  itu, termasuk `save_memory` yang sudah disetujui. ID memory adalah uuid5 dari teks (tanpa beda
+  huruf besar-kecil), jadi penyimpanan ulang menimpa memory yang sama. Dua `save_memory` dalam satu
+  giliran ditanyakan bergantian.
+- **Isolasi (NFR-9).** User diambil dari `configurable["user_id"]` (diisi service dari token), dan
+  prefix namespace store dicocokkan per elemen. `GET`/`DELETE /memories` hanya membaca namespace
+  pemilik token. ID memory user lain menjawab 404.
+- **Pencarian** tanpa embedding: `search_memory` mengurutkan memory berdasarkan jumlah kata kunci
+  (≥ 3 huruf) yang menjadi awal kata di memory, lalu yang terbaru. Karena pencarian berjalan di
+  Python, jumlah memory dibatasi 200 per user sampai index embedding tersedia (F43).
+
+## Trace dan Eval
+
+**Trace** (FR-41, keputusan user F31: tabel Postgres, dibaca lewat API).
+
+```text
+route /invoke|/stream ──► RunTraceCollector (callback LangChain di config run)
+                            on_chat_model_start/on_llm_end   → span model (+ usage_metadata)
+                            on_tool_start/on_tool_end/error  → span tool
+akhir run ──► save(status) ──► RunTraceRepository.add_spans (satu INSERT) ──► run_traces
+GET /runs/{run_id}/trace ──► span milik pemilik token, span `run` lebih dulu
+```
+
+- **Span.** `run` (span_id = run_id, durasi seluruh run, total token, status akhir), `model`, dan
+  `tool`. Hierarki tidak disimpan; span diurutkan berdasarkan waktu mulai. Panggilan model
+  peringkasan (F29) dan expert supervisor ikut tercatat karena callback diwariskan lewat config.
+- **Status.** `ok`, `error` (nama exception + pesan, ≤ 500 karakter), atau `interrupted` (run
+  berhenti untuk bertanya; `GraphInterrupt` di dalam tool `save_memory` juga dicatat sebagai
+  `interrupted`, bukan error).
+- **Tanpa konten.** Prompt, jawaban, dan argumen/hasil tool tidak disimpan. Isi percakapan sudah
+  ada di checkpoint, jadi trace tidak menggandakan data user.
+- **Tulis sekali.** Span dikumpulkan di memori lalu ditulis di akhir run. `SQLAlchemyError` saat
+  menulis hanya dicatat di log, jadi database trace yang gagal tidak mengubah jawaban. Stream yang
+  diputus client di tengah jalan bisa kehilangan trace-nya.
+- **Token** dari `usage_metadata`. `ModelFactory` menyalakan `stream_usage=True`, supaya provider
+  OpenAI-compatible mengirim usage di chunk terakhir stream. FakeModel tidak mengirim usage.
+
+**Eval** (`src/agent_service/evals/`, dataset di `evals/`). Package ini hanya meng-import `client/`
+dan `schema/` (`tests/evals/test_layering.py`), dan punya extra `evals` sendiri (pydantic-settings,
+pyyaml).
+
+- `EvalRunner` menjalankan setiap kasus di thread baru lewat `AgentClient` (service account):
+  `ainvoke` → `aget_history` (tool call, skill yang dimuat lewat argumen `load_skill`) →
+  `aget_run_trace` (latensi di service dan token). Error HTTP menggagalkan kasus itu saja.
+- Skor deterministik di `scoring.py`. LLM judge ditunda (keputusan user F31).
+- `run_evals` menulis `eval-reports/eval-<waktu>.json` dan `.md`, exit code 0/1/2 (lolos, ada kasus
+  gagal, konfigurasi atau dataset salah).
+- CI: `tests/evals/test_datasets.py` memvalidasi semua dataset dan menjalankan `evals/smoke.yaml`
+  dengan FakeModel in-process. Test e2e menjalankan CLI `run_evals` terhadap stack Compose.
+
+## Skill
+
+Skill built-in (FR-38, [ADR 0005](adr/0005-skill-format-and-sources.md)) memakai format Agent
+Skills: `skills/builtin/<name>/SKILL.md` (frontmatter YAML + Markdown) dan file pendukung di
+subfolder.
+
+- **Pemuatan.** `SkillRegistry([FilesystemSkillSource(BUILTIN_SKILLS_DIR)])` dibuat di `create_app`
+  (agent butuh referensinya), lalu `load()` dijalankan di awal lifespan. `parse_skill_markdown`
+  memvalidasi `name` (sama dengan nama folder, huruf kecil, ≤ 64), `description` (≤ 1024),
+  `compatibility`, dan `metadata`. Skill tidak valid dicatat lalu dilewati, tanpa menggagalkan
+  startup. Sumber lain (B1) cukup memenuhi protokol `SkillSource`.
+- **ID** berbentuk `<scope>/<name>` (`builtin/meeting-notes`), dipakai di `Project.skill_ids`.
+  Model memakai nama pendek, karena nama unik di antara skill aktif satu project.
+- **Progressive disclosure.** `SkillToolkit` mengisi slot `skills` di `ContextBuilder` dengan nama
+  dan deskripsi skill aktif (dari `configurable["project_skill_ids"]`), dan menyediakan tool
+  `load_skill(name, path?)`. Tool membaca config yang disuntikkan LangChain (tidak terlihat di
+  schema tool), menolak skill yang tidak aktif dengan `ToolException`, hanya membaca file yang
+  tercatat sebagai resource skill, dan memotong isi di 20.000 karakter.
+- **Bind per giliran.** `ToolCallingAgent` (termasuk `ChatbotAgent`, yang kini dibangun di atasnya
+  tanpa tool bawaan) menyiapkan dua model: tanpa tool skill, dan dengan `load_skill`. Model kedua
+  hanya dipakai pada giliran yang project-nya punya skill aktif. Tanpa tool sama sekali, graph
+  chatbot tetap `agent → END`.
+- **Validasi project.** `ProjectService` menolak `skill_ids` yang tidak dikenal registry (422), dan
+  saat seeding melewati skill built-in yang tidak termuat.
+- Supervisor belum memakai skill.
+
+## Project
+
+Project adalah agent deklaratif (FR-36, [ADR 0004](adr/0004-project-as-declarative-agent.md)):
+satu agent kode plus konfigurasi.
+
+- **Penyimpanan.** Tabel `projects` (`ProjectRepository`), dengan `skill_ids` dan `settings` sebagai
+  JSONB. `scope = builtin` berarti `owner_id` kosong (dijaga check constraint).
+- **Akses** ada di `ProjectService` (`service/projects.py`). Project milik user lain → 404,
+  mengubah atau menghapus built-in → 403, dan agent yang tidak tersedia → 422. Menghapus project
+  menghapus semua thread di dalamnya lebih dulu (`ThreadRepository.delete_project_threads`).
+- **`base_agent_id` tidak bisa diubah**, karena thread menyimpan `agent_id` di metadata checkpoint.
+  Mengganti agent akan membuat thread lama tidak bisa dibuka, atau dijalankan dengan graph yang
+  tidak cocok dengan state-nya.
+- **Built-in** didefinisikan sebagai data (`BUILTIN_PROJECTS` di `agents/catalog.py`) dan di-upsert
+  di lifespan, hanya jika agent dasarnya terdaftar. Urutannya di daftar berdasarkan nama.
+- **Run di project.** Route `/projects/{project_id}/...` membaca project di awal setiap run, lalu
+  membentuk `RunTarget`: agent dasar, model (request → project → default), `max_tokens` project,
+  dan `ProjectRunContext`. `AgentRegistry.get_graph(agent, model, max_tokens)` meng-cache graph per
+  ketiganya. Instruksi dan skill project diteruskan lewat `configurable` (`project_id`,
+  `project_instructions`, `project_skill_ids`, kuncinya di `core/constants.py`) untuk F27/F28.
+- **Isolasi thread.** `run_metadata` menulis `project_id` untuk thread project, dan
+  `is_thread_owner` membandingkannya. Thread project tidak bisa dibuka lewat route agent atau
+  project lain, dan sebaliknya. Thread tanpa key `project_id` (termasuk thread sebelum F26) adalah
+  thread tanpa project. Listing route agent menyaring thread project di Python, karena key yang
+  tidak ada tidak bisa difilter dengan containment JSONB.
+
 ## Kontrak API
 
 `service/contracts.py` membuat dua file di `contracts/` (FR-35):
@@ -214,17 +405,22 @@ Satu database Postgres di `DATABASE_URL` ([ADR 0001](adr/0001-postgres-only.md))
 | `checkpoints`, `checkpoint_blobs`, `checkpoint_writes`, `checkpoint_migrations` | `AsyncPostgresSaver` (via `CheckpointerProvider`) | State graph per langkah, termasuk metadata `user_id`/`agent_id` |
 | `thread_metadata` | `ThreadMetadataRepository` (SQLAlchemy Core) | Judul custom hasil rename |
 | `users` | `UserRepository` (SQLAlchemy Core) | Akun login: username, hash argon2, role |
+| `projects` | `ProjectRepository` (SQLAlchemy Core) | Project built-in dan milik user |
+| `store`, `store_migrations` | `AsyncPostgresStore` (via `StoreProvider`) | Long-term memory user (F30) |
+| `run_traces` | `RunTraceRepository` (SQLAlchemy Core) | Trace run: satu baris per span run/model/tool (F31) |
 | `alembic_version` | Alembic | Revisi skema tabel aplikasi |
 
 - **Satu driver.** Checkpointer dan SQLAlchemy sama-sama memakai psycopg 3. `DATABASE_URL` ditulis
   `postgresql://...`, dan `sqlalchemy_url()` menambahkan `+psycopg` untuk SQLAlchemy.
-- **Dua pool per proses.** `CheckpointerProvider` membuka `AsyncConnectionPool` psycopg (autocommit,
-  tanpa prepared statement, baris dict, sesuai syarat saver). `DatabaseEngineProvider` membuka
-  engine SQLAlchemy. Keduanya mengecek koneksi saat startup dengan `connect_timeout` 5 detik,
-  karena default psycopg adalah 130 detik.
+- **Tiga pool per proses.** `CheckpointerProvider` dan `StoreProvider` masing-masing membuka
+  `AsyncConnectionPool` psycopg lewat `memory/pool.py` (autocommit, tanpa prepared statement, baris
+  dict, sesuai syarat saver/store LangGraph). `DatabaseEngineProvider` membuka engine SQLAlchemy.
+  Semuanya mengecek koneksi saat startup dengan `connect_timeout` 5 detik, karena default psycopg
+  adalah 130 detik.
 - **Migrasi terpisah dari service.** `python -m agent_service.run_migrate` (service compose
-  `migrate`) menjalankan `AsyncPostgresSaver.setup()` lalu `alembic upgrade head`. Lifespan hanya
-  memanggil `ensure_database_migrated`, yang membandingkan `alembic_version` dengan revisi terbaru.
+  `migrate`) menjalankan `AsyncPostgresSaver.setup()`, `AsyncPostgresStore.setup()`, lalu
+  `alembic upgrade head`. Revisi `0004` tidak mengubah skema; ia memaksa database lama dimigrasi
+  ulang supaya tabel store pasti ada. Lifespan hanya memanggil `ensure_database_migrated`, yang membandingkan `alembic_version` dengan revisi terbaru.
   Tabel aplikasi baru ditambahkan di `memory/tables.py` beserta revisi di `memory/migrations/`.
 - **Event loop.** psycopg async tidak bisa memakai `ProactorEventLoop`, loop default di Windows.
   `run_service` memberi uvicorn `loop="asyncio:SelectorEventLoop"`, `run_migrate` memakai
@@ -240,8 +436,8 @@ tool dan system prompt. Graph-nya `agent → tools → agent`: node `agent` mema
 tool yang sudah di-bind, `tools_condition` mengarahkan tool call ke `ToolNode`, lalu hasilnya kembali
 ke model sampai model menjawab tanpa tool call.
 
-- **Tanggal di prompt** (`{current_date}`) dihitung setiap kali model dipanggil. System message
-  tidak disimpan di riwayat.
+- **System prompt dirakit `ContextBuilder`** setiap kali model dipanggil (lihat
+  [System Prompt](#system-prompt)). System message tidak disimpan di riwayat.
 - **`ToolException`** dari tool dikembalikan ke model sebagai `ToolMessage` berstatus `error`, jadi
   model bisa mencoba lagi. Exception lain tetap menggagalkan run.
 - **Jika sisa langkah kurang dari `MIN_REMAINING_STEPS`**, model tidak boleh memanggil tool baru dan

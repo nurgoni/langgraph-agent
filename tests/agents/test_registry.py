@@ -4,6 +4,8 @@ import pytest
 from langchain_core.language_models import BaseChatModel
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import MessagesState, StateGraph
+from langgraph.store.base import BaseStore
+from langgraph.store.memory import InMemoryStore
 
 from agent_service.agents.base import AgentGraph, BaseAgent, Checkpointer
 from agent_service.agents.errors import (
@@ -31,7 +33,9 @@ class RecordingAgent(BaseAgent):
     async def load(self) -> None:
         self.load_calls += 1
 
-    def build(self, model: BaseChatModel, checkpointer: Checkpointer) -> AgentGraph:
+    def build(
+        self, model: BaseChatModel, checkpointer: Checkpointer, store: BaseStore | None = None
+    ) -> AgentGraph:
         self.built_with.append(model)
         # pyrefly tidak mengenali TypedDict sebagai TypedDictLike milik LangGraph.
         builder = StateGraph(MessagesState)  # pyrefly: ignore[bad-specialization]
@@ -46,7 +50,9 @@ class FailingLoadAgent(RecordingAgent):
 
 
 class FailingBuildAgent(RecordingAgent):
-    def build(self, model: BaseChatModel, checkpointer: Checkpointer) -> AgentGraph:
+    def build(
+        self, model: BaseChatModel, checkpointer: Checkpointer, store: BaseStore | None = None
+    ) -> AgentGraph:
         raise ValueError("invalid graph")
 
 
@@ -185,3 +191,24 @@ def test_list_agents_keeps_registration_order(registry: AgentRegistry) -> None:
     registry.register(second)
 
     assert registry.list_agents() == [first, second]
+
+
+class StoreRecordingAgent(RecordingAgent):
+    def build(
+        self, model: BaseChatModel, checkpointer: Checkpointer, store: BaseStore | None = None
+    ) -> AgentGraph:
+        self.built_with_store = store
+        return super().build(model, checkpointer, store)
+
+
+async def test_registry_passes_its_store_to_build(
+    model_factory: ModelFactory, checkpointer: InMemorySaver
+) -> None:
+    store = InMemoryStore()
+    registry = AgentRegistry(model_factory, checkpointer, store)
+    agent = StoreRecordingAgent()
+    registry.register(agent)
+
+    await registry.load_all()
+
+    assert agent.built_with_store is store

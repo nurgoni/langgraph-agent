@@ -24,7 +24,7 @@ Harness ditulis sendiri sebagai package `harness/`, tanpa dependency ke `deepage
 | `ContextBuilder` | Merakit system prompt setiap giliran dari bagian-bagian berurutan dan berbatas ukuran | F27 |
 | `SkillRegistry` + tool `load_skill` | Discovery dan progressive disclosure skill | F28 |
 | `ContextPolicy` | Memangkas/meringkas riwayat sesuai anggaran token | F29 |
-| `MemoryStore` + tool memory | Long-term memory per user dengan persetujuan | F30 |
+| `MemoryToolkit` + tool memory | Long-term memory per user dengan persetujuan | F30 |
 | `Workspace` + file tools | Virtual filesystem per thread, offloading output tool besar | F36 |
 | `Sandbox` + tool eksekusi | Menjalankan kode di lingkungan terisolasi | F37 |
 

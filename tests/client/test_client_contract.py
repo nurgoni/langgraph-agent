@@ -6,6 +6,7 @@ import httpx
 import pytest
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
+from langgraph.store.base import BaseStore
 
 from agent_service.agents.base import AgentGraph, Checkpointer
 from agent_service.agents.chatbot import ChatbotAgent
@@ -14,6 +15,7 @@ from agent_service.core.settings import Settings
 from agent_service.llm.fake import DEFAULT_FAKE_RESPONSE, FakeModel
 from agent_service.memory.database import DatabaseEngineProvider
 from agent_service.memory.users import UserRepository
+from agent_service.schema.projects import ProjectCreate, ProjectUpdate
 from agent_service.schema.stream import MessageEvent, ReasoningEvent, TokenEvent
 from agent_service.service.app import create_app
 from agent_service.service.auth import hash_password
@@ -33,7 +35,9 @@ class ThinkingAgent(ChatbotAgent):
     def __init__(self) -> None:
         super().__init__(agent_id="thinking", description="Reasons before answering")
 
-    def build(self, model: BaseChatModel, checkpointer: Checkpointer) -> AgentGraph:
+    def build(
+        self, model: BaseChatModel, checkpointer: Checkpointer, store: BaseStore | None = None
+    ) -> AgentGraph:
         return super().build(FakeModel(responses=[THINKING_REPLY]), checkpointer)
 
 
@@ -164,3 +168,64 @@ async def test_reasoning_reaches_client_and_history(client: AgentClient) -> None
     assert reasoning == "Pilih dua warna"
     assert all(isinstance(e, ReasoningEvent) for e in events[:first_token])
     assert history.messages[-1].reasoning == "Pilih dua warna"
+
+
+async def test_project_lifecycle_through_client(client: AgentClient) -> None:
+    project = await client.acreate_project(
+        ProjectCreate(name="Catatan", base_agent_id="chatbot", instructions="Ringkas.")
+    )
+    client.project_id = project.id
+
+    reply = await client.ainvoke("Halo project")
+    threads = await client.aget_threads()
+    updated = await client.aupdate_project(project.id, ProjectUpdate(name="Catatan rapat"))
+    listing = await client.alist_projects()
+    await client.adelete_project(project.id)
+
+    assert [(t.thread_id, t.project_id) for t in threads.threads] == [(reply.thread_id, project.id)]
+    assert updated.name == "Catatan rapat"
+    assert project.id in [p.id for p in listing.projects]
+    with pytest.raises(AgentClientError) as error_info:
+        await client.aget_project(project.id)
+    assert error_info.value.status_code == 404
+
+
+async def test_builtin_project_is_read_only_through_client(client: AgentClient) -> None:
+    listing = await client.alist_projects()
+    builtin = next(project for project in listing.projects if project.read_only)
+
+    with pytest.raises(AgentClientError) as error_info:
+        await client.adelete_project(builtin.id)
+
+    assert error_info.value.status_code == 403
+
+
+async def test_skills_through_client(client: AgentClient) -> None:
+    listing = await client.alist_skills()
+    report = await client.aget_skill("builtin/research-report")
+
+    assert "builtin/meeting-notes" in [skill.id for skill in listing.skills]
+    assert report.resources == ["references/report-template.md"]
+
+
+async def test_memories_through_client(client: AgentClient) -> None:
+    listing = await client.alist_memories()
+
+    with pytest.raises(AgentClientError) as error_info:
+        await client.adelete_memory("missing")
+
+    assert listing.memories == []
+    assert error_info.value.status_code == 404
+
+
+async def test_run_trace_through_client(client: AgentClient, other_client: AgentClient) -> None:
+    reply = await client.ainvoke("Halo")
+    run_id = reply.message.run_id or ""
+
+    trace = await client.aget_run_trace(run_id)
+    with pytest.raises(AgentClientError) as error_info:
+        await other_client.aget_run_trace(run_id)
+
+    assert (trace.run_id, trace.thread_id, trace.status) == (run_id, reply.thread_id, "ok")
+    assert [span.kind for span in trace.spans] == ["model"]
+    assert error_info.value.status_code == 404

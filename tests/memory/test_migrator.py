@@ -25,10 +25,16 @@ def set_revision(database_url: str, revision: str) -> None:
         connection.execute("UPDATE alembic_version SET version_num = %s", (revision,))
 
 
-def test_migrated_database_has_app_and_checkpoint_tables(database_url: str) -> None:
+def test_migrated_database_has_app_checkpoint_and_store_tables(database_url: str) -> None:
     tables = table_names(database_url)
 
-    assert {"thread_metadata", "alembic_version", "checkpoints", "checkpoint_writes"} <= tables
+    assert {
+        "thread_metadata",
+        "alembic_version",
+        "checkpoints",
+        "checkpoint_writes",
+        "store",
+    } <= tables
 
 
 async def test_upgrade_is_idempotent(database_url: str) -> None:

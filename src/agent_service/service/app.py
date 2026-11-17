@@ -9,21 +9,47 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from agent_service.agents.base import BaseAgent
-from agent_service.agents.catalog import DEFAULT_AGENT_ID, create_default_agents
+from agent_service.agents.catalog import (
+    BUILTIN_PROJECTS,
+    DEFAULT_AGENT_ID,
+    BuiltinProject,
+    create_default_agents,
+)
 from agent_service.agents.registry import AgentRegistry
 from agent_service.agents.tools.web_search import SearchBackend, create_search_backend
 from agent_service.core.settings import Settings
+from agent_service.harness.context_policy import ContextPolicy
+from agent_service.harness.skills.registry import SkillRegistry
+from agent_service.harness.skills.sources import BUILTIN_SKILLS_DIR, FilesystemSkillSource
+from agent_service.harness.skills.toolkit import SkillToolkit
 from agent_service.llm.factory import ModelFactory
 from agent_service.memory.checkpointer import CheckpointerProvider
 from agent_service.memory.database import DatabaseEngineProvider
 from agent_service.memory.migrator import ensure_database_migrated
+from agent_service.memory.projects import ProjectRepository
+from agent_service.memory.store import StoreProvider
 from agent_service.memory.thread_metadata import ThreadMetadataRepository
+from agent_service.memory.traces import RunTraceRepository
+from agent_service.memory.user_memories import UserMemoryRepository
 from agent_service.memory.users import UserRepository
 from agent_service.schema.headers import THREAD_ID_HEADER
 from agent_service.service.auth import Authenticator
 from agent_service.service.dependencies import current_principal
 from agent_service.service.errors import register_exception_handlers
-from agent_service.service.routes import auth, health, history, info, invoke, stream, threads
+from agent_service.service.projects import ProjectService
+from agent_service.service.routes import (
+    auth,
+    health,
+    history,
+    info,
+    invoke,
+    memories,
+    projects,
+    runs,
+    skills,
+    stream,
+    threads,
+)
 from agent_service.service.threads import ThreadRepository
 
 logger = logging.getLogger(__name__)
@@ -44,6 +70,8 @@ def create_app(
     settings: Settings | None = None,
     agents: Sequence[BaseAgent] | None = None,
     default_agent_id: str = DEFAULT_AGENT_ID,
+    builtin_projects: Sequence[BuiltinProject] = BUILTIN_PROJECTS,
+    skill_registry: SkillRegistry | None = None,
 ) -> FastAPI:
     """Bangun app FastAPI. Tidak ada koneksi atau load agent sebelum lifespan berjalan.
 
@@ -53,8 +81,12 @@ def create_app(
     Args:
         settings: Konfigurasi service. Default: dibaca dari env dan `.env`.
         agents: Agent yang didaftarkan. Default: `create_default_agents()` dengan web search
-            dari `FIRECRAWL_API_KEY`.
+            dari `FIRECRAWL_API_KEY` dan anggaran riwayat dari `CONTEXT_MAX_TOKENS`.
         default_agent_id: Agent untuk `/info` dan route tanpa `{agent_id}`.
+        builtin_projects: Project built-in yang di-seed saat startup, jika agent dasarnya
+            terdaftar.
+        skill_registry: Registry skill. Default: skill built-in dari folder package. File baru
+            dibaca di lifespan.
 
     Returns:
         App yang siap dijalankan.
@@ -68,8 +100,13 @@ def create_app(
     ('Agent Service', 'chatbot')
     """
     resolved_settings = Settings() if settings is None else settings
+    resolved_skills = default_skill_registry() if skill_registry is None else skill_registry
     if agents is None:
-        resolved_agents = create_default_agents(build_search_backend(resolved_settings))
+        resolved_agents = create_default_agents(
+            build_search_backend(resolved_settings),
+            SkillToolkit(resolved_skills),
+            ContextPolicy(max_tokens=resolved_settings.context_max_tokens),
+        )
     else:
         resolved_agents = list(agents)
     agent_ids = [agent.agent_id for agent in resolved_agents]
@@ -78,7 +115,10 @@ def create_app(
             f"Default agent {default_agent_id!r} is not in registered agents {agent_ids}"
         )
 
-    app = FastAPI(title=APP_TITLE, lifespan=_build_lifespan(resolved_settings, resolved_agents))
+    lifespan = _build_lifespan(
+        resolved_settings, resolved_agents, builtin_projects, resolved_skills
+    )
+    app = FastAPI(title=APP_TITLE, lifespan=lifespan)
     register_exception_handlers(app)
     app.add_middleware(
         CORSMiddleware,
@@ -95,9 +135,18 @@ def create_app(
     app.include_router(stream.router, dependencies=protected)
     app.include_router(history.router, dependencies=protected)
     app.include_router(threads.router, dependencies=protected)
+    app.include_router(projects.router, dependencies=protected)
+    app.include_router(skills.router, dependencies=protected)
+    app.include_router(memories.router, dependencies=protected)
+    app.include_router(runs.router, dependencies=protected)
     app.state.settings = resolved_settings
     app.state.default_agent_id = default_agent_id
     return app
+
+
+def default_skill_registry() -> SkillRegistry:
+    """Registry berisi skill built-in dari `skills/builtin/` (belum dimuat)."""
+    return SkillRegistry([FilesystemSkillSource(BUILTIN_SKILLS_DIR)])
 
 
 def build_search_backend(settings: Settings) -> SearchBackend:
@@ -111,22 +160,31 @@ def build_search_backend(settings: Settings) -> SearchBackend:
     return create_search_backend(None if secret is None else secret.get_secret_value())
 
 
-def _build_lifespan(settings: Settings, agents: Sequence[BaseAgent]) -> Lifespan:
+def _build_lifespan(
+    settings: Settings,
+    agents: Sequence[BaseAgent],
+    builtin_projects: Sequence[BuiltinProject],
+    skill_registry: SkillRegistry,
+) -> Lifespan:
     """Buat lifespan yang membuka database, mendaftarkan, dan memuat semua agent.
 
-    Urutan: `ModelFactory` → engine + `CheckpointerProvider` → cek migrasi →
-    `AgentRegistry.load_all()`. Factory, registry, `ThreadRepository`, dan `Authenticator`
-    disimpan di `app.state`. Engine dan pool checkpointer ditutup saat shutdown. Startup gagal
-    jika Postgres tidak terjangkau atau migrasi belum dijalankan.
+    Urutan: muat skill → `ModelFactory` → engine + `CheckpointerProvider` + `StoreProvider` → cek
+    migrasi → `AgentRegistry.load_all()` → seed project built-in. Factory, registry,
+    `ThreadRepository`, `ProjectService`, `UserMemoryRepository`, `RunTraceRepository`, dan
+    `Authenticator` disimpan di `app.state`. Engine dan pool checkpointer/store ditutup saat
+    shutdown. Startup gagal jika Postgres tidak terjangkau atau migrasi belum dijalankan.
     """
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
+        await skill_registry.load()
+        app.state.skill_registry = skill_registry
         model_factory = ModelFactory(settings)
         database_url = settings.database_url.get_secret_value()
         async with (
             DatabaseEngineProvider(database_url) as engine,
             CheckpointerProvider(database_url) as checkpointer,
+            StoreProvider(database_url) as store,
         ):
             await ensure_database_migrated(engine)
             titles = ThreadMetadataRepository(engine)
@@ -135,13 +193,25 @@ def _build_lifespan(settings: Settings, agents: Sequence[BaseAgent]) -> Lifespan
                 settings.jwt_secret.get_secret_value(),
                 settings.jwt_ttl_seconds,
             )
-            registry = AgentRegistry(model_factory, checkpointer)
+            registry = AgentRegistry(model_factory, checkpointer, store)
             for agent in agents:
                 registry.register(agent)
             await registry.load_all()
             app.state.model_factory = model_factory
             app.state.registry = registry
-            app.state.thread_repository = ThreadRepository(checkpointer, titles)
+            thread_repository = ThreadRepository(checkpointer, titles)
+            project_service = ProjectService(
+                ProjectRepository(engine),
+                thread_repository,
+                registry,
+                model_factory,
+                skill_registry,
+            )
+            await project_service.seed_builtin(builtin_projects)
+            app.state.thread_repository = thread_repository
+            app.state.memory_repository = UserMemoryRepository(store)
+            app.state.trace_repository = RunTraceRepository(engine)
+            app.state.project_service = project_service
             yield
         logger.info("Service shut down")
 

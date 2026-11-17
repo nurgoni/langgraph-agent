@@ -89,6 +89,15 @@ class ModelFactory:
             raise UnknownModelError(name, self._settings.available_models)
         return name
 
+    def resolve_max_tokens(self, max_tokens: int | None = None) -> int:
+        """Batas token final: nilai yang diberikan, atau `LLM_MAX_TOKENS`.
+
+        >>> settings = Settings(_env_file=None, use_fake_model=True, jwt_secret="x" * 32)
+        >>> ModelFactory(settings).resolve_max_tokens(256)
+        256
+        """
+        return self._settings.llm_max_tokens if max_tokens is None else max_tokens
+
     def create(self, model_name: str | None = None, max_tokens: int | None = None) -> BaseChatModel:
         """Kembalikan chat model untuk `model_name` dan `max_tokens`, dibuat sekali lalu di-reuse.
 
@@ -106,7 +115,7 @@ class ModelFactory:
                 model non-fake.
         """
         name = self.resolve_name(model_name)
-        token_limit = self._settings.llm_max_tokens if max_tokens is None else max_tokens
+        token_limit = self.resolve_max_tokens(max_tokens)
         cache_key = (name, token_limit)
         model = self._models.get(cache_key)
         if model is None:
@@ -148,6 +157,9 @@ class ModelFactory:
             # Tanpa ini, stream_mode="messages" LangGraph hanya menerima satu chunk berisi seluruh
             # jawaban, sehingga /stream tidak mengirim token satu per satu.
             streaming=True,
+            # Minta usage token di chunk terakhir stream (`stream_options.include_usage`), supaya
+            # trace run punya jumlah token (FR-41).
+            stream_usage=True,
         )
 
 

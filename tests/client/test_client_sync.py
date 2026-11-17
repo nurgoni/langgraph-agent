@@ -7,6 +7,7 @@ import pytest
 from agent_service.client import AgentClient, AgentClientError, ServiceUnreachableError
 from agent_service.client.stream import StreamNotStartedError
 from agent_service.schema.headers import THREAD_ID_HEADER
+from agent_service.schema.projects import ProjectCreate, ProjectUpdate
 from agent_service.schema.stream import ErrorEvent, MessageEvent, TokenEvent
 
 BASE_URL = "http://agent.test"
@@ -364,3 +365,126 @@ def test_read_timeout_is_not_reported_as_unreachable() -> None:
         client.get_info()
 
     assert not isinstance(error_info.value, ServiceUnreachableError)
+
+
+PROJECT = {
+    "id": "p/1",
+    "name": "Catatan",
+    "description": "",
+    "scope": "user",
+    "read_only": False,
+    "base_agent_id": "chatbot",
+    "model": None,
+    "instructions": "",
+    "skill_ids": [],
+    "settings": {"max_tokens": None},
+    "created_at": "2026-11-15T00:00:00Z",
+    "updated_at": "2026-11-15T00:00:00Z",
+}
+
+
+def test_project_id_routes_chat_and_threads_through_project() -> None:
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/threads"):
+            return httpx.Response(200, json={"threads": []})
+        return httpx.Response(200, json=AI_MESSAGE, headers=ID_HEADERS)
+
+    client, transport = make_client(respond)
+    client.project_id = "p/1"
+
+    with client:
+        client.invoke("Hai")
+        client.get_threads()
+        client.delete_thread("t1")
+
+    assert [request.url.raw_path for request in transport.requests] == [
+        b"/projects/p%2F1/invoke",
+        b"/projects/p%2F1/threads?limit=20",
+        b"/projects/p%2F1/threads/t1",
+    ]
+
+
+def test_project_crud_requests() -> None:
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.method == "DELETE":
+            return httpx.Response(204)
+        if request.method == "GET" and request.url.path == "/projects":
+            return httpx.Response(200, json={"projects": [PROJECT]})
+        return httpx.Response(200, json=PROJECT)
+
+    client, transport = make_client(respond)
+
+    with client:
+        listing = client.list_projects()
+        client.get_project("p/1")
+        client.create_project(ProjectCreate(name="Catatan", base_agent_id="chatbot"))
+        client.update_project("p/1", ProjectUpdate(model=None))
+        client.delete_project("p/1")
+
+    methods = [(r.method, r.url.raw_path) for r in transport.requests]
+    assert methods == [
+        ("GET", b"/projects"),
+        ("GET", b"/projects/p%2F1"),
+        ("POST", b"/projects"),
+        ("PATCH", b"/projects/p%2F1"),
+        ("DELETE", b"/projects/p%2F1"),
+    ]
+    assert json.loads(transport.requests[3].content) == {"model": None}
+    assert listing.projects[0].id == "p/1"
+
+
+MEMORY = {
+    "id": "m/1",
+    "text": "Likes tea",
+    "created_at": "2026-11-17T00:00:00Z",
+    "updated_at": "2026-11-17T00:00:00Z",
+}
+
+
+def test_memory_requests() -> None:
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.method == "DELETE":
+            return httpx.Response(204)
+        return httpx.Response(200, json={"memories": [MEMORY]})
+
+    client, transport = make_client(respond)
+
+    with client:
+        listing = client.list_memories()
+        client.delete_memory("m/1")
+
+    methods = [(r.method, r.url.raw_path) for r in transport.requests]
+    assert methods == [("GET", b"/memories"), ("DELETE", b"/memories/m%2F1")]
+    assert listing.memories[0].text == "Likes tea"
+
+
+TRACE = {
+    "run_id": "r/1",
+    "thread_id": "t1",
+    "agent_id": "chatbot",
+    "project_id": None,
+    "status": "ok",
+    "started_at": "2026-11-17T00:00:00Z",
+    "ended_at": "2026-11-17T00:00:01Z",
+    "duration_ms": 1000,
+    "spans": [
+        {
+            "kind": "model",
+            "name": "fake",
+            "status": "ok",
+            "started_at": "2026-11-17T00:00:00Z",
+            "ended_at": "2026-11-17T00:00:01Z",
+            "duration_ms": 1000,
+        }
+    ],
+}
+
+
+def test_run_trace_request() -> None:
+    client, transport = make_client(lambda request: httpx.Response(200, json=TRACE))
+
+    with client:
+        trace = client.get_run_trace("r/1")
+
+    assert transport.requests[0].url.raw_path == b"/runs/r%2F1/trace"
+    assert trace.spans[0].name == "fake"

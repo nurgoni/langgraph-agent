@@ -33,8 +33,8 @@ def test_registered_in_default_catalog() -> None:
     assert RESEARCH_ASSISTANT_ID in agent_ids
 
 
-def test_prompt_mentions_both_tools_and_date_placeholder() -> None:
-    assert "{current_date}" in RESEARCH_SYSTEM_PROMPT
+def test_prompt_mentions_both_tools_and_leaves_date_to_context_builder() -> None:
+    assert "{current_date}" not in RESEARCH_SYSTEM_PROMPT
     assert "web_search" in RESEARCH_SYSTEM_PROMPT
     assert "calculator" in RESEARCH_SYSTEM_PROMPT
 

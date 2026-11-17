@@ -3,6 +3,7 @@ from collections.abc import AsyncIterator
 import pytest
 from httpx import ASGITransport, AsyncClient
 from langchain_core.language_models import BaseChatModel
+from langgraph.store.base import BaseStore
 from pydantic import BaseModel, ConfigDict
 
 from agent_service.agents.base import AgentGraph, Checkpointer
@@ -24,7 +25,9 @@ class StyledAgent(ChatbotAgent):
 
 
 class BrokenAgent(ChatbotAgent):
-    def build(self, model: BaseChatModel, checkpointer: Checkpointer) -> AgentGraph:
+    def build(
+        self, model: BaseChatModel, checkpointer: Checkpointer, store: BaseStore | None = None
+    ) -> AgentGraph:
         raise ValueError("cannot build")
 
 

@@ -127,13 +127,16 @@ menunjuk ke container itu sendiri.
 | `AVAILABLE_MODELS` | tidak | Allowlist model, dipisah koma |
 | `USE_FAKE_MODEL` | tidak | `true` untuk dev/test tanpa LLM |
 | `LLM_MAX_TOKENS` | tidak | Batas token jawaban per giliran model, default `8192`. Pada model reasoning (Ollama), token reasoning ikut dihitung. Jawaban yang terpotong ditandai `truncated` |
+| `CONTEXT_MAX_TOKENS` | tidak | Anggaran token riwayat (beserta ringkasannya) yang dikirim ke model setiap panggilan, default `16000`, minimum `1000`. Jika terlampaui, giliran lama diringkas sampai riwayat langsung tinggal ±50%. `/history` tetap lengkap |
 | `LLM_MAX_TOKENS_PARAM` | tidak | Nama parameter batas token di request: `max_tokens` (default, untuk Ollama/vLLM/llama.cpp) atau `max_completion_tokens` (model reasoning OpenAI seperti gpt-5/o-series) |
 | `DATABASE_URL` | tidak | Postgres, default `postgresql://agent:agent@127.0.0.1:5432/agent_service` (service `postgres` di compose). Pakai `127.0.0.1`, bukan `localhost`, di Docker Desktop Windows |
 | `JWT_SECRET` | **ya** | Kunci penanda tangan access token (HS256), minimal 32 karakter. Service menolak start tanpa nilai ini |
 | `JWT_TTL_SECONDS` | tidak | Umur access token, default `43200` (12 jam). Tidak ada refresh token |
 | `CORS_ORIGINS` | tidak | Origin browser yang boleh memanggil API, dipisah koma. Kosong = tidak ada |
 | `FIRECRAWL_API_KEY` | tidak | Key [Firecrawl](https://firecrawl.dev) untuk tool `web_search` (research-assistant, supervisor). Kosong = tanpa pencarian web |
-| `AGENT_URL` | tidak | URL service untuk UI/client, default `http://localhost:8080` |
+| `AGENT_URL` | tidak | URL service untuk UI/client/eval, default `http://localhost:8080` |
+| `EVAL_USERNAME`, `EVAL_PASSWORD` | eval | Akun untuk `run_evals`, sebaiknya service account (`--role service`) |
+| `EVAL_TIMEOUT_SECONDS` | tidak | Batas waktu per request eval, default `300` |
 
 \* Tidak wajib jika `USE_FAKE_MODEL=true`. Daftar lengkap ada di [PRD.md §8](PRD.md#8-konfigurasi-env-var-v1).
 
@@ -149,6 +152,14 @@ menunjuk ke container itu sendiri.
 | GET | `/{agent_id}/threads` | Daftar thread milik user |
 | PATCH | `/{agent_id}/threads/{thread_id}` | Ganti judul thread |
 | DELETE | `/{agent_id}/threads/{thread_id}` | Hapus thread beserta riwayatnya |
+| GET, POST | `/projects` | Daftar project (built-in + milik user), buat project |
+| GET, PATCH, DELETE | `/projects/{project_id}` | Satu project. Built-in read-only (403). Hapus = ikut hapus thread-nya |
+| POST | `/projects/{project_id}/invoke`, `/stream`, `/history` | Chat di dalam project |
+| GET, PATCH, DELETE | `/projects/{project_id}/threads[/{thread_id}]` | Thread di dalam project |
+| GET | `/skills`, `/skills/{scope}/{name}` | Skill yang bisa diaktifkan di project (read-only) |
+| GET | `/memories` | Long-term memory milik user, yang terakhir diubah lebih dulu |
+| DELETE | `/memories/{memory_id}` | Hapus satu memory. Memory user lain menjawab 404 |
+| GET | `/runs/{run_id}/trace` | Trace satu run: durasi, token, panggilan model dan tool. Run user lain menjawab 404 |
 | GET | `/health` | Health check, selalu tanpa auth |
 
 Semua endpoint selain `/health` dan `/auth/login` butuh `Authorization: Bearer <access_token>`.
@@ -168,6 +179,77 @@ curl -N -X POST http://localhost:8080/chatbot/stream \
 Kontrak lengkap ada di [`contracts/openapi.json`](contracts/openapi.json) dan
 [`contracts/stream-event.schema.json`](contracts/stream-event.schema.json) (satu frame SSE). Keduanya
 dihasilkan dari kode dan dicek CI, jadi aman dipakai untuk generate client bertipe.
+
+### Project
+
+Project adalah agent deklaratif ([ADR 0004](docs/adr/0004-project-as-declarative-agent.md)): satu
+agent kode (`base_agent_id`, tidak bisa diganti), ditambah model, instruksi, skill, dan
+`settings.max_tokens`. Chat di project memakai route `/projects/{project_id}/...`. Model yang
+dipakai: model di request, lalu model project, lalu `DEFAULT_MODEL`. Thread project hanya bisa
+dibuka lewat project-nya. Project built-in (`general-assistant`, `research-assistant`) di-seed saat
+startup dan read-only.
+
+```python
+from agent_service.schema.projects import ProjectCreate
+
+project = client.create_project(
+    ProjectCreate(
+        name="Riset pasar",
+        base_agent_id="research-assistant",
+        instructions="Jawab dalam Bahasa Indonesia.",
+        settings={"max_tokens": 2048},
+    )
+)
+client.project_id = project.id  # chat dan thread berikutnya masuk ke project ini
+reply = client.invoke("Siapa pemain utama pasar EV di Asia Tenggara?")
+```
+
+### Skill
+
+Skill adalah instruksi prosedural (format [Agent Skills](https://agentskills.io)) yang dimuat model
+hanya saat relevan ([ADR 0005](docs/adr/0005-skill-format-and-sources.md)). Skill built-in ada di
+`src/agent_service/skills/builtin/<name>/SKILL.md`: `meeting-notes` dan `research-report`.
+
+- Aktifkan skill di project lewat `skill_ids`, dengan ID dari `GET /skills`
+  (`builtin/research-report`).
+- Setiap giliran, system prompt berisi daftar nama + deskripsi skill aktif, dan model memanggil
+  tool `load_skill(name, path?)` untuk isi lengkapnya. Tool ini hanya muncul jika project punya skill
+  aktif, dan hanya bisa memuat skill yang aktif di project itu.
+- Skill dengan `SKILL.md` tidak valid dilewati saat startup dan dicatat di log.
+
+### Long-term memory
+
+`chatbot` dan `research-assistant` bisa mengingat fakta tentang user lintas thread.
+
+- Saat user meminta sesuatu diingat, model memanggil `save_memory`, dan agent bertanya dulu:
+  `Save this to memory for future conversations? "..." Reply "yes" to save it`. Balas `yes`, `ya`,
+  `ok`, atau `simpan` untuk menyimpan. Balasan lain membatalkan, dan model menanggapi balasan itu.
+- Hingga 20 memory terbaru masuk ke system prompt setiap giliran. Model mencari memory lama lewat
+  tool `search_memory` (pencarian kata, belum memakai embedding).
+- Memory tersimpan per user (maksimal 200), dilihat lewat `GET /memories`, dan dihapus lewat
+  `DELETE /memories/{memory_id}` (`AgentClient.list_memories()`/`delete_memory()`).
+- Setelah update ke versi ini, jalankan lagi `run_migrate` untuk membuat tabel store. Tanpa itu,
+  service menolak start.
+
+### Trace dan eval
+
+Setiap run `/invoke` dan `/stream` menyimpan trace di tabel `run_traces`: durasi run, setiap
+panggilan model (dengan token, jika provider mengirim usage) dan tool, serta status (`ok`, `error`,
+`interrupted`). Isi prompt dan hasil tool tidak disimpan. `run_id` ada di setiap `ChatMessage`,
+dan trace dibaca lewat `GET /runs/{run_id}/trace` atau `AgentClient.get_run_trace(run_id)`.
+
+Eval menjalankan dataset YAML di `evals/` lewat `AgentClient`, dengan jalur yang sama seperti user,
+lalu menulis laporan JSON + Markdown ke `eval-reports/` (tidak di-commit):
+
+```bash
+uv run python -m agent_service.manage create-user evals --role service
+# isi EVAL_USERNAME=evals dan EVAL_PASSWORD di .env, lalu dengan service berjalan:
+uv run python -m agent_service.run_evals evals/skills.yaml
+```
+
+Cek per kasus: `contains`, `not_contains`, `tools_called`, `tools_not_called`, `skills_loaded`, dan
+`max_latency_seconds`. Exit code 1 jika ada kasus gagal. `evals/smoke.yaml` (FakeModel) ikut
+dijalankan pytest di CI.
 
 ## Menggunakan AgentClient
 
@@ -209,6 +291,7 @@ uv run pytest                 # test (tanpa test integration)
 uv run pytest -m integration  # test e2e Docker Compose (butuh Docker)
 uv run alembic revision --autogenerate -m "add projects"   # migrasi baru dari memory/tables.py
 uv run python -m agent_service.export_contracts            # ekspor ulang contracts/ setelah ubah API
+uv run python -m agent_service.run_evals evals/skills.yaml # eval dengan model asli (service berjalan)
 uv run ruff check . --fix     # lint
 uv run ruff format .          # format
 uv run pyrefly check          # type check
