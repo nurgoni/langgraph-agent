@@ -1,0 +1,29 @@
+# Eval skill built-in (F28) dengan model asli. Dijalankan manual:
+#   uv run python -m agent_service.run_evals evals/skills.yaml
+# Laporan ditulis ke eval-reports/ (tidak di-commit).
+name: skills
+description: Built-in skills are loaded when relevant and skipped otherwise.
+project: general-assistant
+cases:
+  - id: meeting-notes-loaded
+    input: |
+      Here are my notes from today's standup, please tidy them up.
+      Budi: login bug is fixed, deploying tomorrow.
+      Sari: we agreed to drop the old export feature.
+      Budi will update the docs by Friday. Nobody knows who owns the billing alerts yet.
+    expect:
+      skills_loaded: [meeting-notes]
+      contains: ["Decisions", "Action items"]
+      max_latency_seconds: 240
+  - id: general-question-skips-skills
+    input: "What is the capital of Japan? Answer with one word."
+    expect:
+      contains: ["Tokyo"]
+      tools_not_called: [load_skill]
+      max_latency_seconds: 120
+  - id: research-report-loaded
+    project: research-assistant
+    input: "Write a short briefing comparing solar and wind power for a small island."
+    expect:
+      skills_loaded: [research-report]
+      max_latency_seconds: 300

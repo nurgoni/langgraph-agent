@@ -23,6 +23,10 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+evals = [
+    { name = "pydantic-settings" },
+    { name = "pyyaml" },
+]
 service = [
     { name = "alembic" },
     { name = "argon2-cffi" },
@@ -47,7 +51,7 @@ ui = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "agent-service", extra = ["service", "ui"] },
+    { name = "agent-service", extra = ["evals", "service", "ui"] },
     { name = "pre-commit" },
     { name = "pyrefly" },
     { name = "pytest" },
@@ -71,19 +75,21 @@ requires-dist = [
     { name = "psycopg", extras = ["binary"], marker = "extra == 'service'", specifier = "~=3.3" },
     { name = "psycopg-pool", marker = "extra == 'service'", specifier = "~=3.3" },
     { name = "pydantic", specifier = "~=2.14" },
+    { name = "pydantic-settings", marker = "extra == 'evals'", specifier = "~=2.16" },
     { name = "pydantic-settings", marker = "extra == 'service'", specifier = "~=2.16" },
     { name = "pydantic-settings", marker = "extra == 'ui'", specifier = "~=2.16" },
     { name = "pyjwt", marker = "extra == 'service'", specifier = "~=2.15" },
+    { name = "pyyaml", marker = "extra == 'evals'", specifier = "~=6.0" },
     { name = "pyyaml", marker = "extra == 'service'", specifier = "~=6.0" },
     { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'service'", specifier = "~=2.1" },
     { name = "streamlit", marker = "extra == 'ui'", specifier = "~=1.66" },
     { name = "uvicorn", marker = "extra == 'service'", specifier = "~=0.54" },
 ]
-provides-extras = ["service", "ui"]
+provides-extras = ["service", "ui", "evals"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "agent-service", extras = ["service", "ui"] },
+    { name = "agent-service", extras = ["service", "ui", "evals"] },
     { name = "pre-commit", specifier = "~=4.7.0" },
     { name = "pyrefly", specifier = "~=1.4.0" },
     { name = "pytest", specifier = "~=8.4.2" },

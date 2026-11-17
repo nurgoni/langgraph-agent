@@ -35,12 +35,17 @@ ui = [
     "pydantic-settings~=2.16",
     "streamlit~=1.66",
 ]
+# Eval runner (F31): talks to the service over HTTP, so it needs no agent dependencies.
+evals = [
+    "pydantic-settings~=2.16",
+    "pyyaml~=6.0",
+]
 
 [dependency-groups]
 dev = [
     # Self-reference: plain `uv sync`/`uv run` installs every extra for development and CI,
     # while images use `--no-dev --extra <name>`.
-    "agent-service[service,ui]",
+    "agent-service[service,ui,evals]",
     "pre-commit ~=4.7.0",
     "pyrefly ~=1.4.0",
     "pytest ~=8.4.2",
