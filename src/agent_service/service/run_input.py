@@ -1,10 +1,11 @@
 """Penyusunan input dan config untuk satu run agent dari request `UserInput`."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Final
 from uuid import UUID, uuid4
 
 from fastapi.exceptions import RequestValidationError
+from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.utils.uuid import uuid7
@@ -97,6 +98,15 @@ class RunInput:
     def response_headers(self) -> dict[str, str]:
         """Header yang mengembalikan ID thread ke client (FR-13)."""
         return {THREAD_ID_HEADER: self.thread_id}
+
+    def with_callbacks(self, *handlers: BaseCallbackHandler) -> "RunInput":
+        """Salinan run dengan callback di config, misalnya trace (FR-41).
+
+        `build_run_input` tidak memasang callback, jadi daftar ini menjadi seluruh callback run.
+        """
+        config = RunnableConfig(**self.config)
+        config["callbacks"] = list(handlers)
+        return replace(self, config=config)
 
 
 async def build_run_input(

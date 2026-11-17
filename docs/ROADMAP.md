@@ -45,7 +45,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F28 | Built-in skills | M5 | done |
 | F29 | Context policy | M5 | done |
 | F30 | Long-term memory | M5 | done |
-| F31 | Evals & tracing | M5 | todo |
+| F31 | Evals & tracing | M5 | done |
 | F32 | Frontend scaffold & auth | M6 | todo |
 | F33 | Chat UI | M6 | todo |
 | F34 | Projects & threads UI | M6 | todo |
@@ -1395,9 +1395,25 @@ F32 → F33 → F34 → *rilis v0.6.0* → F35 → F36 → F37 → F38 → *rili
   2. `feat(evals): add deterministic and llm judge scorers`
   3. `feat(service): record run traces`
   4. `docs: document how to run evals`
+- **Langkah 1 (keputusan user):** trace di tabel Postgres `run_traces` (tanpa infrastruktur baru),
+  dibaca lewat `GET /runs/{run_id}/trace` (pemilik run saja). LLM judge ditunda; F31 hanya memakai
+  cek deterministik.
+- **Penyesuaian saat implementasi:**
+  - Trace: `RunTraceCollector` (`service/tracing.py`, callback LangChain) dipasang per run di
+    `/invoke` dan `/stream` (termasuk route project), dan menulis semua span sekali di akhir run.
+    Repository di `memory/traces.py`. Isi prompt/jawaban/argumen tool tidak disimpan.
+  - Status `interrupted` untuk run yang berhenti bertanya, dan untuk `save_memory` yang memanggil
+    `interrupt()` (bukan error).
+  - `ModelFactory` memakai `stream_usage=True` supaya token tersedia saat streaming.
+  - Eval: `evals/` (dataset, scoring, runner, report, settings) hanya meng-import `client/` dan
+    `schema/`; extra `evals`; entrypoint `run_evals`. Skill yang dimuat dibaca dari argumen
+    `load_skill` di `/history`, latensi dan token dari trace.
+  - Smoke eval CI berjalan sebagai test pytest in-process (`tests/evals/test_datasets.py`), dan
+    test e2e menjalankan CLI terhadap stack Compose.
+  - Commit 2 (LLM judge) dihapus. Urutan commit: trace dulu (runner membutuhkan endpoint trace).
 - **Acceptance criteria:**
-  - [ ] Eval skill (F28) dengan model asli menghasilkan laporan skor.
-  - [ ] Trace satu run memuat panggilan model, tool, token, dan latensi.
+  - [x] Eval skill (F28) dengan model asli menghasilkan laporan skor (smoke `qwen3.5:9b`).
+  - [x] Trace satu run memuat panggilan model, tool, token, dan latensi.
 - **Squash title:** `feat(evals): add evaluation runner and run tracing (F31)`
 - **Setelah merge:** rilis **v0.5.0**.
 

@@ -43,6 +43,7 @@ docker compose up -d postgres             # database untuk dev dan test
 uv run python -m agent_service.run_migrate   # migrasi skema (Alembic + checkpointer)
 uv run python -m agent_service.manage create-user demo   # buat akun login
 uv run python -m agent_service.export_contracts          # ekspor ulang contracts/ (FR-35)
+uv run python -m agent_service.run_evals evals/skills.yaml   # eval agent lewat API (FR-41)
 uv run python -m agent_service.run_service   # jalankan API di :8080
 uv run streamlit run src/agent_service/ui/app.py  # jalankan UI di :8501
 ```

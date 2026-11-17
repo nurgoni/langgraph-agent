@@ -1,0 +1,17 @@
+# Smoke eval dengan FakeModel (USE_FAKE_MODEL=true). Dijalankan di CI lewat pytest
+# (tests/evals/test_datasets.py), dan bisa dijalankan manual terhadap service fake.
+name: smoke
+description: Checks the eval pipeline end to end without a real model.
+agent: chatbot
+cases:
+  - id: chatbot-replies
+    input: "Halo!"
+    expect:
+      contains: ["fake model"]
+      tools_not_called: [load_skill, save_memory]
+      max_latency_seconds: 30
+  - id: project-run
+    project: general-assistant
+    input: "Halo dari project"
+    expect:
+      contains: ["fake model"]

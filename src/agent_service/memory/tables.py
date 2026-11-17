@@ -4,12 +4,23 @@ Tabel checkpointer LangGraph tidak didefinisikan di sini, karena dibuat dan dimi
 `AsyncPostgresSaver.setup()`.
 
 >>> sorted(METADATA.tables)
-['projects', 'thread_metadata', 'users']
+['projects', 'run_traces', 'thread_metadata', 'users']
 """
 
 from typing import Final
 
-from sqlalchemy import CheckConstraint, Column, DateTime, Index, MetaData, Table, Text, Uuid, func
+from sqlalchemy import (
+    CheckConstraint,
+    Column,
+    DateTime,
+    Index,
+    Integer,
+    MetaData,
+    Table,
+    Text,
+    Uuid,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 
 METADATA: Final = MetaData()
@@ -58,4 +69,30 @@ projects_table: Final = Table(
         "(scope = 'builtin') = (owner_id IS NULL)", name="projects_owner_matches_scope"
     ),
     Index("projects_owner_id_idx", "owner_id"),
+)
+
+# Trace run agent (FR-41, keputusan user F31): satu baris per span. Span `run` mewakili seluruh run
+# (span_id = run_id), span `model`/`tool` adalah panggilan di dalamnya. Isi prompt dan hasil tool
+# tidak disimpan, hanya nama, waktu, status, dan token.
+run_traces_table: Final = Table(
+    "run_traces",
+    METADATA,
+    Column("span_id", Uuid(as_uuid=False), primary_key=True),
+    Column("run_id", Uuid(as_uuid=False), nullable=False),
+    Column("owner_id", Text, nullable=False),
+    Column("thread_id", Text, nullable=False),
+    Column("agent_id", Text, nullable=False),
+    Column("project_id", Text, nullable=True),
+    Column("kind", Text, nullable=False),
+    Column("name", Text, nullable=False),
+    Column("status", Text, nullable=False),
+    Column("started_at", DateTime(timezone=True), nullable=False),
+    Column("ended_at", DateTime(timezone=True), nullable=False),
+    Column("duration_ms", Integer, nullable=False),
+    Column("input_tokens", Integer, nullable=True),
+    Column("output_tokens", Integer, nullable=True),
+    Column("error", Text, nullable=True),
+    CheckConstraint("kind IN ('run', 'model', 'tool')", name="run_traces_kind_valid"),
+    CheckConstraint("status IN ('ok', 'error', 'interrupted')", name="run_traces_status_valid"),
+    Index("run_traces_run_id_idx", "run_id"),
 )

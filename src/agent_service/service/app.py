@@ -29,6 +29,7 @@ from agent_service.memory.migrator import ensure_database_migrated
 from agent_service.memory.projects import ProjectRepository
 from agent_service.memory.store import StoreProvider
 from agent_service.memory.thread_metadata import ThreadMetadataRepository
+from agent_service.memory.traces import RunTraceRepository
 from agent_service.memory.user_memories import UserMemoryRepository
 from agent_service.memory.users import UserRepository
 from agent_service.schema.headers import THREAD_ID_HEADER
@@ -44,6 +45,7 @@ from agent_service.service.routes import (
     invoke,
     memories,
     projects,
+    runs,
     skills,
     stream,
     threads,
@@ -136,6 +138,7 @@ def create_app(
     app.include_router(projects.router, dependencies=protected)
     app.include_router(skills.router, dependencies=protected)
     app.include_router(memories.router, dependencies=protected)
+    app.include_router(runs.router, dependencies=protected)
     app.state.settings = resolved_settings
     app.state.default_agent_id = default_agent_id
     return app
@@ -167,9 +170,9 @@ def _build_lifespan(
 
     Urutan: muat skill → `ModelFactory` → engine + `CheckpointerProvider` + `StoreProvider` → cek
     migrasi → `AgentRegistry.load_all()` → seed project built-in. Factory, registry,
-    `ThreadRepository`, `ProjectService`, `UserMemoryRepository`, dan `Authenticator` disimpan di
-    `app.state`. Engine dan pool checkpointer/store ditutup saat shutdown. Startup gagal jika
-    Postgres tidak terjangkau atau migrasi belum dijalankan.
+    `ThreadRepository`, `ProjectService`, `UserMemoryRepository`, `RunTraceRepository`, dan
+    `Authenticator` disimpan di `app.state`. Engine dan pool checkpointer/store ditutup saat
+    shutdown. Startup gagal jika Postgres tidak terjangkau atau migrasi belum dijalankan.
     """
 
     @asynccontextmanager
@@ -207,6 +210,7 @@ def _build_lifespan(
             await project_service.seed_builtin(builtin_projects)
             app.state.thread_repository = thread_repository
             app.state.memory_repository = UserMemoryRepository(store)
+            app.state.trace_repository = RunTraceRepository(engine)
             app.state.project_service = project_service
             yield
         logger.info("Service shut down")

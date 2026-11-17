@@ -21,6 +21,7 @@ from agent_service.service.dependencies import (
     ProjectServiceDep,
     RegistryDep,
     ThreadRepositoryDep,
+    TraceRepositoryDep,
 )
 from agent_service.service.projects import project_max_tokens, project_to_schema, run_context
 from agent_service.service.routes.history import read_history
@@ -91,11 +92,12 @@ async def invoke_in_project(
     principal: PrincipalDep,
     projects: ProjectServiceDep,
     registry: RegistryDep,
+    traces: TraceRepositoryDep,
 ) -> ChatMessage:
     """Jalankan agent project sampai selesai, dengan instruksi dan pengaturan project."""
     record = await projects.get_visible(project_id, principal.user_id)
     target = run_target(record, user_input.model)
-    return await invoke(target, user_input, principal.user_id, response, registry)
+    return await invoke(target, user_input, principal.user_id, response, registry, traces)
 
 
 @router.post("/{project_id}/stream", response_class=StreamingResponse, responses=SSE_RESPONSES)
@@ -105,11 +107,12 @@ async def stream_in_project(
     principal: PrincipalDep,
     projects: ProjectServiceDep,
     registry: RegistryDep,
+    traces: TraceRepositoryDep,
 ) -> StreamingResponse:
     """Alirkan run agent project sebagai SSE, sama seperti `/{agent_id}/stream`."""
     record = await projects.get_visible(project_id, principal.user_id)
     target = run_target(record, stream_input.model)
-    return await stream(target, stream_input, principal.user_id, registry)
+    return await stream(target, stream_input, principal.user_id, registry, traces)
 
 
 @router.post("/{project_id}/history")

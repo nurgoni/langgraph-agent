@@ -551,6 +551,106 @@
         "title": "ProjectUpdate",
         "type": "object"
       },
+      "RunTrace": {
+        "description": "Isi `GET /runs/{run_id}/trace`: ringkasan run dan span-nya, urut waktu mulai.",
+        "properties": {
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "duration_ms": {
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "ended_at": {
+            "format": "date-time",
+            "title": "Ended At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "input_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sum over all model calls.",
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Tokens"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "spans": {
+            "items": {
+              "$ref": "#/components/schemas/TraceSpan"
+            },
+            "title": "Spans",
+            "type": "array"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TraceStatus",
+            "description": "`interrupted` means the run stopped to ask the user (FR-12)."
+          },
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "thread_id",
+          "agent_id",
+          "project_id",
+          "status",
+          "started_at",
+          "ended_at",
+          "duration_ms",
+          "spans"
+        ],
+        "title": "RunTrace",
+        "type": "object"
+      },
       "ServiceMetadata": {
         "description": "Isi endpoint `/info`: agent dan model yang tersedia.",
         "properties": {
@@ -942,6 +1042,96 @@
         ],
         "title": "ToolCall",
         "type": "object"
+      },
+      "TraceSpan": {
+        "description": "Satu panggilan model atau tool di dalam run.",
+        "properties": {
+          "duration_ms": {
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "ended_at": {
+            "format": "date-time",
+            "title": "Ended At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Exception type and message.",
+            "title": "Error"
+          },
+          "input_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Prompt tokens, if the model provider reported usage.",
+            "title": "Input Tokens"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TraceSpanKind"
+          },
+          "name": {
+            "description": "Model name, or tool name such as `load_skill`.",
+            "title": "Name",
+            "type": "string"
+          },
+          "output_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Tokens"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TraceStatus"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "status",
+          "started_at",
+          "ended_at",
+          "duration_ms"
+        ],
+        "title": "TraceSpan",
+        "type": "object"
+      },
+      "TraceSpanKind": {
+        "enum": [
+          "model",
+          "tool"
+        ],
+        "type": "string"
+      },
+      "TraceStatus": {
+        "enum": [
+          "ok",
+          "error",
+          "interrupted"
+        ],
+        "type": "string"
       },
       "UserInput": {
         "description": "Input user untuk satu run agent (`/invoke`).",
@@ -1908,6 +2098,55 @@
         "summary": "Rename Project Thread",
         "tags": [
           "projects"
+        ]
+      }
+    },
+    "/runs/{run_id}/trace": {
+      "get": {
+        "description": "Trace satu run: durasi, token, dan setiap panggilan model/tool. Run user lain → 404.",
+        "operationId": "get_run_trace_runs__run_id__trace_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunTrace"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Run Trace",
+        "tags": [
+          "runs"
         ]
       }
     },
