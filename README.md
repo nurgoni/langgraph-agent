@@ -134,7 +134,9 @@ menunjuk ke container itu sendiri.
 | `JWT_TTL_SECONDS` | tidak | Umur access token, default `43200` (12 jam). Tidak ada refresh token |
 | `CORS_ORIGINS` | tidak | Origin browser yang boleh memanggil API, dipisah koma. Kosong = tidak ada |
 | `FIRECRAWL_API_KEY` | tidak | Key [Firecrawl](https://firecrawl.dev) untuk tool `web_search` (research-assistant, supervisor). Kosong = tanpa pencarian web |
-| `AGENT_URL` | tidak | URL service untuk UI/client, default `http://localhost:8080` |
+| `AGENT_URL` | tidak | URL service untuk UI/client/eval, default `http://localhost:8080` |
+| `EVAL_USERNAME`, `EVAL_PASSWORD` | eval | Akun untuk `run_evals`, sebaiknya service account (`--role service`) |
+| `EVAL_TIMEOUT_SECONDS` | tidak | Batas waktu per request eval, default `300` |
 
 \* Tidak wajib jika `USE_FAKE_MODEL=true`. Daftar lengkap ada di [PRD.md §8](PRD.md#8-konfigurasi-env-var-v1).
 
@@ -157,6 +159,7 @@ menunjuk ke container itu sendiri.
 | GET | `/skills`, `/skills/{scope}/{name}` | Skill yang bisa diaktifkan di project (read-only) |
 | GET | `/memories` | Long-term memory milik user, yang terakhir diubah lebih dulu |
 | DELETE | `/memories/{memory_id}` | Hapus satu memory. Memory user lain menjawab 404 |
+| GET | `/runs/{run_id}/trace` | Trace satu run: durasi, token, panggilan model dan tool. Run user lain menjawab 404 |
 | GET | `/health` | Health check, selalu tanpa auth |
 
 Semua endpoint selain `/health` dan `/auth/login` butuh `Authorization: Bearer <access_token>`.
@@ -228,6 +231,26 @@ hanya saat relevan ([ADR 0005](docs/adr/0005-skill-format-and-sources.md)). Skil
 - Setelah update ke versi ini, jalankan lagi `run_migrate` untuk membuat tabel store. Tanpa itu,
   service menolak start.
 
+### Trace dan eval
+
+Setiap run `/invoke` dan `/stream` menyimpan trace di tabel `run_traces`: durasi run, setiap
+panggilan model (dengan token, jika provider mengirim usage) dan tool, serta status (`ok`, `error`,
+`interrupted`). Isi prompt dan hasil tool tidak disimpan. `run_id` ada di setiap `ChatMessage`,
+dan trace dibaca lewat `GET /runs/{run_id}/trace` atau `AgentClient.get_run_trace(run_id)`.
+
+Eval menjalankan dataset YAML di `evals/` lewat `AgentClient`, dengan jalur yang sama seperti user,
+lalu menulis laporan JSON + Markdown ke `eval-reports/` (tidak di-commit):
+
+```bash
+uv run python -m agent_service.manage create-user evals --role service
+# isi EVAL_USERNAME=evals dan EVAL_PASSWORD di .env, lalu dengan service berjalan:
+uv run python -m agent_service.run_evals evals/skills.yaml
+```
+
+Cek per kasus: `contains`, `not_contains`, `tools_called`, `tools_not_called`, `skills_loaded`, dan
+`max_latency_seconds`. Exit code 1 jika ada kasus gagal. `evals/smoke.yaml` (FakeModel) ikut
+dijalankan pytest di CI.
+
 ## Menggunakan AgentClient
 
 ```python
@@ -268,6 +291,7 @@ uv run pytest                 # test (tanpa test integration)
 uv run pytest -m integration  # test e2e Docker Compose (butuh Docker)
 uv run alembic revision --autogenerate -m "add projects"   # migrasi baru dari memory/tables.py
 uv run python -m agent_service.export_contracts            # ekspor ulang contracts/ setelah ubah API
+uv run python -m agent_service.run_evals evals/skills.yaml # eval dengan model asli (service berjalan)
 uv run ruff check . --fix     # lint
 uv run ruff format .          # format
 uv run pyrefly check          # type check

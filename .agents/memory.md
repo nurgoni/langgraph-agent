@@ -13,14 +13,42 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** M5 Harness Core. **F30** (Long-term memory) selesai, menunggu user commit, push, dan PR.
-- **Berikutnya:** **F31** (Evals & tracing), lalu rilis **v0.5.0**.
+- **Fase:** M5 Harness Core selesai. **F31** (Evals & tracing) menunggu user commit, push, dan PR.
+- **Berikutnya:** rilis **v0.5.0** (M5), lalu **F32** (Frontend scaffold & auth, M6).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
-- **Terakhir diperbarui:** 2026-11-17 (F30)
+- **Terakhir diperbarui:** 2026-11-17 (F31)
 
 ## Decision Log
+
+### 2026-11-17: Trace dan eval dari F31
+
+- **Keputusan user:** trace di tabel Postgres `run_traces` (PRD §11 no. 7 terjawab), dibaca lewat
+  `GET /runs/{run_id}/trace`. LLM judge ditunda.
+- **Keputusan desain:**
+  - `service/tracing.py` `RunTraceCollector` (AsyncCallbackHandler) per run, dipasang lewat
+    `RunInput.with_callbacks`. Span `run`/`model`/`tool` tanpa hierarki dan tanpa konten, ditulis
+    sekali di akhir run. `SQLAlchemyError` saat menulis hanya di-log.
+  - `GraphBubbleUp` (interrupt) → status `interrupted`, bukan `error`.
+  - `memory/traces.py` `RunTraceRepository`; trace milik user lain → `RunTraceNotFoundError` (404).
+  - `ModelFactory` `stream_usage=True`: token dari `usage_metadata`.
+  - `evals/` hanya meng-import `client/` + `schema/` (test layering), punya `EvalSettings` sendiri
+    (seperti UI) dan extra `evals`. Entrypoint `run_evals`, exit 0/1/2. Laporan di
+    `eval-reports/` (gitignore).
+  - Skill yang dimuat dibaca dari argumen `load_skill` di `/history`; latensi/token dari trace.
+- **Hasil ukur:** `qwen3.5:9b` dengan `evals/skills.yaml`: 2/3 lolos. Meeting notes memuat skill
+  (16 dtk, 1928/274 token), pertanyaan umum tanpa skill (1,4 dtk). Briefing solar/angin **tidak**
+  memuat `research-report` (temuan perilaku model, bukan bug). Ollama mengirim usage saat
+  streaming dengan `stream_usage=True`.
+- **Pelajaran:**
+  - Nama model di callback: `metadata["ls_model_name"]` (ChatOpenAI), kwarg `name` bisa `None`,
+    jadi fallback ke `serialized["name"]` (FakeModel).
+  - Schema login client memvalidasi username sebelum request, jadi CLI harus menangkap
+    `ValidationError` selain `AgentClientError`.
+  - Jangan melakukan mutation check di `src/` selama test e2e Docker berjalan: build image
+    menyalin `src/` dan mutasi bisa ikut masuk.
+  - Fixture di `tests/<folder>/conftest.py` tidak terlihat dari test di folder lain.
 
 ### 2026-11-17: Long-term memory dari F30
 

@@ -34,6 +34,13 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
   `GET /memories`, `DELETE /memories/{memory_id}`, dan `AgentClient.list_memories()`/
   `delete_memory()`. Memory disimpan di `AsyncPostgresStore`; **jalankan ulang `run_migrate`**
   (revisi 0004) sebelum start (F30).
+- Trace run (FR-41): setiap `/invoke` dan `/stream` mencatat span run, model (dengan token jika
+  provider mengirim usage), dan tool beserta durasi dan status di tabel `run_traces` (revisi 0005),
+  tanpa isi prompt atau jawaban. `GET /runs/{run_id}/trace` dan `AgentClient.get_run_trace()`.
+  `ChatOpenAI` kini meminta usage saat streaming (`stream_usage`) (F31).
+- Eval agent (FR-41): dataset YAML di `evals/`, runner lewat `AgentClient`
+  (`python -m agent_service.run_evals`), cek deterministik (teks, tool, skill, latensi), laporan
+  JSON + Markdown di `eval-reports/`. Extra baru `evals`. Smoke eval FakeModel berjalan di CI (F31).
 
 ### Changed
 

@@ -285,6 +285,45 @@ setiap giliran: UserMemoryRepository.list_memories(user, 20) ──► ## Memory
   (≥ 3 huruf) yang menjadi awal kata di memory, lalu yang terbaru. Karena pencarian berjalan di
   Python, jumlah memory dibatasi 200 per user sampai index embedding tersedia (F43).
 
+## Trace dan Eval
+
+**Trace** (FR-41, keputusan user F31: tabel Postgres, dibaca lewat API).
+
+```text
+route /invoke|/stream ──► RunTraceCollector (callback LangChain di config run)
+                            on_chat_model_start/on_llm_end   → span model (+ usage_metadata)
+                            on_tool_start/on_tool_end/error  → span tool
+akhir run ──► save(status) ──► RunTraceRepository.add_spans (satu INSERT) ──► run_traces
+GET /runs/{run_id}/trace ──► span milik pemilik token, span `run` lebih dulu
+```
+
+- **Span.** `run` (span_id = run_id, durasi seluruh run, total token, status akhir), `model`, dan
+  `tool`. Hierarki tidak disimpan; span diurutkan berdasarkan waktu mulai. Panggilan model
+  peringkasan (F29) dan expert supervisor ikut tercatat karena callback diwariskan lewat config.
+- **Status.** `ok`, `error` (nama exception + pesan, ≤ 500 karakter), atau `interrupted` (run
+  berhenti untuk bertanya; `GraphInterrupt` di dalam tool `save_memory` juga dicatat sebagai
+  `interrupted`, bukan error).
+- **Tanpa konten.** Prompt, jawaban, dan argumen/hasil tool tidak disimpan. Isi percakapan sudah
+  ada di checkpoint, jadi trace tidak menggandakan data user.
+- **Tulis sekali.** Span dikumpulkan di memori lalu ditulis di akhir run. `SQLAlchemyError` saat
+  menulis hanya dicatat di log, jadi database trace yang gagal tidak mengubah jawaban. Stream yang
+  diputus client di tengah jalan bisa kehilangan trace-nya.
+- **Token** dari `usage_metadata`. `ModelFactory` menyalakan `stream_usage=True`, supaya provider
+  OpenAI-compatible mengirim usage di chunk terakhir stream. FakeModel tidak mengirim usage.
+
+**Eval** (`src/agent_service/evals/`, dataset di `evals/`). Package ini hanya meng-import `client/`
+dan `schema/` (`tests/evals/test_layering.py`), dan punya extra `evals` sendiri (pydantic-settings,
+pyyaml).
+
+- `EvalRunner` menjalankan setiap kasus di thread baru lewat `AgentClient` (service account):
+  `ainvoke` → `aget_history` (tool call, skill yang dimuat lewat argumen `load_skill`) →
+  `aget_run_trace` (latensi di service dan token). Error HTTP menggagalkan kasus itu saja.
+- Skor deterministik di `scoring.py`. LLM judge ditunda (keputusan user F31).
+- `run_evals` menulis `eval-reports/eval-<waktu>.json` dan `.md`, exit code 0/1/2 (lolos, ada kasus
+  gagal, konfigurasi atau dataset salah).
+- CI: `tests/evals/test_datasets.py` memvalidasi semua dataset dan menjalankan `evals/smoke.yaml`
+  dengan FakeModel in-process. Test e2e menjalankan CLI `run_evals` terhadap stack Compose.
+
 ## Skill
 
 Skill built-in (FR-38, [ADR 0005](adr/0005-skill-format-and-sources.md)) memakai format Agent
@@ -368,19 +407,20 @@ Satu database Postgres di `DATABASE_URL` ([ADR 0001](adr/0001-postgres-only.md))
 | `users` | `UserRepository` (SQLAlchemy Core) | Akun login: username, hash argon2, role |
 | `projects` | `ProjectRepository` (SQLAlchemy Core) | Project built-in dan milik user |
 | `store`, `store_migrations` | `AsyncPostgresStore` (via `StoreProvider`) | Long-term memory user (F30) |
+| `run_traces` | `RunTraceRepository` (SQLAlchemy Core) | Trace run: satu baris per span run/model/tool (F31) |
 | `alembic_version` | Alembic | Revisi skema tabel aplikasi |
 
 - **Satu driver.** Checkpointer dan SQLAlchemy sama-sama memakai psycopg 3. `DATABASE_URL` ditulis
   `postgresql://...`, dan `sqlalchemy_url()` menambahkan `+psycopg` untuk SQLAlchemy.
 - **Tiga pool per proses.** `CheckpointerProvider` dan `StoreProvider` masing-masing membuka
   `AsyncConnectionPool` psycopg lewat `memory/pool.py` (autocommit, tanpa prepared statement, baris
-  dict, sesuai syarat saver/store LangGraph). `DatabaseEngineProvider` membuka engine SQLAlchemy. Keduanya mengecek koneksi saat startup dengan `connect_timeout` 5 detik,
-  karena default psycopg adalah 130 detik.
+  dict, sesuai syarat saver/store LangGraph). `DatabaseEngineProvider` membuka engine SQLAlchemy.
+  Semuanya mengecek koneksi saat startup dengan `connect_timeout` 5 detik, karena default psycopg
+  adalah 130 detik.
 - **Migrasi terpisah dari service.** `python -m agent_service.run_migrate` (service compose
   `migrate`) menjalankan `AsyncPostgresSaver.setup()`, `AsyncPostgresStore.setup()`, lalu
   `alembic upgrade head`. Revisi `0004` tidak mengubah skema; ia memaksa database lama dimigrasi
-  ulang supaya tabel store pasti ada. Lifespan hanya
-  memanggil `ensure_database_migrated`, yang membandingkan `alembic_version` dengan revisi terbaru.
+  ulang supaya tabel store pasti ada. Lifespan hanya memanggil `ensure_database_migrated`, yang membandingkan `alembic_version` dengan revisi terbaru.
   Tabel aplikasi baru ditambahkan di `memory/tables.py` beserta revisi di `memory/migrations/`.
 - **Event loop.** psycopg async tidak bisa memakai `ProactorEventLoop`, loop default di Windows.
   `run_service` memberi uvicorn `loop="asyncio:SelectorEventLoop"`, `run_migrate` memakai

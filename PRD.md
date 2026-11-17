@@ -233,9 +233,11 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
   mencari dengan kata kunci, dan `save_memory` hanya menyimpan setelah user menyetujui lewat balasan
   teks pada interrupt ("yes"/"ya"; balasan lain menolak dan diteruskan ke model). Maksimal 200
   memory per user. User bisa melihat dan menghapus memory lewat `GET`/`DELETE /memories`.
-- **FR-41** Evaluasi dan tracing. Dataset eval di `evals/` dijalankan lewat CLI dan menghasilkan
-  laporan skor (cek deterministik + LLM judge opsional). Setiap run mencatat trace (panggilan model,
-  tool, token, latensi). Backend tracing diputuskan di Langkah 1 F31.
+- **FR-41** Evaluasi dan tracing. Dataset eval di `evals/` dijalankan lewat CLI (`run_evals`) dan
+  menghasilkan laporan skor dengan cek deterministik (teks, tool, skill, latensi). LLM judge ditunda.
+  Setiap run `/invoke` dan `/stream` mencatat trace (panggilan model, tool, token, latensi, status)
+  di tabel Postgres `run_traces`, tanpa isi prompt/jawaban. Pemilik run membacanya lewat
+  `GET /runs/{run_id}/trace`.
 
 ### Fase 2: Frontend (M6)
 
@@ -349,6 +351,7 @@ dan pemilik thread diambil dari token (FR-33).
 | Method | Path | FR | Fitur |
 |---|---|---|---|
 | GET, DELETE | `/memories`, `/memories/{memory_id}` | FR-40 | F30 |
+| GET | `/runs/{run_id}/trace` | FR-41 | F31 |
 | POST, GET | `/artifacts`, `/artifacts/{artifact_id}` | FR-46 | F35 |
 | GET | `/jobs`, `/jobs/{job_id}/runs` | FR-53 | F41 |
 | POST, GET, DELETE | `/projects/{project_id}/documents` | FR-55 | F43 |
@@ -489,7 +492,9 @@ Rincian fitur per milestone, urutan eksekusi, dan rencana commit ada di
 
 6. Sumber data analisa: apakah sudah ada read replica atau user database read-only? Apakah data
    perlu di-mask (PII) sebelum dikirim ke LLM yang bukan lokal? (F39)
-7. Backend tracing: Langfuse self-hosted, OpenTelemetry, atau tabel trace sendiri di Postgres? (F31)
+7. ~~Backend tracing: Langfuse self-hosted, OpenTelemetry, atau tabel trace sendiri di Postgres?
+   (F31)~~ **Terjawab (2026-11-17):** tabel `run_traces` di Postgres, dibaca lewat
+   `GET /runs/{run_id}/trace`. Langfuse/OTel bisa ditambahkan kemudian sebagai exporter.
 8. ~~Bentuk route chat berbasis Project: `project_id` di body route lama, atau route baru
    `/projects/{project_id}/stream`? (F26)~~ **Terjawab (2026-11-15):** route baru
    `/projects/{project_id}/invoke|stream|history|threads`. Route `/{agent_id}/...` tetap untuk
