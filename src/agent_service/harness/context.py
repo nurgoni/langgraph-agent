@@ -1,7 +1,7 @@
 """Perakitan system prompt setiap giliran (FR-37, ADR 0002).
 
-Urutan bagian tetap: instruksi agent → instruksi project → indeks skill → memory → ringkasan
-percakapan lama (F29) → lingkungan.
+Urutan bagian tetap: instruksi agent → instruksi project → indeks skill → memory user (F30) →
+ringkasan percakapan lama (F29) → lingkungan.
 Setiap bagian punya batas ukuran sendiri, jadi satu sumber yang terlalu panjang (misalnya
 instruksi project) tidak bisa menggeser bagian lain keluar dari prompt.
 
@@ -47,6 +47,7 @@ SUMMARY_MAX_CHARS: Final = 4000
 ENVIRONMENT_MAX_CHARS: Final = 300
 
 PROJECT_TITLE: Final = "Project instructions"
+MEMORY_TITLE: Final = "Memory"
 SUMMARY_TITLE: Final = "Summary of earlier conversation"
 ENVIRONMENT_TITLE: Final = "Environment"
 ENVIRONMENT_TEMPLATE: Final = "Current date: {date}. Timezone: {zone} (UTC{offset})."
@@ -113,7 +114,6 @@ class ContextBuilder:
         clock: Clock = local_now,
         use_project_instructions: bool = True,
         skills: SectionProvider | None = None,
-        memory: SectionProvider | None = None,
     ) -> None:
         """Inisialisasi builder.
 
@@ -124,13 +124,14 @@ class ContextBuilder:
                 dengan user (misalnya expert supervisor), supaya instruksi project tidak
                 mengubah tugas teknisnya.
             skills: Sumber indeks skill aktif (F28). `None` berarti tanpa bagian skill.
-            memory: Sumber memory user (F30). `None` berarti tanpa bagian memory.
+
+        Memory user (F30) dan ringkasan (F29) tidak punya provider: keduanya dibaca agent secara
+        async (store, state thread) lalu diberikan ke `build` per panggilan.
         """
         self._instructions = instructions
         self._clock = clock
         self._use_project_instructions = use_project_instructions
         self._skills = skills
-        self._memory = memory
 
     def with_skills(self, skills: SectionProvider) -> "ContextBuilder":
         """Builder yang sama dengan sumber indeks skill, untuk agent yang punya `load_skill`.
@@ -143,40 +144,45 @@ class ContextBuilder:
             clock=self._clock,
             use_project_instructions=self._use_project_instructions,
             skills=skills,
-            memory=self._memory,
         )
 
-    def sections(self, config: RunConfig | None = None, summary: str = "") -> list[PromptSection]:
+    def sections(
+        self, config: RunConfig | None = None, summary: str = "", memories: str = ""
+    ) -> list[PromptSection]:
         """Semua bagian yang berisi, urut sesuai FR-37.
 
         Args:
             config: Config run LangGraph. Instruksi project dibaca dari `configurable`.
             summary: Ringkasan giliran lama dari state thread (F29), kosong jika belum ada.
+            memories: Memory user yang sudah dirender (F30), kosong jika tidak ada.
         """
         run_config: RunConfig = {} if config is None else config
         candidates = [
             PromptSection(AGENT_SECTION, self._instructions, AGENT_MAX_CHARS),
             self._project_section(run_config),
             _provided(self._skills, run_config),
-            _provided(self._memory, run_config),
+            PromptSection(MEMORY_SECTION, memories, MEMORY_MAX_CHARS, MEMORY_TITLE),
             PromptSection(SUMMARY_SECTION, summary, SUMMARY_MAX_CHARS, SUMMARY_TITLE),
             self._environment_section(),
         ]
         return [section for section in candidates if section is not None and not section.is_empty]
 
-    def build(self, config: RunConfig | None = None, summary: str = "") -> str:
+    def build(self, config: RunConfig | None = None, summary: str = "", memories: str = "") -> str:
         """System prompt lengkap untuk run ini."""
-        sections = self.sections(config, summary)
+        sections = self.sections(config, summary, memories)
         return SECTION_SEPARATOR.join(section.render() for section in sections)
 
-    def system_message(self, config: RunConfig | None = None, summary: str = "") -> SystemMessage:
+    def system_message(
+        self, config: RunConfig | None = None, summary: str = "", memories: str = ""
+    ) -> SystemMessage:
         """System prompt sebagai message pertama untuk model. Tidak disimpan di riwayat thread.
 
         Args:
             config: Config run LangGraph.
             summary: Ringkasan giliran lama dari `ContextPolicy`, kosong jika belum ada.
+            memories: Memory user dari `MemoryToolkit`, kosong jika tidak ada.
         """
-        return SystemMessage(content=self.build(config, summary))
+        return SystemMessage(content=self.build(config, summary, memories))
 
     def _project_section(self, config: RunConfig) -> PromptSection | None:
         """Instruksi project dari `configurable`, jika run berada di project dan dipakai agent."""

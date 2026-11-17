@@ -6,6 +6,7 @@ from langchain_core.messages import SystemMessage
 from agent_service.harness.context import (
     AGENT_MAX_CHARS,
     ENVIRONMENT_SECTION,
+    MEMORY_MAX_CHARS,
     MEMORY_SECTION,
     PROJECT_MAX_CHARS,
     SKILLS_SECTION,
@@ -28,7 +29,7 @@ def fixed_clock() -> datetime:
 
 
 class StaticProvider:
-    """Sumber bagian tiruan untuk slot skill/memory."""
+    """Sumber bagian tiruan untuk slot skill."""
 
     def __init__(self, section: PromptSection | None) -> None:
         self.section_value = section
@@ -44,12 +45,13 @@ def test_full_prompt_snapshot() -> None:
         "You are a research assistant.",
         clock=fixed_clock,
         skills=StaticProvider(PromptSection(SKILLS_SECTION, "- research-report", 100, "Skills")),
-        memory=StaticProvider(
-            PromptSection(MEMORY_SECTION, "- Prefers short answers", 100, "Memory")
-        ),
     )
 
-    prompt = builder.build(PROJECT_CONFIG, summary="User is planning a trip to Bali.")
+    prompt = builder.build(
+        PROJECT_CONFIG,
+        summary="User is planning a trip to Bali.",
+        memories="- Prefers short answers",
+    )
 
     assert prompt == (
         "You are a research assistant.\n"
@@ -69,6 +71,18 @@ def test_full_prompt_snapshot() -> None:
         "## Environment\n"
         "Current date: Monday, November 16, 2026. Timezone: WIB (UTC+07:00)."
     )
+
+
+def test_memory_section_is_bounded_and_skipped_when_empty() -> None:
+    builder = ContextBuilder("Be concise.", clock=fixed_clock)
+
+    long_memories = builder.sections(memories="m" * (MEMORY_MAX_CHARS + 50))
+    no_memories = builder.sections(memories="")
+
+    [memory] = [section for section in long_memories if section.name == MEMORY_SECTION]
+    assert memory.render().startswith("## Memory\nmmm")
+    assert memory.render().endswith("m" + TRUNCATION_MARKER)
+    assert MEMORY_SECTION not in [section.name for section in no_memories]
 
 
 def test_summary_section_is_bounded_and_skipped_when_empty() -> None:
@@ -139,10 +153,10 @@ def test_long_project_instructions_do_not_push_out_environment() -> None:
     assert len(prompt) < AGENT_MAX_CHARS + PROJECT_MAX_CHARS + 1_000
 
 
-def test_providers_receive_run_config_and_can_return_nothing() -> None:
-    skills = StaticProvider(None)
-    memory = StaticProvider(PromptSection(MEMORY_SECTION, "  ", 100, "Memory"))
-    builder = ContextBuilder("Halo", clock=fixed_clock, skills=skills, memory=memory)
+@pytest.mark.parametrize("section", [None, PromptSection(SKILLS_SECTION, "  ", 100, "Skills")])
+def test_providers_receive_run_config_and_can_return_nothing(section: PromptSection | None) -> None:
+    skills = StaticProvider(section)
+    builder = ContextBuilder("Halo", clock=fixed_clock, skills=skills)
 
     sections = builder.sections(PROJECT_CONFIG)
 
