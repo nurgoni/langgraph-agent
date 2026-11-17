@@ -7,6 +7,7 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from agent_service.core.constants import (
+    DEFAULT_CONTEXT_MAX_TOKENS,
     DEFAULT_DATABASE_URL,
     DEFAULT_HOST,
     DEFAULT_JWT_TTL_SECONDS,
@@ -19,6 +20,7 @@ from agent_service.core.constants import (
     FAKE_MODEL_NAME,
     LIST_SEPARATOR,
     MAX_PORT,
+    MIN_CONTEXT_MAX_TOKENS,
     MIN_JWT_SECRET_LENGTH,
     MIN_JWT_TTL_SECONDS,
     MIN_LLM_MAX_TOKENS,
@@ -61,6 +63,8 @@ class Settings(BaseSettings):
     use_fake_model: bool = False
     llm_max_tokens: int = Field(default=DEFAULT_LLM_MAX_TOKENS, ge=MIN_LLM_MAX_TOKENS)
     llm_max_tokens_param: MaxTokensParam = DEFAULT_LLM_MAX_TOKENS_PARAM
+    # Anggaran token riwayat + ringkasan yang dikirim ke model per panggilan (FR-39).
+    context_max_tokens: int = Field(default=DEFAULT_CONTEXT_MAX_TOKENS, ge=MIN_CONTEXT_MAX_TOKENS)
 
     # Secret karena berisi password. Default = Postgres dari compose.yaml untuk dev lokal.
     database_url: SecretStr = SecretStr(DEFAULT_DATABASE_URL)

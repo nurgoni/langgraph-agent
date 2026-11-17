@@ -18,6 +18,7 @@ from agent_service.agents.catalog import (
 from agent_service.agents.registry import AgentRegistry
 from agent_service.agents.tools.web_search import SearchBackend, create_search_backend
 from agent_service.core.settings import Settings
+from agent_service.harness.context_policy import ContextPolicy
 from agent_service.harness.skills.registry import SkillRegistry
 from agent_service.harness.skills.sources import BUILTIN_SKILLS_DIR, FilesystemSkillSource
 from agent_service.harness.skills.toolkit import SkillToolkit
@@ -75,7 +76,7 @@ def create_app(
     Args:
         settings: Konfigurasi service. Default: dibaca dari env dan `.env`.
         agents: Agent yang didaftarkan. Default: `create_default_agents()` dengan web search
-            dari `FIRECRAWL_API_KEY`.
+            dari `FIRECRAWL_API_KEY` dan anggaran riwayat dari `CONTEXT_MAX_TOKENS`.
         default_agent_id: Agent untuk `/info` dan route tanpa `{agent_id}`.
         builtin_projects: Project built-in yang di-seed saat startup, jika agent dasarnya
             terdaftar.
@@ -97,7 +98,9 @@ def create_app(
     resolved_skills = default_skill_registry() if skill_registry is None else skill_registry
     if agents is None:
         resolved_agents = create_default_agents(
-            build_search_backend(resolved_settings), SkillToolkit(resolved_skills)
+            build_search_backend(resolved_settings),
+            SkillToolkit(resolved_skills),
+            ContextPolicy(max_tokens=resolved_settings.context_max_tokens),
         )
     else:
         resolved_agents = list(agents)

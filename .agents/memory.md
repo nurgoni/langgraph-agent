@@ -13,15 +13,43 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** M5 Harness Core. **F28** (Built-in skills) selesai, menunggu user commit, push, dan
-  PR (F26 dan F27 mungkin belum di-merge; lihat daftar command terakhir).
-- **Berikutnya:** **F29** (Context policy).
+- **Fase:** M5 Harness Core. **F29** (Context policy) selesai, menunggu user commit, push, dan PR.
+- **Berikutnya:** **F30** (Long-term memory).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
-- **Terakhir diperbarui:** 2026-11-15
+- **Terakhir diperbarui:** 2026-11-17
 
 ## Decision Log
+
+### 2026-11-17: Context policy dari F29
+
+- **Keputusan user:** `CONTEXT_MAX_TOKENS` default 16.000. Peringkasan bertahap: saat anggaran
+  terlampaui, unit lama diringkas sampai riwayat langsung tinggal ±50% anggaran.
+- **Keputusan desain:**
+  - `harness/context_policy.py`: `message_units` (AI + `ToolMessage`-nya = satu unit),
+    `ContextPolicy.prepare(model, messages, summary, summarized_through) -> ContextWindow`.
+    Anggaran = riwayat + ringkasan. Ringkasan ≤ min(4000 karakter, ¼ anggaran).
+  - State agent (`ToolCallingState`, `SupervisorState`): `summary` dan `summarized_through`
+    (`NotRequired`, ID message). `messages` tidak diubah, jadi `/history` lengkap.
+  - Ringkasan masuk `ContextBuilder.system_message(config, summary)` sebagai bagian sebelum
+    lingkungan, bukan message tambahan.
+  - Peringkasan: model yang sama tanpa tool, tag `skip_stream`, per batch jika backlog > anggaran.
+    Respons kosong mempertahankan ringkasan lama. Error model tidak ditangkap.
+  - Unit tunggal yang melebihi anggaran dipotong di salinan (penanda `[truncated]` ikut dihitung).
+  - `SKIP_STREAM_TAG` dipindah ke `core/constants.py`.
+- **Hasil ukur:** Ollama `qwen3.5:9b` (`context_length` 262144) membaca prompt 1,6k/13,5k/35k token
+  tanpa pemotongan diam-diam. `count_tokens_approximately` 1–8% di atas hitungan Ollama.
+  Smoke test anggaran 1000: satu peringkasan ±15 detik, dan fakta giliran pertama tetap diingat.
+- **Pelajaran:**
+  - `MessagesState` memakai `typing_extensions.TypedDict`. Mewarisi `typing.TypedDict` bersamaan
+    dengannya menghasilkan `metaclass conflict`. Deklarasikan field langsung di state agent.
+  - Return node berupa `{"messages": ..., **typed_dict}` dibaca pyrefly sebagai
+    `dict[str, object]`. Buat `TypedDict` update sendiri dan isi field-nya secara eksplisit.
+  - Respons `FakeModel` berputar. Test yang memicu beberapa panggilan ringkasan (batch) harus
+    menyediakan respons yang cukup, kalau tidak hasilnya kembali ke respons pertama.
+  - Agent tidak boleh menjalankan command git apa pun, termasuk `git diff` di dalam rangkaian
+    perintah verifikasi (aturan user F21). Classifier menolak perintah itu.
 
 ### 2026-11-16: Skill built-in dari F28
 

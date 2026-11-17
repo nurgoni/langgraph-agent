@@ -1,7 +1,7 @@
 """Agent yang bisa memanggil tool berulang kali sampai bisa menjawab (loop ReAct)."""
 
 from collections.abc import Sequence
-from typing import Final
+from typing import Final, NotRequired, TypedDict
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
@@ -13,6 +13,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 
 from agent_service.agents.base import AgentGraph, BaseAgent, Checkpointer
 from agent_service.harness.context import ContextBuilder
+from agent_service.harness.context_policy import ContextPolicy, ContextWindow
 from agent_service.harness.skills.toolkit import SkillToolkit
 
 AGENT_NODE: Final = "agent"
@@ -24,9 +25,32 @@ STEP_LIMIT_MESSAGE: Final = "Sorry, I need more steps to finish this request."
 
 
 class ToolCallingState(MessagesState):
-    """State graph: riwayat message ditambah sisa langkah sebelum `recursion_limit`."""
+    """State graph: riwayat message, ringkasan giliran lama, dan sisa langkah sebelum limit.
+
+    `summary` dan `summarized_through` milik `ContextPolicy` (FR-39). Keduanya belum ada di thread
+    baru dan di thread dari versi sebelum F29.
+    """
 
     remaining_steps: RemainingSteps
+    summary: NotRequired[str]
+    summarized_through: NotRequired[str]
+
+
+class ModelTurnUpdate(TypedDict):
+    """Update node model: jawaban baru, ditambah ringkasan terbaru dari `ContextPolicy`."""
+
+    messages: list[AIMessage]
+    summary: str
+    summarized_through: str
+
+
+def model_turn_update(response: AIMessage, window: ContextWindow) -> ModelTurnUpdate:
+    """Jawaban model beserta ringkasan dari `window`, untuk disimpan ke state thread."""
+    return ModelTurnUpdate(
+        messages=[response],
+        summary=window.summary,
+        summarized_through=window.summarized_through,
+    )
 
 
 class ToolCallingAgent(BaseAgent):
@@ -35,7 +59,9 @@ class ToolCallingAgent(BaseAgent):
     Model memutuskan tool mana yang dipanggil. Hasil tool dikembalikan ke model sampai model
     menjawab tanpa tool call. Research assistant adalah satu instance class ini, dan agent RAG
     nantinya cukup menjadi instance lain dengan tool retriever. System prompt dirakit ulang di
-    setiap panggilan model (FR-37), jadi tanggal dan instruksi project selalu terbaru.
+    setiap panggilan model (FR-37), jadi tanggal dan instruksi project selalu terbaru. Sebelum
+    model dipanggil, `ContextPolicy` menjaga riwayat di bawah anggaran token dan meringkas giliran
+    lama (FR-39).
 
     Dengan `skills`, tool `load_skill` dan indeks skill hanya muncul pada giliran yang project-nya
     punya skill aktif (FR-38). Tanpa tool sama sekali, graph-nya `agent → END`.
@@ -48,6 +74,7 @@ class ToolCallingAgent(BaseAgent):
         tools: Sequence[BaseTool],
         context: ContextBuilder,
         skills: SkillToolkit | None = None,
+        context_policy: ContextPolicy | None = None,
     ) -> None:
         """Inisialisasi agent.
 
@@ -57,8 +84,10 @@ class ToolCallingAgent(BaseAgent):
             tools: Tool yang boleh dipanggil model. Dibuat sekali dan dipakai semua graph.
             context: Perakit system prompt (instruksi agent, project, lingkungan).
             skills: Toolkit skill. `None` berarti agent tidak bisa memakai skill.
+            context_policy: Anggaran token riwayat. Default: `ContextPolicy()` (16.000 token).
         """
         super().__init__(agent_id=agent_id, description=description)
+        self._policy = ContextPolicy() if context_policy is None else context_policy
         self._tools = list(tools)
         self._skills = skills
         self._context = context if skills is None else context.with_skills(skills)
@@ -96,16 +125,20 @@ class ToolCallingAgent(BaseAgent):
         skill_model = model.bind_tools(all_tools) if self._skills is not None else base_model
 
         # Closure, bukan method: satu instance agent membangun graph untuk beberapa model.
-        async def call_model(
-            state: ToolCallingState, config: RunnableConfig
-        ) -> dict[str, list[AIMessage]]:
-            prompt = self._context.system_message(config)
+        async def call_model(state: ToolCallingState, config: RunnableConfig) -> ModelTurnUpdate:
+            window = await self._policy.prepare(
+                model,
+                state["messages"],
+                state.get("summary", ""),
+                state.get("summarized_through", ""),
+            )
+            prompt = self._context.system_message(config, window.summary)
             uses_skills = self._skills is not None and bool(self._skills.tools_for(config))
             bound_model = skill_model if uses_skills else base_model
-            response = await bound_model.ainvoke([prompt, *state["messages"]])
+            response = await bound_model.ainvoke([prompt, *window.messages])
             if response.tool_calls and state["remaining_steps"] < MIN_REMAINING_STEPS:
-                return {"messages": [AIMessage(id=response.id, content=STEP_LIMIT_MESSAGE)]}
-            return {"messages": [response]}
+                response = AIMessage(id=response.id, content=STEP_LIMIT_MESSAGE)
+            return model_turn_update(response, window)
 
         # pyrefly tidak mengenali TypedDict sebagai TypedDictLike milik LangGraph.
         builder = StateGraph(ToolCallingState)  # pyrefly: ignore[bad-specialization]

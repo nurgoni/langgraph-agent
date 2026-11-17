@@ -217,15 +217,17 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
   berisi `base_agent_id`, `model`, `instructions`, `skill_ids`, dan `settings` yang divalidasi.
   Setiap thread punya `project_id`, dan listing thread bisa difilter per project.
 - **FR-37** System prompt dirakit setiap giliran oleh `ContextBuilder`, dengan urutan tetap: instruksi
-  agent, instruksi project, indeks skill, memory user, dan informasi lingkungan (tanggal,
-  timezone). Setiap bagian punya batas ukuran.
+  agent, instruksi project, indeks skill, memory user, ringkasan percakapan lama (FR-39), dan
+  informasi lingkungan (tanggal, timezone). Setiap bagian punya batas ukuran.
 - **FR-38** Skill built-in ([ADR 0005](docs/adr/0005-skill-format-and-sources.md)) berformat
   `SKILL.md` di `src/agent_service/skills/builtin/`. Skill divalidasi saat startup (yang tidak valid
   dilewati dan dicatat di log). `GET /skills` dan `GET /skills/{id}` (read-only). Tool
   `load_skill(name, path?)` hanya bisa memuat skill yang aktif di Project.
 - **FR-39** Context management. Sebelum memanggil model, riwayat dipangkas ke anggaran
-  `CONTEXT_MAX_TOKENS`. Giliran lama diringkas, dan ringkasannya disimpan di state thread. Riwayat
-  lengkap tetap tersedia di `/history`.
+  `CONTEXT_MAX_TOKENS` (default 16.000, mencakup riwayat dan ringkasan). Saat anggaran terlampaui,
+  giliran lama diringkas sekaligus sampai riwayat langsung tinggal ±50% anggaran, dan ringkasannya
+  disimpan di state thread. Tool call dan hasilnya tidak pernah dipisah. Riwayat lengkap tetap
+  tersedia di `/history`.
 - **FR-40** Long-term memory per user (`AsyncPostgresStore`). Tool `search_memory` membaca, dan
   `save_memory` hanya menyimpan setelah user menyetujui (interrupt). User bisa melihat dan
   menghapus memory lewat `GET`/`DELETE /memories`.

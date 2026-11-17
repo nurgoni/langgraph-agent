@@ -43,7 +43,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F26 | Projects | M5 | done |
 | F27 | Context builder | M5 | done |
 | F28 | Built-in skills | M5 | done |
-| F29 | Context policy | M5 | todo |
+| F29 | Context policy | M5 | done |
 | F30 | Long-term memory | M5 | todo |
 | F31 | Evals & tracing | M5 | todo |
 | F32 | Frontend scaffold & auth | M6 | todo |
@@ -1312,9 +1312,23 @@ F32 → F33 → F34 → *rilis v0.6.0* → F35 → F36 → F37 → F38 → *rili
   2. `feat(harness): summarize older turns into thread state`
   3. `feat(agents): apply ContextPolicy before model calls`
   4. `docs: record F29 context policy decisions`
+- **Langkah 1 (keputusan user):** `CONTEXT_MAX_TOKENS` default 16.000 (qwen3.5:9b di Ollama
+  terukur membaca prompt ±35k token tanpa pemotongan). Peringkasan bertahap: saat anggaran
+  terlampaui, giliran lama diringkas sampai riwayat langsung tinggal ±50% anggaran.
+- **Penyesuaian saat implementasi:**
+  - `trim_messages` tidak dipakai. Pengelompokan unit sendiri (`message_units`) lebih jelas untuk
+    menjamin tool call tidak terpisah dan untuk memisahkan bagian yang diringkas.
+  - State: `summary` + `summarized_through` (ID message, bukan indeks). Ringkasan masuk
+    `ContextBuilder` sebagai bagian `## Summary of earlier conversation` (sebelum lingkungan),
+    bukan message tambahan, karena sebagian template chat menolak system message kedua.
+  - `SKIP_STREAM_TAG` pindah ke `core/constants.py` (dipakai harness, agent, dan service).
+  - Commit 1–2 digabung (satu modul `context_policy.py`), dan commit 3 membawa setting
+    `CONTEXT_MAX_TOKENS`.
 - **Acceptance criteria:**
-  - [ ] Thread panjang: input model selalu di bawah `CONTEXT_MAX_TOKENS`.
-  - [ ] Pasangan tool call tidak pernah terpotong. `/history` tetap lengkap.
+  - [x] Thread panjang: input model selalu di bawah `CONTEXT_MAX_TOKENS`.
+  - [x] Pasangan tool call tidak pernah terpotong. `/history` tetap lengkap.
+  - [x] Smoke test `qwen3.5:9b` (`CONTEXT_MAX_TOKENS=1000`): 8 giliran, satu peringkasan (±15
+        detik), dan fakta dari giliran pertama masih dijawab benar lewat ringkasan.
 - **Squash title:** `feat(harness): add context trimming and summarization (F29)`
 
 ### F30: Long-term memory

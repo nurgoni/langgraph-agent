@@ -17,6 +17,7 @@ from langgraph.types import interrupt
 from pydantic import BaseModel, Field
 
 from agent_service.agents.base import AgentGraph, BaseAgent, Checkpointer
+from agent_service.core.constants import SKIP_STREAM_TAG
 
 INTERRUPT_AGENT_ID: Final = "interrupt-agent"
 INTERRUPT_AGENT_DESCRIPTION: Final = (
@@ -25,8 +26,6 @@ INTERRUPT_AGENT_DESCRIPTION: Final = (
 EXTRACT_NODE: Final = "extract_birthdate"
 ASK_NODE: Final = "ask_birthdate"
 RESPOND_NODE: Final = "respond"
-# Panggilan LLM internal: hasilnya data terstruktur, bukan teks untuk user.
-SKIP_STREAM_TAG: Final = "skip_stream"
 DEFAULT_QUESTION: Final = "What is your birthdate? Please use YYYY-MM-DD, for example 1990-05-17."
 FUTURE_DATE_QUESTION: Final = (
     "That date is in the future. What is your birthdate? Please use YYYY-MM-DD."

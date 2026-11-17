@@ -196,7 +196,8 @@ prompt di **setiap** panggilan model, dengan urutan bagian yang tetap:
 | 2 | `## Project instructions` | `configurable["project_instructions"]` (F26) | 8000 |
 | 3 | `## Skills` | `SkillToolkit` (F28): nama + deskripsi skill aktif | 4000 |
 | 4 | `## Memory` | `SectionProvider` slot `memory` (F30) | 4000 |
-| 5 | `## Environment` | `clock` yang di-inject: tanggal dan timezone | 300 |
+| 5 | `## Summary of earlier conversation` | `ContextPolicy` (F29): ringkasan dari state thread | 4000 |
+| 6 | `## Environment` | `clock` yang di-inject: tanggal dan timezone | 300 |
 
 - **Batas per bagian.** Bagian yang melebihi batas dipotong dan diberi penanda `[truncated]`, jadi
   satu sumber yang panjang tidak bisa mendorong bagian lain keluar. Bagian kosong dilewati.
@@ -210,6 +211,42 @@ prompt di **setiap** panggilan model, dengan urutan bagian yang tetap:
   menyusun jawaban akhir, yang menerapkan instruksi project.
 - `interrupt-agent` masih memakai prompt tetap untuk ekstraksi dan jawaban, sehingga instruksi
   project belum berlaku untuknya.
+
+## Context Policy
+
+`ContextPolicy` (`harness/context_policy.py`, FR-39) menjaga riwayat yang dikirim ke model tetap
+di bawah `CONTEXT_MAX_TOKENS` (default 16.000). Node model `ToolCallingAgent` dan `SupervisorAgent`
+memanggil `prepare()` sebelum setiap panggilan model.
+
+```text
+messages (state, lengkap) ──► sesudah summarized_through ──► muat di anggaran? ── ya ──► kirim
+                                                                   │ tidak
+                                                                   ▼
+                              unit lama ──► model (tag skip_stream) ──► summary baru (state)
+                              unit terbaru (≤ 50% anggaran) ──► kirim, ringkasan di system prompt
+```
+
+- **Unit.** `AIMessage` dengan `tool_calls` selalu satu unit dengan `ToolMessage`-nya, jadi
+  pemangkasan tidak pernah memisahkan tool call dari hasilnya. Unit terakhir selalu dikirim.
+- **Bertahap** (keputusan user F29). Saat anggaran terlampaui, unit lama diringkas sekaligus sampai
+  riwayat langsung tinggal `keep_ratio` (50%) anggaran. Giliran berikutnya tidak meringkas lagi
+  sampai anggaran penuh lagi, jadi panggilan model tambahan jarang terjadi.
+- **State thread.** `summary` dan `summarized_through` (ID message terakhir yang sudah diringkas)
+  disimpan di state graph. `messages` tidak pernah diubah, jadi `/history` tetap lengkap. Thread
+  lama tanpa field ini dianggap belum punya ringkasan.
+- **Batas.** Anggaran mencakup riwayat dan ringkasan. Ringkasan dibatasi `SUMMARY_MAX_CHARS` atau
+  seperempat anggaran. System prompt lain di luar anggaran karena setiap bagiannya sudah dibatasi.
+  Unit tunggal yang lebih besar dari anggaran (misalnya hasil tool yang sangat panjang) dipotong di
+  salinan yang dikirim, dengan penanda `[truncated]`.
+- **Peringkasan.** Model yang sama tanpa tool, bertag `skip_stream` (token dan reasoning-nya tidak
+  dialirkan ke chat). Backlog yang lebih besar dari anggaran diringkas per batch. Respons kosong
+  mempertahankan ringkasan lama. Kegagalan panggilan model tidak ditangkap, jadi run gagal seperti
+  kegagalan model biasa.
+- Token dihitung dengan `count_tokens_approximately` (±4 karakter per token). Pada `qwen3.5:9b`
+  perkiraan ini 1–8% di atas hitungan Ollama, jadi meleset ke sisi aman.
+- Expert supervisor memakai `ContextPolicy()` default (setiap delegasi mulai dari state kosong,
+  jadi praktis tidak pernah meringkas). `interrupt-agent` tidak memakainya karena percakapannya
+  pendek.
 
 ## Skill
 

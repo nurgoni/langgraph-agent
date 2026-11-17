@@ -1,6 +1,7 @@
 """Perakitan system prompt setiap giliran (FR-37, ADR 0002).
 
-Urutan bagian tetap: instruksi agent → instruksi project → indeks skill → memory → lingkungan.
+Urutan bagian tetap: instruksi agent → instruksi project → indeks skill → memory → ringkasan
+percakapan lama (F29) → lingkungan.
 Setiap bagian punya batas ukuran sendiri, jadi satu sumber yang terlalu panjang (misalnya
 instruksi project) tidak bisa menggeser bagian lain keluar dari prompt.
 
@@ -34,6 +35,7 @@ AGENT_SECTION: Final = "agent"
 PROJECT_SECTION: Final = "project"
 SKILLS_SECTION: Final = "skills"
 MEMORY_SECTION: Final = "memory"
+SUMMARY_SECTION: Final = "summary"
 ENVIRONMENT_SECTION: Final = "environment"
 
 # Batas karakter per bagian. Instruksi project sama dengan batas schema `ProjectCreate`.
@@ -41,9 +43,11 @@ AGENT_MAX_CHARS: Final = 8000
 PROJECT_MAX_CHARS: Final = 8000
 SKILLS_MAX_CHARS: Final = 4000
 MEMORY_MAX_CHARS: Final = 4000
+SUMMARY_MAX_CHARS: Final = 4000
 ENVIRONMENT_MAX_CHARS: Final = 300
 
 PROJECT_TITLE: Final = "Project instructions"
+SUMMARY_TITLE: Final = "Summary of earlier conversation"
 ENVIRONMENT_TITLE: Final = "Environment"
 ENVIRONMENT_TEMPLATE: Final = "Current date: {date}. Timezone: {zone} (UTC{offset})."
 DATE_FORMAT: Final = "%A, %B %d, %Y"
@@ -142,11 +146,12 @@ class ContextBuilder:
             memory=self._memory,
         )
 
-    def sections(self, config: RunConfig | None = None) -> list[PromptSection]:
+    def sections(self, config: RunConfig | None = None, summary: str = "") -> list[PromptSection]:
         """Semua bagian yang berisi, urut sesuai FR-37.
 
         Args:
             config: Config run LangGraph. Instruksi project dibaca dari `configurable`.
+            summary: Ringkasan giliran lama dari state thread (F29), kosong jika belum ada.
         """
         run_config: RunConfig = {} if config is None else config
         candidates = [
@@ -154,17 +159,24 @@ class ContextBuilder:
             self._project_section(run_config),
             _provided(self._skills, run_config),
             _provided(self._memory, run_config),
+            PromptSection(SUMMARY_SECTION, summary, SUMMARY_MAX_CHARS, SUMMARY_TITLE),
             self._environment_section(),
         ]
         return [section for section in candidates if section is not None and not section.is_empty]
 
-    def build(self, config: RunConfig | None = None) -> str:
+    def build(self, config: RunConfig | None = None, summary: str = "") -> str:
         """System prompt lengkap untuk run ini."""
-        return SECTION_SEPARATOR.join(section.render() for section in self.sections(config))
+        sections = self.sections(config, summary)
+        return SECTION_SEPARATOR.join(section.render() for section in sections)
 
-    def system_message(self, config: RunConfig | None = None) -> SystemMessage:
-        """System prompt sebagai message pertama untuk model. Tidak disimpan di riwayat thread."""
-        return SystemMessage(content=self.build(config))
+    def system_message(self, config: RunConfig | None = None, summary: str = "") -> SystemMessage:
+        """System prompt sebagai message pertama untuk model. Tidak disimpan di riwayat thread.
+
+        Args:
+            config: Config run LangGraph.
+            summary: Ringkasan giliran lama dari `ContextPolicy`, kosong jika belum ada.
+        """
+        return SystemMessage(content=self.build(config, summary))
 
     def _project_section(self, config: RunConfig) -> PromptSection | None:
         """Instruksi project dari `configurable`, jika run berada di project dan dipakai agent."""

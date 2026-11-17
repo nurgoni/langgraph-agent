@@ -13,13 +13,16 @@ from agent_service.agents.interrupt import InterruptAgent
 from agent_service.agents.research import RESEARCH_ASSISTANT_ID, create_research_assistant
 from agent_service.agents.supervisor import create_supervisor_agent
 from agent_service.agents.tools.web_search import SearchBackend
+from agent_service.harness.context_policy import ContextPolicy
 from agent_service.harness.skills.toolkit import SkillToolkit
 
 DEFAULT_AGENT_ID: Final = CHATBOT_AGENT_ID
 
 
 def create_default_agents(
-    search_backend: SearchBackend | None = None, skills: SkillToolkit | None = None
+    search_backend: SearchBackend | None = None,
+    skills: SkillToolkit | None = None,
+    context_policy: ContextPolicy | None = None,
 ) -> list[BaseAgent]:
     """Buat instance baru untuk setiap agent bawaan.
 
@@ -29,6 +32,8 @@ def create_default_agents(
     Args:
         search_backend: Mesin pencari untuk tool web search. Default: tanpa pencarian.
         skills: Toolkit skill untuk chatbot dan research assistant. Default: tanpa skill.
+        context_policy: Anggaran token riwayat (`CONTEXT_MAX_TOKENS`) untuk agent percakapan.
+            Default: `ContextPolicy()`. Interrupt agent tidak memakainya (percakapannya pendek).
 
     Returns:
         Agent bawaan, urut sesuai tampilan di `/info`.
@@ -39,10 +44,10 @@ def create_default_agents(
     'chatbot'
     """
     return [
-        ChatbotAgent(skills=skills),
-        create_research_assistant(search_backend, skills),
+        ChatbotAgent(skills=skills, context_policy=context_policy),
+        create_research_assistant(search_backend, skills, context_policy),
         InterruptAgent(),
-        create_supervisor_agent(search_backend),
+        create_supervisor_agent(search_backend, context_policy),
     ]
 
 

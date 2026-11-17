@@ -54,3 +54,12 @@ MIN_LLM_MAX_TOKENS: Final = 1
 # sedangkan model reasoning OpenAI (gpt-5, o-series) hanya menerima `max_completion_tokens`.
 MaxTokensParam = Literal["max_tokens", "max_completion_tokens"]
 DEFAULT_LLM_MAX_TOKENS_PARAM: Final[MaxTokensParam] = "max_tokens"
+
+# Anggaran token riwayat + ringkasan per panggilan model (FR-39, keputusan user F29). qwen3.5:9b
+# di Ollama terukur membaca prompt ±35k token tanpa pemotongan, dan 16k menjaga giliran tetap
+# cepat di model lokal. Batas bawah memberi ruang untuk ringkasan dan satu giliran pendek.
+DEFAULT_CONTEXT_MAX_TOKENS: Final = 16000
+MIN_CONTEXT_MAX_TOKENS: Final = 1000
+
+# Tag run model yang token/reasoning-nya tidak dialirkan ke chat (ekstraksi, peringkasan).
+SKIP_STREAM_TAG: Final = "skip_stream"
