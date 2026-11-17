@@ -44,7 +44,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F27 | Context builder | M5 | done |
 | F28 | Built-in skills | M5 | done |
 | F29 | Context policy | M5 | done |
-| F30 | Long-term memory | M5 | todo |
+| F30 | Long-term memory | M5 | done |
 | F31 | Evals & tracing | M5 | todo |
 | F32 | Frontend scaffold & auth | M6 | todo |
 | F33 | Chat UI | M6 | todo |
@@ -1347,10 +1347,33 @@ F32 → F33 → F34 → *rilis v0.6.0* → F35 → F36 → F37 → F38 → *rili
   3. `feat(harness): inject relevant memories into prompts`
   4. `feat(service): let users list and delete memories`
   5. `docs: record F30 memory decisions`
+- **Langkah 1 (keputusan user):** persetujuan lewat balasan teks pada interrupt (tanpa field API
+  baru): "yes"/"ya"/... menyimpan, balasan lain menolak dan diteruskan ke model. Prompt berisi
+  memory terbaru (maksimal 20, dibatasi 4000 karakter), dan `search_memory` mencari dengan kata
+  kunci. Memory untuk `chatbot` dan `research-assistant` saja.
+- **Penyesuaian saat implementasi:**
+  - Repository di `memory/user_memories.py` (`UserMemoryRepository`, dipakai harness dan route),
+    tool di `harness/tools/memory.py`, dan `MemoryToolkit` di `harness/memory.py`. Pool psycopg
+    bersama checkpointer dipindah ke `memory/pool.py`.
+  - Store diberikan lewat `BaseAgent.build(model, checkpointer, store=None)` dan
+    `AgentRegistry(..., store)`, karena pool baru ada di lifespan. Tool dibuat per graph dengan
+    closure atas repository, bukan `get_store()` (eksplisit). Slot `memory: SectionProvider` di
+    `ContextBuilder` diganti argumen `memories` per panggilan, karena pembacaan store bersifat async.
+  - ID memory = uuid5 dari teks. `ToolNode` menjalankan ulang tool call yang sudah disetujui saat
+    run dilanjutkan, dan ID deterministik mencegah duplikat (diukur dengan probe).
+  - Batas 200 memory dan 500 karakter per memory. Revisi Alembic `0004` (tanpa perubahan skema)
+    memaksa database lama menjalankan `run_migrate` sehingga tabel store dibuat.
+  - Ditambah `AgentClient.list_memories()`/`delete_memory()` dan test e2e tabel store di image.
+  - Commit 2–3 digabung (tool dan bagian prompt berada di toolkit yang sama), dan commit 4 membawa
+    perubahan agent, registry, dan client.
 - **Acceptance criteria:**
-  - [ ] Memory tersimpan hanya setelah disetujui, dan muncul di prompt thread lain milik user yang
-        sama.
-  - [ ] Memory user lain tidak pernah terbaca (NFR-9).
+  - [x] Memory tersimpan hanya setelah disetujui, dan muncul di prompt thread lain milik user yang
+        sama (test agent dan route).
+  - [x] Memory user lain tidak pernah terbaca (NFR-9): repository, prompt, tool, dan route dites.
+  - [x] Smoke test `qwen3.5:9b`: "remember my name is Rani, answer in Indonesian" → pertanyaan
+        persetujuan → "yes" → tersimpan. Thread baru menjawab "Namamu adalah Rani.", user lain
+        tidak tahu namanya, penolakan tidak menyimpan, dan pertanyaan umum tidak memicu
+        `save_memory`.
 - **Squash title:** `feat(harness): add long-term user memory (F30)`
 
 ### F31: Evals & tracing

@@ -13,14 +13,43 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** M5 Harness Core. **F29** (Context policy) selesai, menunggu user commit, push, dan PR.
-- **Berikutnya:** **F30** (Long-term memory).
+- **Fase:** M5 Harness Core. **F30** (Long-term memory) selesai, menunggu user commit, push, dan PR.
+- **Berikutnya:** **F31** (Evals & tracing), lalu rilis **v0.5.0**.
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
-- **Terakhir diperbarui:** 2026-11-17
+- **Terakhir diperbarui:** 2026-11-17 (F30)
 
 ## Decision Log
+
+### 2026-11-17: Long-term memory dari F30
+
+- **Keputusan user:** persetujuan `save_memory` lewat balasan teks pada interrupt (tanpa field API).
+  Prompt berisi memory terbaru (≤ 20), `search_memory` mencari kata kunci. Memory hanya untuk
+  `chatbot` dan `research-assistant`.
+- **Keputusan desain:**
+  - `memory/store.py` `StoreProvider` + `memory/pool.py` (pool bersama checkpointer).
+    `memory/user_memories.py` `UserMemoryRepository`: namespace `("users", user_id, "memories")`,
+    ID uuid5 dari teks, maksimal 200 memory × 500 karakter, `delete` → `MemoryNotFoundError` (404).
+  - `BaseAgent.build(model, checkpointer, store=None)`, `AgentRegistry(..., store)`. Tool dibuat
+    per graph (closure atas repository), bukan `get_store()`.
+  - `ContextBuilder` tidak lagi punya slot `memory`; `system_message(config, summary, memories)`.
+  - `is_approval`: kata pertama harus kata setuju, dan semua kata harus kata setuju/pengisi.
+  - `USER_ID_CONFIG_KEY` di `core/constants.py`. Revisi Alembic `0004` tanpa perubahan skema
+    sebagai penanda tabel store.
+- **Pelajaran:**
+  - `interrupt()` di dalam tool bekerja di `ToolNode`, tetapi saat run dilanjutkan **semua** tool
+    call di giliran itu dijalankan ulang, termasuk yang sudah disetujui. Efek samping tool harus
+    idempoten. Dua interrupt dalam satu giliran ditanyakan bergantian, dan jawaban dipasangkan
+    berurutan.
+  - `InMemoryStore.asearch` mengembalikan urutan sisip dan memotong `limit` sebelum urutan apa
+    pun, sedangkan `AsyncPostgresStore` mengurutkan `updated_at` menurun. Urutkan di repository.
+  - Timestamp dua penyimpanan beruntun di Windows bisa sama persis. Test urutan butuh jeda kecil.
+  - Prefix namespace store dicocokkan per elemen: `("users", "u")` tidak cocok dengan `u1`.
+  - Fixture test mengosongkan semua tabel kecuali tabel migrasi. Tabel migrasi baru
+    (`store_migrations`) harus masuk `KEPT_TABLES`.
+  - Mengubah signature method abstract (`build`) mewajibkan semua agent tiruan di test ikut diubah,
+    karena pyrefly menandai override yang kurang parameter.
 
 ### 2026-11-17: Context policy dari F29
 

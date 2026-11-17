@@ -28,8 +28,19 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
   (default 16.000). Saat terlampaui, giliran lama diringkas oleh model (tanpa di-stream) sampai
   riwayat langsung tinggal ±50%. Ringkasan disimpan di state thread dan masuk ke system prompt.
   Tool call dan hasilnya tidak pernah dipisah, dan `/history` tetap lengkap (F29).
+- Long-term memory per user (FR-40) untuk `chatbot` dan `research-assistant`: tool `save_memory`
+  meminta persetujuan lewat interrupt (balas "yes"/"ya" untuk menyimpan), `search_memory` mencari
+  dengan kata kunci, dan 20 memory terbaru masuk ke system prompt di semua thread user.
+  `GET /memories`, `DELETE /memories/{memory_id}`, dan `AgentClient.list_memories()`/
+  `delete_memory()`. Memory disimpan di `AsyncPostgresStore`; **jalankan ulang `run_migrate`**
+  (revisi 0004) sebelum start (F30).
 
 ### Changed
+
+- `BaseAgent.build(model, checkpointer, store=None)` dan `AgentRegistry(..., store=None)`: store
+  long-term memory diberikan saat graph dibangun. Agent custom perlu menambah parameter `store`.
+  Slot `memory` di konstruktor `ContextBuilder` diganti argumen `memories` per panggilan, karena
+  memory dibaca async dari store (F30).
 
 - **Breaking (belum dirilis):** `Project.skill_ids` berisi ID skill `<scope>/<name>`
   (`builtin/research-report`), dan ID yang tidak dikenal ditolak (422). `ChatbotAgent` kini dibangun
