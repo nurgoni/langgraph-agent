@@ -10,10 +10,12 @@ from langchain_core.tools import BaseTool, ToolException
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.managed import RemainingSteps
 from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.store.base import BaseStore
 
 from agent_service.agents.base import AgentGraph, BaseAgent, Checkpointer
 from agent_service.harness.context import ContextBuilder
 from agent_service.harness.context_policy import ContextPolicy, ContextWindow
+from agent_service.harness.memory import MemoryToolkit
 from agent_service.harness.skills.toolkit import SkillToolkit
 
 AGENT_NODE: Final = "agent"
@@ -64,7 +66,9 @@ class ToolCallingAgent(BaseAgent):
     lama (FR-39).
 
     Dengan `skills`, tool `load_skill` dan indeks skill hanya muncul pada giliran yang project-nya
-    punya skill aktif (FR-38). Tanpa tool sama sekali, graph-nya `agent → END`.
+    punya skill aktif (FR-38). Dengan `use_memory` dan store dari `build`, memory terbaru user masuk
+    prompt dan tool `search_memory`/`save_memory` selalu di-bind (FR-40). Tanpa tool sama sekali,
+    graph-nya `agent → END`.
     """
 
     def __init__(
@@ -75,6 +79,7 @@ class ToolCallingAgent(BaseAgent):
         context: ContextBuilder,
         skills: SkillToolkit | None = None,
         context_policy: ContextPolicy | None = None,
+        use_memory: bool = False,
     ) -> None:
         """Inisialisasi agent.
 
@@ -85,30 +90,37 @@ class ToolCallingAgent(BaseAgent):
             context: Perakit system prompt (instruksi agent, project, lingkungan).
             skills: Toolkit skill. `None` berarti agent tidak bisa memakai skill.
             context_policy: Anggaran token riwayat. Default: `ContextPolicy()` (16.000 token).
+            use_memory: Pakai long-term memory user jika `build` menerima store.
         """
         super().__init__(agent_id=agent_id, description=description)
         self._policy = ContextPolicy() if context_policy is None else context_policy
         self._tools = list(tools)
         self._skills = skills
         self._context = context if skills is None else context.with_skills(skills)
+        self._use_memory = use_memory
 
-    def build(self, model: BaseChatModel, checkpointer: Checkpointer) -> AgentGraph:
+    def build(
+        self, model: BaseChatModel, checkpointer: Checkpointer, store: BaseStore | None = None
+    ) -> AgentGraph:
         """Compile graph `agent → tools → agent`, yang berhenti saat model tidak memanggil tool.
 
         Args:
             model: Chat model untuk graph ini. Tools di-bind ke model ini.
             checkpointer: Saver tempat riwayat thread disimpan.
+            store: Store long-term memory. Dipakai hanya jika agent dibuat dengan `use_memory`.
 
         Returns:
             Graph yang sudah di-compile.
         """
-        return self._graph_builder(model).compile(checkpointer=checkpointer)
+        memory = MemoryToolkit(store) if self._use_memory and store is not None else None
+        return self._graph_builder(model, memory).compile(checkpointer=checkpointer)
 
     def build_stateless(self, model: BaseChatModel) -> AgentGraph:
         """Compile graph yang sama tanpa checkpoint, untuk dipakai sebagai sub-agent.
 
         Setiap pemanggilan dimulai dari state kosong dan tidak menulis checkpoint, walaupun
-        dijalankan di dalam node graph lain yang punya checkpointer.
+        dijalankan di dalam node graph lain yang punya checkpointer. Sub-agent tidak memakai
+        memory, karena interrupt persetujuan `save_memory` tidak bisa dilanjutkan di sini.
 
         Args:
             model: Chat model untuk graph ini.
@@ -116,12 +128,13 @@ class ToolCallingAgent(BaseAgent):
         Returns:
             Graph tanpa checkpointer.
         """
-        return self._graph_builder(model).compile(checkpointer=False)
+        return self._graph_builder(model, None).compile(checkpointer=False)
 
-    def _graph_builder(self, model: BaseChatModel) -> StateGraph:
+    def _graph_builder(self, model: BaseChatModel, memory: MemoryToolkit | None) -> StateGraph:
         """Susun graph `agent → tools → agent` untuk `model`, belum di-compile."""
-        all_tools = self._all_tools()
-        base_model = model.bind_tools(self._tools) if self._tools else model
+        agent_tools = [*self._tools, *([] if memory is None else memory.tools)]
+        all_tools = self._all_tools(agent_tools)
+        base_model = model.bind_tools(agent_tools) if agent_tools else model
         skill_model = model.bind_tools(all_tools) if self._skills is not None else base_model
 
         # Closure, bukan method: satu instance agent membangun graph untuk beberapa model.
@@ -132,7 +145,8 @@ class ToolCallingAgent(BaseAgent):
                 state.get("summary", ""),
                 state.get("summarized_through", ""),
             )
-            prompt = self._context.system_message(config, window.summary)
+            memories = "" if memory is None else await memory.prompt_text(config)
+            prompt = self._context.system_message(config, window.summary, memories)
             uses_skills = self._skills is not None and bool(self._skills.tools_for(config))
             bound_model = skill_model if uses_skills else base_model
             response = await bound_model.ainvoke([prompt, *window.messages])
@@ -154,10 +168,10 @@ class ToolCallingAgent(BaseAgent):
         builder.add_edge(TOOLS_NODE, AGENT_NODE)
         return builder
 
-    def _all_tools(self) -> list[BaseTool]:
-        """Tool agent ditambah tool skill, yang semuanya didaftarkan di `ToolNode`."""
+    def _all_tools(self, agent_tools: list[BaseTool]) -> list[BaseTool]:
+        """Tool agent (termasuk memory) ditambah tool skill, semuanya didaftarkan di `ToolNode`."""
         skill_tools = [] if self._skills is None else self._skills.tools
-        return [*self._tools, *skill_tools]
+        return [*agent_tools, *skill_tools]
 
 
 if __name__ == "__main__":

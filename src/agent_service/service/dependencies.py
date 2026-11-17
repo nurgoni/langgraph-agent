@@ -15,6 +15,7 @@ from agent_service.agents.registry import AgentRegistry
 from agent_service.core.settings import Settings
 from agent_service.harness.skills.registry import SkillRegistry
 from agent_service.llm.factory import ModelFactory
+from agent_service.memory.user_memories import UserMemoryRepository
 from agent_service.service.auth import Authenticator, InvalidTokenError, Principal
 from agent_service.service.projects import ProjectService
 from agent_service.service.threads import ThreadRepository
@@ -54,6 +55,11 @@ def get_skill_registry(request: Request) -> SkillRegistry:
     return request.app.state.skill_registry
 
 
+def get_memory_repository(request: Request) -> UserMemoryRepository:
+    """Ambil `UserMemoryRepository` yang dibuat di lifespan."""
+    return request.app.state.memory_repository
+
+
 def get_default_agent_id(request: Request) -> str:
     """Ambil ID agent default milik app."""
     return request.app.state.default_agent_id
@@ -89,4 +95,5 @@ DefaultAgentIdDep = Annotated[str, Depends(get_default_agent_id)]
 AuthenticatorDep = Annotated[Authenticator, Depends(get_authenticator)]
 ProjectServiceDep = Annotated[ProjectService, Depends(get_project_service)]
 SkillRegistryDep = Annotated[SkillRegistry, Depends(get_skill_registry)]
+MemoryRepositoryDep = Annotated[UserMemoryRepository, Depends(get_memory_repository)]
 PrincipalDep = Annotated[Principal, Depends(current_principal)]

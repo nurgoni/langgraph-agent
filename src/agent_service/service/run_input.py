@@ -16,6 +16,7 @@ from agent_service.core.constants import (
     PROJECT_ID_CONFIG_KEY,
     PROJECT_INSTRUCTIONS_CONFIG_KEY,
     PROJECT_SKILL_IDS_CONFIG_KEY,
+    USER_ID_CONFIG_KEY,
 )
 from agent_service.schema.headers import THREAD_ID_HEADER
 from agent_service.schema.requests import UserInput
@@ -126,7 +127,7 @@ async def build_run_input(
     agent_config = parse_agent_config(agent, user_input.agent_config)
     thread_id = user_input.thread_id or str(uuid4())
     run_id = uuid7()
-    configurable: dict[str, Any] = {"thread_id": thread_id, "user_id": user_id}
+    configurable: dict[str, Any] = {"thread_id": thread_id, USER_ID_CONFIG_KEY: user_id}
     configurable.update(agent_config.model_dump(mode="json"))
     project_id = None if project is None else project.project_id
     if project is not None:

@@ -2,6 +2,7 @@ import pytest
 from langchain_core.language_models import BaseChatModel
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import MessagesState, StateGraph
+from langgraph.store.base import BaseStore
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from agent_service.agents.base import AgentGraph, BaseAgent, Checkpointer, EmptyAgentConfig
@@ -9,7 +10,9 @@ from agent_service.llm.fake import FakeModel
 
 
 class EchoAgent(BaseAgent):
-    def build(self, model: BaseChatModel, checkpointer: Checkpointer) -> AgentGraph:
+    def build(
+        self, model: BaseChatModel, checkpointer: Checkpointer, store: BaseStore | None = None
+    ) -> AgentGraph:
         # pyrefly tidak mengenali TypedDict sebagai TypedDictLike milik LangGraph.
         builder = StateGraph(MessagesState)  # pyrefly: ignore[bad-specialization]
         builder.add_node("noop", lambda state: {})

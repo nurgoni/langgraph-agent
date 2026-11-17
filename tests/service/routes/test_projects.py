@@ -9,6 +9,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, MessagesState, StateGraph
+from langgraph.store.base import BaseStore
 
 from agent_service.agents.base import AgentGraph, BaseAgent, Checkpointer
 from agent_service.agents.catalog import BuiltinProject
@@ -294,7 +295,9 @@ class RecordingAgent(BaseAgent):
         super().__init__(agent_id="recorder", description="Records the model it is built with")
         self.models: list[BaseChatModel] = []
 
-    def build(self, model: BaseChatModel, checkpointer: Checkpointer) -> AgentGraph:
+    def build(
+        self, model: BaseChatModel, checkpointer: Checkpointer, store: BaseStore | None = None
+    ) -> AgentGraph:
         self.models.append(model)
 
         async def reply(state: MessagesState, config: RunnableConfig) -> dict[str, list[AIMessage]]:

@@ -228,9 +228,11 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
   giliran lama diringkas sekaligus sampai riwayat langsung tinggal ±50% anggaran, dan ringkasannya
   disimpan di state thread. Tool call dan hasilnya tidak pernah dipisah. Riwayat lengkap tetap
   tersedia di `/history`.
-- **FR-40** Long-term memory per user (`AsyncPostgresStore`). Tool `search_memory` membaca, dan
-  `save_memory` hanya menyimpan setelah user menyetujui (interrupt). User bisa melihat dan
-  menghapus memory lewat `GET`/`DELETE /memories`.
+- **FR-40** Long-term memory per user (`AsyncPostgresStore`) untuk `chatbot` dan
+  `research-assistant`. Hingga 20 memory terbaru masuk ke system prompt. Tool `search_memory`
+  mencari dengan kata kunci, dan `save_memory` hanya menyimpan setelah user menyetujui lewat balasan
+  teks pada interrupt ("yes"/"ya"; balasan lain menolak dan diteruskan ke model). Maksimal 200
+  memory per user. User bisa melihat dan menghapus memory lewat `GET`/`DELETE /memories`.
 - **FR-41** Evaluasi dan tracing. Dataset eval di `evals/` dijalankan lewat CLI dan menghasilkan
   laporan skor (cek deterministik + LLM judge opsional). Setiap run mencatat trace (panggilan model,
   tool, token, latensi). Backend tracing diputuskan di Langkah 1 F31.

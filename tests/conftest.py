@@ -24,7 +24,7 @@ TEST_DATABASE_URL_ENV = "TEST_DATABASE_URL"
 TEST_DATABASE_PREFIX = "agent_service_test_"
 ADMIN_CONNECT_TIMEOUT_SECONDS = 5
 # Tabel migrasi tidak dikosongkan, supaya database test tetap tercatat sudah dimigrasi.
-KEPT_TABLES = ("alembic_version", "checkpoint_migrations")
+KEPT_TABLES = ("alembic_version", "checkpoint_migrations", "store_migrations")
 # Settings dari test yang lupa memakai fixture `database_url` gagal di sini, bukan menulis ke
 # database dev.
 UNCONFIGURED_DATABASE_URL = "postgresql://test-database-not-configured.invalid/none"

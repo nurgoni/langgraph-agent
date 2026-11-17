@@ -7,6 +7,7 @@ import pytest
 from httpx import AsyncClient
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
+from langgraph.store.base import BaseStore
 
 from agent_service.agents.base import AgentGraph, BaseAgent, Checkpointer
 from agent_service.agents.chatbot import ChatbotAgent
@@ -27,7 +28,9 @@ def extraction(birthdate: str | None) -> AIMessage:
 class ScriptedInterruptAgent(InterruptAgent):
     """InterruptAgent dengan model tiruan yang sudah di-script, apa pun model dari request."""
 
-    def build(self, model: BaseChatModel, checkpointer: Checkpointer) -> AgentGraph:
+    def build(
+        self, model: BaseChatModel, checkpointer: Checkpointer, store: BaseStore | None = None
+    ) -> AgentGraph:
         scripted = FakeModel(
             responses=[extraction(None), extraction("1990-05-17"), "Zodiakmu Taurus!"]
         )

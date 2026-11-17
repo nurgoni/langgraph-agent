@@ -13,6 +13,7 @@ from typing import Final, Literal, NotRequired
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, START, MessagesState, StateGraph
+from langgraph.store.base import BaseStore
 from langgraph.types import interrupt
 from pydantic import BaseModel, Field
 
@@ -153,12 +154,15 @@ class InterruptAgent(BaseAgent):
         super().__init__(agent_id=agent_id, description=description)
         self._today = today
 
-    def build(self, model: BaseChatModel, checkpointer: Checkpointer) -> AgentGraph:
+    def build(
+        self, model: BaseChatModel, checkpointer: Checkpointer, store: BaseStore | None = None
+    ) -> AgentGraph:
         """Compile graph `extract → (ask → extract)* → respond`.
 
         Args:
             model: Chat model untuk ekstraksi dan jawaban.
             checkpointer: Saver tempat riwayat dan tanggal lahir thread disimpan.
+            store: Tidak dipakai. Agent ini tidak memakai long-term memory.
 
         Returns:
             Graph yang sudah di-compile.

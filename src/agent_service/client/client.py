@@ -18,6 +18,7 @@ from agent_service.client.requests import (
 )
 from agent_service.client.stream import AsyncStreamRun, StreamRun
 from agent_service.schema.auth import LoginRequest, TokenResponse
+from agent_service.schema.memories import MemoryList
 from agent_service.schema.projects import Project, ProjectCreate, ProjectList, ProjectUpdate
 from agent_service.schema.requests import (
     THREADS_LIMIT_DEFAULT,
@@ -45,6 +46,7 @@ BEARER_PREFIX: Final = "Bearer "
 LOGIN_PATH: Final = "/auth/login"
 PROJECTS_PATH: Final = "/projects"
 SKILLS_PATH: Final = "/skills"
+MEMORIES_PATH: Final = "/memories"
 
 
 class AgentClient:
@@ -329,6 +331,30 @@ class AgentClient:
         """
         return parse_model(self._send(RequestSpec("GET", _skill_path(skill_id))), SkillDetail)
 
+    def list_memories(self) -> MemoryList:
+        """Long-term memory milik user yang login, yang terakhir diubah lebih dulu (FR-40).
+
+        Raises:
+            AgentClientError: Request gagal.
+        """
+        return parse_model(self._send(RequestSpec("GET", MEMORIES_PATH)), MemoryList)
+
+    def delete_memory(self, memory_id: str) -> None:
+        """Hapus satu memory milik user yang login.
+
+        Raises:
+            AgentClientError: 404 jika memory tidak ada atau milik user lain.
+        """
+        self._send(RequestSpec("DELETE", _memory_path(memory_id)))
+
+    async def alist_memories(self) -> MemoryList:
+        """Versi async `list_memories`."""
+        return parse_model(await self._asend(RequestSpec("GET", MEMORIES_PATH)), MemoryList)
+
+    async def adelete_memory(self, memory_id: str) -> None:
+        """Versi async `delete_memory`."""
+        await self._asend(RequestSpec("DELETE", _memory_path(memory_id)))
+
     async def alist_skills(self) -> SkillList:
         """Versi async `list_skills`."""
         return parse_model(await self._asend(RequestSpec("GET", SKILLS_PATH)), SkillList)
@@ -513,6 +539,15 @@ def _project_path(project_id: str) -> str:
     '/projects/p%2F1'
     """
     return f"{PROJECTS_PATH}/{path_segment(project_id)}"
+
+
+def _memory_path(memory_id: str) -> str:
+    """Path satu memory.
+
+    >>> _memory_path("a/b")
+    '/memories/a%2Fb'
+    """
+    return f"{MEMORIES_PATH}/{path_segment(memory_id)}"
 
 
 def _skill_path(skill_id: str) -> str:

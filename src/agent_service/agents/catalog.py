@@ -35,6 +35,9 @@ def create_default_agents(
         context_policy: Anggaran token riwayat (`CONTEXT_MAX_TOKENS`) untuk agent percakapan.
             Default: `ContextPolicy()`. Interrupt agent tidak memakainya (percakapannya pendek).
 
+    Chatbot dan research assistant memakai long-term memory user (keputusan user F30). Memory
+    aktif saat registry punya store, jadi graph yang dibangun tanpa store tetap seperti sebelumnya.
+
     Returns:
         Agent bawaan, urut sesuai tampilan di `/info`.
 
@@ -44,8 +47,8 @@ def create_default_agents(
     'chatbot'
     """
     return [
-        ChatbotAgent(skills=skills, context_policy=context_policy),
-        create_research_assistant(search_backend, skills, context_policy),
+        ChatbotAgent(skills=skills, context_policy=context_policy, use_memory=True),
+        create_research_assistant(search_backend, skills, context_policy, use_memory=True),
         InterruptAgent(),
         create_supervisor_agent(search_backend, context_policy),
     ]

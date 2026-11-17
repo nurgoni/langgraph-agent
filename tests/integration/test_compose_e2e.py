@@ -220,3 +220,10 @@ def test_builtin_skills_ship_in_the_service_image(stack: ComposeStack) -> None:
         "builtin/research-report",
     ]
     assert notes.body.startswith("# Meeting notes")
+
+
+def test_memory_store_is_migrated(stack: ComposeStack) -> None:
+    with stack.client() as client:
+        memories = client.list_memories()
+
+    assert memories.memories == []

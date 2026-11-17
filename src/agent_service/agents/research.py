@@ -35,6 +35,7 @@ def create_research_assistant(
     search_backend: SearchBackend | None = None,
     skills: SkillToolkit | None = None,
     context_policy: ContextPolicy | None = None,
+    use_memory: bool = False,
 ) -> ToolCallingAgent:
     """Buat research assistant dengan tool web search dan kalkulator.
 
@@ -45,6 +46,7 @@ def create_research_assistant(
             (tool menjawab "not configured").
         skills: Toolkit skill. `None` berarti tanpa skill.
         context_policy: Anggaran token riwayat. Default: `ContextPolicy()`.
+        use_memory: Pakai long-term memory user (FR-40) jika registry punya store.
 
     Returns:
         Agent `research-assistant` yang siap didaftarkan.
@@ -62,4 +64,5 @@ def create_research_assistant(
         context=ContextBuilder(RESEARCH_SYSTEM_PROMPT),
         skills=skills,
         context_policy=context_policy,
+        use_memory=use_memory,
     )

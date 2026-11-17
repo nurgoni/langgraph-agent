@@ -36,6 +36,7 @@ class ChatbotAgent(ToolCallingAgent):
         context: ContextBuilder | None = None,
         skills: SkillToolkit | None = None,
         context_policy: ContextPolicy | None = None,
+        use_memory: bool = False,
     ) -> None:
         """Inisialisasi chatbot.
 
@@ -45,6 +46,7 @@ class ChatbotAgent(ToolCallingAgent):
             context: Perakit system prompt. Default: tanpa instruksi agent.
             skills: Toolkit skill. `None` berarti chatbot tidak bisa memakai skill.
             context_policy: Anggaran token riwayat. Default: `ContextPolicy()`.
+            use_memory: Pakai long-term memory user (FR-40) jika registry punya store.
         """
         super().__init__(
             agent_id=agent_id,
@@ -53,6 +55,7 @@ class ChatbotAgent(ToolCallingAgent):
             context=ContextBuilder() if context is None else context,
             skills=skills,
             context_policy=context_policy,
+            use_memory=use_memory,
         )
 
 

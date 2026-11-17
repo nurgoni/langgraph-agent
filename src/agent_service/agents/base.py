@@ -12,6 +12,7 @@ from typing import Any, ClassVar, Final
 from langchain_core.language_models import BaseChatModel
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.store.base import BaseStore
 from pydantic import BaseModel, ConfigDict, JsonValue
 
 EMPTY_CONFIG_DESCRIPTION: Final = "This agent accepts no configuration options."
@@ -58,12 +59,16 @@ class BaseAgent(ABC):
         """Siapkan resource async sebelum `build` dipanggil. Default-nya tidak melakukan apa-apa."""
 
     @abstractmethod
-    def build(self, model: BaseChatModel, checkpointer: Checkpointer) -> AgentGraph:
+    def build(
+        self, model: BaseChatModel, checkpointer: Checkpointer, store: BaseStore | None = None
+    ) -> AgentGraph:
         """Bangun dan compile graph agent.
 
         Args:
             model: Chat model yang dipilih untuk request (FR-4).
             checkpointer: Saver yang diberikan ke `compile(checkpointer=...)`.
+            store: Store long-term memory (FR-40). Agent yang tidak memakai memory mengabaikannya,
+                dan `None` berarti graph dibangun tanpa memory.
 
         Returns:
             Graph yang sudah di-compile dengan checkpointer.

@@ -31,6 +31,10 @@ FAKE_MODEL_NAME: Final = "fake"
 # Pemisah untuk env var berisi daftar, seperti AVAILABLE_MODELS dan CORS_ORIGINS.
 LIST_SEPARATOR: Final = ","
 
+# Pemilik run (`sub` token), diisi service di `configurable` setiap run. Dibaca harness untuk
+# memilih namespace memory user (FR-40).
+USER_ID_CONFIG_KEY: Final = "user_id"
+
 # Kunci `configurable` yang diisi service untuk run di dalam project (FR-36), dibaca agent dan
 # harness (F27/F28). Sama dengan kunci reservasi di `schema/requests.py`.
 PROJECT_ID_CONFIG_KEY: Final = "project_id"

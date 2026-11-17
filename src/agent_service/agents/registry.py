@@ -2,6 +2,8 @@
 
 import logging
 
+from langgraph.store.base import BaseStore
+
 from agent_service.agents.base import AgentGraph, BaseAgent, Checkpointer
 from agent_service.agents.errors import (
     AgentNotFoundError,
@@ -31,15 +33,23 @@ class AgentRegistry:
     True
     """
 
-    def __init__(self, model_factory: ModelFactory, checkpointer: Checkpointer) -> None:
+    def __init__(
+        self,
+        model_factory: ModelFactory,
+        checkpointer: Checkpointer,
+        store: BaseStore | None = None,
+    ) -> None:
         """Inisialisasi registry kosong.
 
         Args:
             model_factory: Sumber chat model untuk setiap graph.
             checkpointer: Saver yang dipakai semua graph.
+            store: Store long-term memory untuk agent yang memakainya. `None` berarti semua
+                graph dibangun tanpa memory.
         """
         self._model_factory = model_factory
         self._checkpointer = checkpointer
+        self._store = store
         self._agents: dict[str, BaseAgent] = {}
         self._available: set[str] = set()
         self._graphs: dict[tuple[str, str, int], AgentGraph] = {}
@@ -125,6 +135,6 @@ class AgentRegistry:
         graph = self._graphs.get(key)
         if graph is None:
             model = self._model_factory.create(resolved_name, token_limit)
-            graph = agent.build(model, self._checkpointer)
+            graph = agent.build(model, self._checkpointer, self._store)
             self._graphs[key] = graph
         return graph

@@ -26,6 +26,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.managed import RemainingSteps
+from langgraph.store.base import BaseStore
 
 from agent_service.agents.base import AgentGraph, BaseAgent, Checkpointer
 from agent_service.agents.tool_calling import (
@@ -209,12 +210,16 @@ class SupervisorAgent(BaseAgent):
         """Expert yang bisa dipanggil supervisor, urut sesuai pendaftaran."""
         return list(self._experts)
 
-    def build(self, model: BaseChatModel, checkpointer: Checkpointer) -> AgentGraph:
+    def build(
+        self, model: BaseChatModel, checkpointer: Checkpointer, store: BaseStore | None = None
+    ) -> AgentGraph:
         """Compile graph `supervisor ⇄ delegate`. Supervisor dan semua expert memakai `model`.
 
         Args:
             model: Chat model dari request, dipakai juga oleh setiap expert (FR-4).
             checkpointer: Saver tempat riwayat thread, termasuk message expert, disimpan.
+            store: Tidak dipakai. Supervisor dan expert tidak memakai long-term memory, karena
+                interrupt persetujuan di dalam expert stateless tidak bisa dilanjutkan.
 
         Returns:
             Graph yang sudah di-compile.

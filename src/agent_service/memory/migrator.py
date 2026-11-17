@@ -1,4 +1,4 @@
-"""Migrasi skema Postgres: tabel checkpointer LangGraph dan tabel aplikasi (Alembic).
+"""Migrasi skema Postgres: tabel checkpointer dan store LangGraph, lalu tabel aplikasi (Alembic).
 
 Migrasi dijalankan sekali oleh service compose `migrate` (`run_migrate`), bukan di lifespan,
 supaya beberapa replika atau worker tidak menjalankannya bersamaan (ADR 0001). Lifespan hanya
@@ -16,6 +16,7 @@ from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langgraph.store.postgres.aio import AsyncPostgresStore
 from psycopg.conninfo import make_conninfo
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -61,16 +62,16 @@ def expected_heads() -> set[str]:
     """Revisi terbaru yang ada di folder migrasi.
 
     >>> expected_heads()
-    {'0003'}
+    {'0004'}
     """
     return set(ScriptDirectory.from_config(alembic_config()).get_heads())
 
 
 async def upgrade_database(database_url: str) -> None:
-    """Siapkan tabel checkpointer, lalu jalankan migrasi Alembic sampai `head`.
+    """Siapkan tabel checkpointer dan store, lalu jalankan migrasi Alembic sampai `head`.
 
-    Checkpointer disiapkan lebih dulu, sehingga revisi Alembic yang terbaru menandakan seluruh
-    migrasi (termasuk checkpointer) sudah selesai. Aman dijalankan berulang.
+    Tabel LangGraph disiapkan lebih dulu, sehingga revisi Alembic yang terbaru menandakan seluruh
+    migrasi (termasuk checkpointer dan store) sudah selesai. Aman dijalankan berulang.
 
     Args:
         database_url: URL Postgres (`DATABASE_URL`).
@@ -80,6 +81,8 @@ async def upgrade_database(database_url: str) -> None:
     saver_conninfo = make_conninfo(database_url, connect_timeout=DB_CONNECT_TIMEOUT_SECONDS)
     async with AsyncPostgresSaver.from_conn_string(saver_conninfo) as saver:
         await saver.setup()
+    async with AsyncPostgresStore.from_conn_string(saver_conninfo) as store:
+        await store.setup()
     engine = create_database_engine(database_url)
     try:
         async with engine.begin() as connection:

@@ -431,3 +431,28 @@ def test_project_crud_requests() -> None:
     ]
     assert json.loads(transport.requests[3].content) == {"model": None}
     assert listing.projects[0].id == "p/1"
+
+
+MEMORY = {
+    "id": "m/1",
+    "text": "Likes tea",
+    "created_at": "2026-11-17T00:00:00Z",
+    "updated_at": "2026-11-17T00:00:00Z",
+}
+
+
+def test_memory_requests() -> None:
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.method == "DELETE":
+            return httpx.Response(204)
+        return httpx.Response(200, json={"memories": [MEMORY]})
+
+    client, transport = make_client(respond)
+
+    with client:
+        listing = client.list_memories()
+        client.delete_memory("m/1")
+
+    methods = [(r.method, r.url.raw_path) for r in transport.requests]
+    assert methods == [("GET", b"/memories"), ("DELETE", b"/memories/m%2F1")]
+    assert listing.memories[0].text == "Likes tea"
