@@ -13,12 +13,13 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** M5 Harness Core selesai. **F31** (Evals & tracing) menunggu user commit, push, dan PR.
-- **Berikutnya:** rilis **v0.5.0** (M5), lalu **F32** (Frontend scaffold & auth, M6).
+- **Fase:** M5 Harness Core selesai. Rilis **v0.5.0** disiapkan (branch `release/v0.5.0`),
+  menunggu user commit, PR ke `main`, tag, dan back-merge.
+- **Berikutnya:** **F32** (Frontend scaffold & auth, M6).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
-- **Terakhir diperbarui:** 2026-11-17 (F31)
+- **Terakhir diperbarui:** 2026-11-17 (rilis v0.5.0)
 
 ## Decision Log
 

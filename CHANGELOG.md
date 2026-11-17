@@ -6,6 +6,23 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-17
+
+M5 Harness Core: Project sebagai agent deklaratif, system prompt yang dirakit per giliran, skill
+built-in, context management, long-term memory dengan persetujuan, serta trace dan eval.
+
+**Catatan upgrade:**
+
+1. `uv sync` (extra baru `evals`), lalu `uv run python -m agent_service.run_migrate`. Migrasi
+   menambah tabel `projects`, store memory, dan `run_traces` (revisi 0003–0005). Service menolak
+   start sebelum migrasi dijalankan.
+2. Agent custom: `BaseAgent.build` kini `build(model, checkpointer, store=None)`, dan
+   `ContextBuilder` tidak lagi menerima `memory=` (pakai argumen `memories` per panggilan).
+   `ToolCallingAgent` menerima `ContextBuilder` alih-alih `system_prompt` + `clock`.
+3. Untuk eval: buat service account (`manage create-user evals --role service`) dan isi
+   `EVAL_USERNAME`/`EVAL_PASSWORD`.
+4. Opsional: `CONTEXT_MAX_TOKENS` (default 16000) mengatur anggaran riwayat yang dikirim ke model.
+
 ### Added
 
 - Project sebagai agent deklaratif (FR-36, ADR 0004): CRUD `/projects`, chat di
@@ -18,7 +35,6 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 - System prompt dirakit setiap giliran oleh `ContextBuilder` (FR-37): instruksi agent, instruksi
   project, slot skill (F28) dan memory (F30), lalu bagian lingkungan (tanggal dan timezone), masing-
   masing dengan batas ukuran. Instruksi project kini benar-benar sampai ke model (F27).
-
 - Skill built-in (FR-38, ADR 0005): `meeting-notes` dan `research-report` dalam format Agent Skills,
   divalidasi saat startup (yang tidak valid dilewati dan dicatat di log). `GET /skills` dan
   `GET /skills/{scope}/{name}`. Model melihat daftar skill aktif project di system prompt dan
@@ -48,10 +64,9 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
   long-term memory diberikan saat graph dibangun. Agent custom perlu menambah parameter `store`.
   Slot `memory` di konstruktor `ContextBuilder` diganti argumen `memories` per panggilan, karena
   memory dibaca async dari store (F30).
-
-- **Breaking (belum dirilis):** `Project.skill_ids` berisi ID skill `<scope>/<name>`
-  (`builtin/research-report`), dan ID yang tidak dikenal ditolak (422). `ChatbotAgent` kini dibangun
-  di atas `ToolCallingAgent`, sehingga bisa memakai skill (F28).
+- `Project.skill_ids` berisi ID skill `<scope>/<name>` (`builtin/research-report`), dan ID yang
+  tidak dikenal ditolak (422). `ChatbotAgent` kini dibangun di atas `ToolCallingAgent`, sehingga
+  bisa memakai skill (F28).
 - Semua agent, termasuk `chatbot`, mendapat bagian lingkungan di akhir system prompt, sehingga
   model tahu tanggal hari ini. `ToolCallingAgent` menerima `ContextBuilder` alih-alih
   `system_prompt` + `clock`, dan placeholder `{current_date}` tidak dipakai lagi (F27).
@@ -193,7 +208,8 @@ yang dipublikasikan.
 - `docs/ARCHITECTURE.md`: lifespan, alur request, kepemilikan thread, error, persistence, dan cara
   menambah agent (F10).
 
-[Unreleased]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.1.0...v0.2.0
