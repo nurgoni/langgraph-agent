@@ -16,7 +16,7 @@ valid untuk API OpenAI-compatible.
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, NotRequired
 from uuid import uuid4
 
 from langchain_core.language_models import BaseChatModel
@@ -31,7 +31,9 @@ from agent_service.agents.base import AgentGraph, BaseAgent, Checkpointer
 from agent_service.agents.tool_calling import (
     MIN_REMAINING_STEPS,
     STEP_LIMIT_MESSAGE,
+    ModelTurnUpdate,
     ToolCallingAgent,
+    model_turn_update,
 )
 from agent_service.agents.tools.calculator import calculator
 from agent_service.agents.tools.web_search import (
@@ -40,6 +42,7 @@ from agent_service.agents.tools.web_search import (
     create_web_search_tool,
 )
 from agent_service.harness.context import ContextBuilder
+from agent_service.harness.context_policy import ContextPolicy
 
 SUPERVISOR_AGENT_ID: Final = "supervisor"
 SUPERVISOR_DESCRIPTION: Final = (
@@ -96,9 +99,11 @@ class Expert:
 
 
 class SupervisorState(MessagesState):
-    """Riwayat message, termasuk message expert yang ditandai, dan sisa langkah."""
+    """Riwayat message (termasuk message expert yang ditandai), ringkasan, dan sisa langkah."""
 
     remaining_steps: RemainingSteps
+    summary: NotRequired[str]
+    summarized_through: NotRequired[str]
 
 
 def delegation_tool(expert: Expert) -> dict[str, object]:
@@ -181,6 +186,7 @@ class SupervisorAgent(BaseAgent):
         description: str,
         experts: Sequence[Expert],
         context: ContextBuilder | None = None,
+        context_policy: ContextPolicy | None = None,
     ) -> None:
         """Inisialisasi supervisor.
 
@@ -190,9 +196,12 @@ class SupervisorAgent(BaseAgent):
             experts: Sub-agent yang bisa dipanggil. Nama harus unik.
             context: Perakit system prompt supervisor. Default: `SUPERVISOR_PROMPT` dengan instruksi
                 project dan bagian lingkungan.
+            context_policy: Anggaran token riwayat yang dilihat supervisor. Default:
+                `ContextPolicy()`. Expert tidak butuh ini, karena setiap delegasi mulai bersih.
         """
         super().__init__(agent_id=agent_id, description=description)
         self._experts = list(experts)
+        self._policy = ContextPolicy() if context_policy is None else context_policy
         self._context = ContextBuilder(SUPERVISOR_PROMPT) if context is None else context
 
     @property
@@ -217,15 +226,16 @@ class SupervisorAgent(BaseAgent):
         }
 
         # Closure, bukan method: satu instance agent membangun graph untuk beberapa model.
-        async def supervise(
-            state: SupervisorState, config: RunnableConfig
-        ) -> dict[str, list[AIMessage]]:
+        async def supervise(state: SupervisorState, config: RunnableConfig) -> ModelTurnUpdate:
             visible = [m for m in state["messages"] if subagent_name(m) is None]
-            prompt = self._context.system_message(config)
-            response = await supervisor_model.ainvoke([prompt, *visible])
+            window = await self._policy.prepare(
+                model, visible, state.get("summary", ""), state.get("summarized_through", "")
+            )
+            prompt = self._context.system_message(config, window.summary)
+            response = await supervisor_model.ainvoke([prompt, *window.messages])
             if response.tool_calls and state["remaining_steps"] < MIN_REMAINING_STEPS:
-                return {"messages": [AIMessage(id=response.id, content=STEP_LIMIT_MESSAGE)]}
-            return {"messages": [response]}
+                response = AIMessage(id=response.id, content=STEP_LIMIT_MESSAGE)
+            return model_turn_update(response, window)
 
         async def delegate(state: SupervisorState) -> dict[str, list[BaseMessage]]:
             last = state["messages"][-1]
@@ -293,13 +303,16 @@ def expert_context(instructions: str) -> ContextBuilder:
     return ContextBuilder(instructions, use_project_instructions=False)
 
 
-def create_supervisor_agent(search_backend: SearchBackend | None = None) -> SupervisorAgent:
+def create_supervisor_agent(
+    search_backend: SearchBackend | None = None, context_policy: ContextPolicy | None = None
+) -> SupervisorAgent:
     """Buat supervisor dengan `math_expert` (kalkulator) dan `research_expert` (web search).
 
     Function, bukan class: factory konfigurasi tanpa state sendiri.
 
     Args:
         search_backend: Mesin pencari untuk research expert. Default: `UnconfiguredSearch`.
+        context_policy: Anggaran token riwayat supervisor. Default: `ContextPolicy()`.
 
     Returns:
         Agent `supervisor` yang siap didaftarkan.
@@ -328,4 +341,5 @@ def create_supervisor_agent(search_backend: SearchBackend | None = None) -> Supe
         agent_id=SUPERVISOR_AGENT_ID,
         description=SUPERVISOR_DESCRIPTION,
         experts=[math_expert, research_expert],
+        context_policy=context_policy,
     )

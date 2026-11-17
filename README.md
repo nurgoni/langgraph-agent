@@ -127,6 +127,7 @@ menunjuk ke container itu sendiri.
 | `AVAILABLE_MODELS` | tidak | Allowlist model, dipisah koma |
 | `USE_FAKE_MODEL` | tidak | `true` untuk dev/test tanpa LLM |
 | `LLM_MAX_TOKENS` | tidak | Batas token jawaban per giliran model, default `8192`. Pada model reasoning (Ollama), token reasoning ikut dihitung. Jawaban yang terpotong ditandai `truncated` |
+| `CONTEXT_MAX_TOKENS` | tidak | Anggaran token riwayat (beserta ringkasannya) yang dikirim ke model setiap panggilan, default `16000`, minimum `1000`. Jika terlampaui, giliran lama diringkas sampai riwayat langsung tinggal ±50%. `/history` tetap lengkap |
 | `LLM_MAX_TOKENS_PARAM` | tidak | Nama parameter batas token di request: `max_tokens` (default, untuk Ollama/vLLM/llama.cpp) atau `max_completion_tokens` (model reasoning OpenAI seperti gpt-5/o-series) |
 | `DATABASE_URL` | tidak | Postgres, default `postgresql://agent:agent@127.0.0.1:5432/agent_service` (service `postgres` di compose). Pakai `127.0.0.1`, bukan `localhost`, di Docker Desktop Windows |
 | `JWT_SECRET` | **ya** | Kunci penanda tangan access token (HS256), minimal 32 karakter. Service menolak start tanpa nilai ini |

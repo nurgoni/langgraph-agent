@@ -5,11 +5,13 @@ import pytest
 from pydantic import ValidationError
 
 from agent_service.core.constants import (
+    DEFAULT_CONTEXT_MAX_TOKENS,
     DEFAULT_DATABASE_URL,
     DEFAULT_JWT_TTL_SECONDS,
     DEFAULT_LLM_MAX_TOKENS,
     DEFAULT_PORT,
     FAKE_MODEL_NAME,
+    MIN_CONTEXT_MAX_TOKENS,
 )
 from agent_service.core.settings import Settings
 
@@ -162,6 +164,25 @@ def test_invalid_llm_max_tokens_is_rejected(
     monkeypatch: pytest.MonkeyPatch, max_tokens: str
 ) -> None:
     set_env(monkeypatch, {"USE_FAKE_MODEL": "true", "LLM_MAX_TOKENS": max_tokens})
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+def test_context_max_tokens_has_default_and_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    default = Settings(_env_file=None, use_fake_model=True).context_max_tokens
+
+    monkeypatch.setenv("CONTEXT_MAX_TOKENS", "32000")
+
+    assert default == DEFAULT_CONTEXT_MAX_TOKENS == 16000
+    assert Settings(_env_file=None, use_fake_model=True).context_max_tokens == 32000
+
+
+@pytest.mark.parametrize("max_tokens", [str(MIN_CONTEXT_MAX_TOKENS - 1), "many"])
+def test_too_small_context_budget_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, max_tokens: str
+) -> None:
+    set_env(monkeypatch, {"USE_FAKE_MODEL": "true", "CONTEXT_MAX_TOKENS": max_tokens})
 
     with pytest.raises(ValidationError):
         Settings(_env_file=None)

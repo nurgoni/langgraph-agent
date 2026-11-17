@@ -4,6 +4,7 @@ from typing import Final
 
 from agent_service.agents.tool_calling import ToolCallingAgent
 from agent_service.harness.context import ContextBuilder
+from agent_service.harness.context_policy import ContextPolicy
 from agent_service.harness.skills.toolkit import SkillToolkit
 
 CHATBOT_AGENT_ID: Final = "chatbot"
@@ -34,6 +35,7 @@ class ChatbotAgent(ToolCallingAgent):
         description: str = CHATBOT_DESCRIPTION,
         context: ContextBuilder | None = None,
         skills: SkillToolkit | None = None,
+        context_policy: ContextPolicy | None = None,
     ) -> None:
         """Inisialisasi chatbot.
 
@@ -42,6 +44,7 @@ class ChatbotAgent(ToolCallingAgent):
             description: Deskripsi untuk `/info`.
             context: Perakit system prompt. Default: tanpa instruksi agent.
             skills: Toolkit skill. `None` berarti chatbot tidak bisa memakai skill.
+            context_policy: Anggaran token riwayat. Default: `ContextPolicy()`.
         """
         super().__init__(
             agent_id=agent_id,
@@ -49,6 +52,7 @@ class ChatbotAgent(ToolCallingAgent):
             tools=[],
             context=ContextBuilder() if context is None else context,
             skills=skills,
+            context_policy=context_policy,
         )
 
 
