@@ -46,12 +46,19 @@ uv run python -m agent_service.manage create-user demo   # buat akun login
 uv run python -m agent_service.export_contracts          # ekspor ulang contracts/ (FR-35)
 uv run python -m agent_service.run_evals evals/skills.yaml   # eval agent lewat API (FR-41)
 uv run python -m agent_service.run_service   # jalankan API di :8080
-uv run streamlit run src/agent_service/ui/app.py  # jalankan UI di :8501
+uv run streamlit run src/agent_service/ui/app.py  # jalankan dev console Streamlit di :8501
+cd frontend                                # perintah frontend dijalankan dari sini (corepack
+corepack pnpm install                      #   membaca versi pnpm dari package.json di folder kerja)
+corepack pnpm dev                          # frontend di :5173, /api di-proxy ke :8080
+corepack pnpm run check                    # tipe API vs contracts/, tsc, ESLint
+corepack pnpm test                         # Vitest
 ```
 
 Sebelum menyatakan pekerjaan selesai, jalankan: `ruff check`, `ruff format --check`,
 `pyrefly check`, dan `pytest`. Semua harus hijau. Jika API berubah, jalankan juga
-`export_contracts` dan sertakan `contracts/` di commit yang sama (CONTRIBUTING § Kontrak API).
+`export_contracts` dan `corepack pnpm generate:api` (di `frontend/`), lalu sertakan
+`contracts/` dan `frontend/src/api/schema.d.ts` di commit yang sama (CONTRIBUTING § Kontrak API).
+Jika `frontend/` berubah, jalankan juga `check` dan `test` frontend.
 
 ## Struktur Folder Target
 

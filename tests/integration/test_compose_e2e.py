@@ -27,6 +27,7 @@ PROJECT_NAME = "agent-service-e2e"
 E2E_JWT_SECRET = "e2e-jwt-secret-with-at-least-32-characters"
 BUILD_TIMEOUT_SECONDS = 900
 COMMAND_TIMEOUT_SECONDS = 120
+HTTP_TIMEOUT_SECONDS = 10
 USERNAME = "e2e-user"
 OTHER_USERNAME = "e2e-other"
 EVAL_USERNAME = "e2e-evals"
@@ -67,6 +68,7 @@ class ComposeStack:
 
     service_url: str
     ui_url: str
+    web_url: str
     env: dict[str, str] = field(default_factory=dict)
 
     def compose(
@@ -93,8 +95,8 @@ class ComposeStack:
         manage = ["python", "-m", "agent_service.manage", "create-user", username]
         self.compose("exec", "-T", "agent-service", *manage, "--password-stdin", stdin=PASSWORD)
 
-    def client(self, username: str = USERNAME) -> AgentClient:
-        client = AgentClient(self.service_url)
+    def client(self, username: str = USERNAME, base_url: str | None = None) -> AgentClient:
+        client = AgentClient(base_url or self.service_url)
         client.login(username, PASSWORD)
         return client
 
@@ -109,11 +111,13 @@ def free_port() -> int:
 def stack() -> Iterator[ComposeStack]:
     if shutil.which("docker") is None:
         pytest.skip("docker is not installed")
-    service_port, ui_port, postgres_port = free_port(), free_port(), free_port()
+    service_port, ui_port, web_port = free_port(), free_port(), free_port()
+    postgres_port = free_port()
     env = {
         **os.environ,
         "SERVICE_PORT": str(service_port),
         "UI_PORT": str(ui_port),
+        "WEB_PORT": str(web_port),
         # Port acak supaya tidak bentrok dengan `docker compose up -d postgres` milik dev.
         "POSTGRES_PORT": str(postgres_port),
         "JWT_SECRET": E2E_JWT_SECRET,
@@ -121,6 +125,7 @@ def stack() -> Iterator[ComposeStack]:
     running = ComposeStack(
         service_url=f"http://127.0.0.1:{service_port}",
         ui_url=f"http://127.0.0.1:{ui_port}",
+        web_url=f"http://127.0.0.1:{web_port}",
         env=env,
     )
     try:
@@ -263,3 +268,27 @@ def test_smoke_eval_cli_against_the_stack(stack: ComposeStack, tmp_path: Path) -
     assert result.returncode == 0, result.stderr
     assert "smoke: 2/2 passed" in result.stderr
     assert len(list(tmp_path.glob("eval-*.md"))) == 1
+
+
+def test_web_serves_the_react_app(stack: ComposeStack) -> None:
+    with httpx.Client(base_url=stack.web_url, timeout=HTTP_TIMEOUT_SECONDS) as http:
+        index = http.get("/")
+        deep_link = http.get("/projects/some-project")
+        health = http.get("/healthz")
+
+    assert index.status_code == 200
+    assert '<div id="root"></div>' in index.text
+    assert deep_link.text == index.text
+    assert health.text == "ok\n"
+
+
+def test_browser_path_through_the_web_proxy(stack: ComposeStack) -> None:
+    """Login, request terautentikasi, dan SSE lewat `/api` same-origin (keputusan user F32)."""
+    with stack.client(base_url=f"{stack.web_url}/api") as client:
+        info = client.get_info()
+        with client.stream("Halo lewat proxy", stream_tokens=True) as run:
+            events = list(run)
+
+    assert info.default_agent == "chatbot"
+    assert any(isinstance(event, TokenEvent) for event in events)
+    assert isinstance(events[-1], MessageEvent)

@@ -396,6 +396,34 @@ keluar dengan kode 1 jika ada file yang usang atau hilang (dipakai CI dan hook p
 Docstring model dan route menjadi deskripsi di OpenAPI, jadi doctest-nya ditaruh di docstring
 modul. Test `test_contracts_carry_no_internal_docstrings` menjaga aturan ini.
 
+## Frontend
+
+React + TypeScript di `frontend/` (FR-42, [ADR 0003](adr/0003-frontend-stack.md)).
+
+```text
+browser ──► web :3000 (nginx) ── /            → dist/ (SPA, fallback index.html)
+                               └─ /api/*      → agent-service:8080/* (proxy, SSE tanpa buffering)
+dev:  vite :5173 ── /api/* → AGENT_URL (default 127.0.0.1:8080)
+```
+
+- **Same-origin** (keputusan user F32): frontend selalu memanggil `<origin>/api`. Tanpa CORS, dan
+  URL service tidak di-bake ke build. `API_UPSTREAM` image `web` diisi lewat template envsubst
+  nginx.
+- **Auth.** `SessionStore` menyimpan token di `sessionStorage` beserta `expiresAt` absolut. Sesi
+  yang kedaluwarsa dibuang saat dibaca. `AuthProvider` memasang client `openapi-fetch` yang
+  membaca token dari store di setiap request, dan logout saat respons 401 untuk request yang
+  membawa token. `RequireAuth` mengarahkan ke `/login`.
+- **Route** (mode data React Router): `/login`, lalu layout terproteksi `AppShell` (sidebar
+  shadcn: chat baru, Recents, user + logout) dengan beranda yang membaca `/info`.
+- **Tipe** dari `contracts/openapi.json` (`openapi-typescript`), dicek drift-nya oleh hook
+  `frontend-check` dan CI.
+- **Vendor.** `src/components/ui/` dan `src/hooks/use-mobile.ts` hasil CLI shadcn tidak diedit.
+  ESLint mematikan tiga aturan untuk file vendor (Fast Refresh, `react-hooks/purity`,
+  `react-hooks/set-state-in-effect`); kode aplikasi tetap memakai semuanya.
+- **Tooling.** Node 24, pnpm 12 via corepack, `minimumReleaseAge` 14 hari (setara
+  `exclude-newer` uv). TypeScript dipin `~5.9`, karena typescript-eslint dan openapi-typescript
+  belum mendukung TypeScript 7.
+
 ## Persistence
 
 Satu database Postgres di `DATABASE_URL` ([ADR 0001](adr/0001-postgres-only.md)):

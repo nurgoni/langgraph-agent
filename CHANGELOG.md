@@ -6,6 +6,15 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 
 ## [Unreleased]
 
+### Added
+
+- Frontend React + TypeScript di `frontend/` (FR-42, ADR 0003): Vite, Tailwind, shadcn/ui, React
+  Router, TanStack Query. Halaman login, route terproteksi, dan app shell dengan sidebar. Token di
+  `sessionStorage`. Tipe API digenerate dari `contracts/openapi.json` (F32).
+- Service compose `web` (`WEB_PORT`, default 3000): nginx menyajikan build React dan mem-proxy
+  `/api/*` ke service (same-origin, SSE tanpa buffering). Job CI `frontend` dan hook pre-commit
+  `frontend-check` (F32).
+
 ## [0.5.0] - 2026-11-17
 
 M5 Harness Core: Project sebagai agent deklaratif, system prompt yang dirakit per giliran, skill

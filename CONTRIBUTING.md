@@ -207,6 +207,9 @@ dengan kode.
 
   Hook pre-commit `api-contracts`, test `tests/service/test_contracts.py`, dan langkah CI
   `export_contracts --check` gagal jika `contracts/` tidak sinkron.
+- **Generate ulang tipe frontend** di commit yang sama: `corepack pnpm generate:api`,
+  dijalankan di `frontend/`. Hook pre-commit `frontend-check` dan langkah CI `pnpm check:api`
+  gagal jika `frontend/src/api/schema.d.ts` tidak sinkron dengan `contracts/openapi.json`.
 - **Jangan edit `contracts/` dengan tangan.** File ini hasil generate dan deterministik (key
   terurut, LF), jadi diff-nya selalu menunjukkan perubahan kontrak yang sebenarnya.
 - **Perubahan breaking** (field atau endpoint dihapus, tipe diganti, field jadi wajib) memakai
