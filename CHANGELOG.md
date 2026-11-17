@@ -24,6 +24,10 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
   `GET /skills/{scope}/{name}`. Model melihat daftar skill aktif project di system prompt dan
   memuat isinya lewat tool `load_skill(name, path?)`, yang hanya muncul jika project punya skill
   aktif. Project built-in kini membawa skill. `AgentClient.list_skills()`/`get_skill()` (F28).
+- Context management (FR-39): riwayat yang dikirim ke model dijaga di bawah `CONTEXT_MAX_TOKENS`
+  (default 16.000). Saat terlampaui, giliran lama diringkas oleh model (tanpa di-stream) sampai
+  riwayat langsung tinggal ±50%. Ringkasan disimpan di state thread dan masuk ke system prompt.
+  Tool call dan hasilnya tidak pernah dipisah, dan `/history` tetap lengkap (F29).
 
 ### Changed
 
