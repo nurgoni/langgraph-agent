@@ -46,7 +46,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F29 | Context policy | M5 | done |
 | F30 | Long-term memory | M5 | done |
 | F31 | Evals & tracing | M5 | done |
-| F32 | Frontend scaffold & auth | M6 | todo |
+| F32 | Frontend scaffold & auth | M6 | done |
 | F33 | Chat UI | M6 | todo |
 | F34 | Projects & threads UI | M6 | todo |
 | F35 | Artifact storage | M7 | todo |
@@ -1445,9 +1445,26 @@ Scope commit frontend: `frontend`. Aturan kode frontend ada di [ADR 0003](adr/00
   5. `build(docker): serve the frontend as a web service`
   6. `ci: lint, type check and test the frontend`
   7. `docs: document frontend commands`
+- **Langkah 1 (keputusan user):** pnpm lewat corepack (versi di-pin di `packageManager`), Node 24
+  LTS, token di `sessionStorage`, dan API lewat proxy same-origin `/api` (nginx di image `web`,
+  proxy Vite di dev), tanpa CORS.
+- **Penyesuaian saat implementasi:**
+  - Versi diresolusi pnpm dengan `minimumReleaseAge` 14 hari (pnpm 12.17, React 19.3, React
+    Router 8.5, Vite 8.3, Vitest 5.1, ESLint 10, Tailwind 4.3, shadcn CLI 4.23). TypeScript dipin
+    `~5.9.3`, karena typescript-eslint 8.72 (`<6.1`) dan openapi-typescript 7.13 (`^5`) belum
+    mendukung TypeScript 7.
+  - shadcn memakai base Radix dan paket `cn` (pengganti clsx + tailwind-merge, milik shadcn).
+    Sidebar membawa `sheet`, `tooltip`, `skeleton`, `separator`, dan `src/hooks/use-mobile.ts`.
+  - Base URL client = `<origin>/api` absolut, supaya `Request` juga valid di jsdom.
+  - Tipe API dicek drift-nya oleh `pnpm check:api` di CI dan hook pre-commit `frontend-check`.
+  - Beranda membaca `/info` untuk membuktikan request terautentikasi melewati proxy.
+  - Commit 1–4 digabung menjadi satu commit frontend, karena scaffold, vendor, client, dan login
+    saling bergantung untuk lolos `tsc` dan ESLint.
 - **Acceptance criteria:**
-  - [ ] `docker compose up` → login di browser → app shell tampil.
-  - [ ] Job CI frontend hijau (NFR-11).
+  - [x] `docker compose up` → login → app shell tampil: Vitest (route asli di jsdom, service
+        palsu) dan e2e Compose lewat proxy `web` (login, `/info`, SSE). Cek visual di browser
+        dilakukan user.
+  - [x] Job CI frontend (NFR-11): `check:api`, `tsc`, ESLint, Vitest, build hijau lokal.
 - **Squash title:** `build(frontend): scaffold react app with auth and app shell (F32)`
 
 ### F33: Chat UI

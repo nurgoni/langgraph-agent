@@ -14,17 +14,15 @@ berulang ada di dev-time skill `.claude/skills/` (daftar di AGENTS.md § Dev-tim
 
 ## Status Saat Ini
 
-- **Fase:** v0.5.0 (M5 Harness Core) dirilis. Branch `chore/dev-time-skills` (dev-time skill +
-  perapian memory.md) menunggu user commit, push, dan PR.
-- **Berikutnya:** **F32** (Frontend scaffold & auth, M6), dikerjakan dengan skill
-  `feature-workflow`. Langkah 1 sudah dijawab user (2026-11-17), belum dicatat di ROADMAP: pnpm
-  lewat corepack (`packageManager` di-pin), Node 24 LTS, token di `sessionStorage`, dan API lewat
-  proxy same-origin `/api` (nginx di image `web`, proxy Vite di dev, tanpa CORS).
+- **Fase:** M6 Frontend. F32 (frontend scaffold & auth) selesai dan menunggu user commit, push,
+  dan PR di branch `feature/F32-frontend-scaffold`.
+- **Berikutnya:** **F33** (Chat UI), dikerjakan dengan skill `feature-workflow`.
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Arsip:** Decision Log M0–M4 ada di
-  [archive/decision-log-m0-m4.md](archive/decision-log-m0-m4.md).
-- **Terakhir diperbarui:** 2026-11-17 (dev-time skill)
+  [archive/decision-log-m0-m4.md](archive/decision-log-m0-m4.md), dan F26–F31 di
+  [archive/decision-log-m4-m5.md](archive/decision-log-m4-m5.md).
+- **Terakhir diperbarui:** 2026-11-17 (F32)
 
 ## Aturan Kerja
 
@@ -71,8 +69,51 @@ Ringkasan pelajaran dari M0–M5 yang masih berlaku (detail di arsip dan entri f
 - **LangGraph:** reducer `add_messages` mengisi `id` in-place, jadi selalu kembalikan objek message
   baru. `interrupt()` di dalam tool menjalankan ulang semua tool call giliran itu saat dilanjutkan.
   Callback dan config diwariskan ke node dan sub-graph.
+- **Frontend:** pnpm lewat `corepack pnpm` dari dalam `frontend/` (corepack membaca
+  `packageManager` dari folder kerja, bukan `--dir`; dari root pakai `corepack pnpm@<versi>`,
+  seperti hook `frontend-check`). Tanpa `corepack enable` global. Registry npm
+  lambat: install dan build image `web` dijalankan di background. Setelah `contracts/` berubah,
+  jalankan `generate:api`. Kode aplikasi tidak mengedit vendor shadcn.
 
 ## Decision Log
+
+### 2026-11-17: Frontend scaffold dari F32
+
+- **Keputusan user:** pnpm lewat corepack (`packageManager` di-pin), Node 24 LTS, token di
+  `sessionStorage`, API lewat proxy same-origin `/api` (nginx image `web`, proxy Vite di dev),
+  tanpa CORS.
+- **Keputusan desain:**
+  - Versi diresolusi pnpm dengan `minimumReleaseAge: 20160` (14 hari, setara `exclude-newer` uv)
+    di `frontend/pnpm-workspace.yaml`. TypeScript dipin `~5.9.3`: typescript-eslint 8.72 (`<6.1`)
+    dan openapi-typescript 7.13 (`^5`) belum mendukung TypeScript 7.
+  - shadcn base Radix + paket `cn` (milik shadcn, diverifikasi maintainer dan repo). Vendor
+    `src/components/ui/` dan `src/hooks/use-mobile.ts` tidak diedit. ESLint mematikan tiga aturan
+    hanya untuk file vendor.
+  - Base URL client absolut `<origin>/api`; URL service tidak di-bake ke build. `API_UPSTREAM`
+    image `web` lewat template envsubst nginx.
+  - `SessionStore` menyimpan `expiresAt` absolut dan membuang sesi kedaluwarsa/rusak saat dibaca.
+    Logout otomatis hanya untuk 401 pada request yang membawa token (login salah tidak memicunya).
+  - Drift tipe API dicek oleh `pnpm check:api` (CI) dan hook `frontend-check`.
+  - Rencana commit 1–4 ROADMAP digabung: scaffold, vendor, client, dan login saling bergantung
+    untuk lolos `tsc` dan ESLint.
+- **Hasil ukur:** build image `web` pertama 4493 detik (registry npm sangat lambat, bukan
+  Dockerfile); install lokal 7–36 menit. Bundle 480 kB (155 kB gzip).
+- **Pelajaran:**
+  - CLI shadcn memanggil `pnpm` langsung. Tanpa `corepack enable`, buat shim `pnpm.cmd` di
+    scratchpad yang memanggil `corepack pnpm`, lalu tambahkan ke PATH.
+  - openapi-fetch dengan base URL relatif (`/api`) gagal di jsdom karena `new Request()` butuh URL
+    absolut.
+  - `corepack pnpm --dir frontend` dari root memakai pnpm default corepack (bukan versi
+    `packageManager`), dan pnpm gagal `ERR_PNPM_BAD_PM_VERSION`. Ditemukan di cek akhir, bukan
+    saat implementasi, karena semua cek sebelumnya dijalankan dari dalam `frontend/`.
+  - Exit code `check:api` tertutup pipe (`| tail`); verifikasi exit code tanpa pipe.
+  - jsdom tidak punya `matchMedia`, padahal sidebar shadcn memakainya: polyfill di
+    `src/test/setup.ts`.
+  - `pnpm-lock.yaml` pnpm 12 berisi dua dokumen YAML; hook `check-yaml` butuh
+    `--allow-multiple-documents`. Ditemukan saat user commit (tidak ada cek lokal yang menjalankan
+    `check-yaml`).
+  - File hasil CLI bisa tanpa newline di akhir; hook `end-of-file-fixer` akan mengubahnya saat
+    commit.
 
 ### 2026-11-17: Dev-time skill dan arsip memory
 
@@ -89,161 +130,6 @@ Ringkasan pelajaran dari M0–M5 yang masih berlaku (detail di arsip dan entri f
     "Pelajaran dari Kode Lama" (port sudah selesai). memory.md mendapat § Aturan Kerja dan
     § Pelajaran Lintas Fitur sebagai ringkasan yang masih berlaku (890 → ±290 baris).
   - `.claude/settings.local.json` di-gitignore. Hanya `.claude/skills/` yang dibagikan.
-
-### 2026-11-17: Trace dan eval dari F31
-
-- **Keputusan user:** trace di tabel Postgres `run_traces` (PRD §11 no. 7 terjawab), dibaca lewat
-  `GET /runs/{run_id}/trace`. LLM judge ditunda.
-- **Keputusan desain:**
-  - `service/tracing.py` `RunTraceCollector` (AsyncCallbackHandler) per run, dipasang lewat
-    `RunInput.with_callbacks`. Span `run`/`model`/`tool` tanpa hierarki dan tanpa konten, ditulis
-    sekali di akhir run. `SQLAlchemyError` saat menulis hanya di-log.
-  - `GraphBubbleUp` (interrupt) → status `interrupted`, bukan `error`.
-  - `memory/traces.py` `RunTraceRepository`; trace milik user lain → `RunTraceNotFoundError` (404).
-  - `ModelFactory` `stream_usage=True`: token dari `usage_metadata`.
-  - `evals/` hanya meng-import `client/` + `schema/` (test layering), punya `EvalSettings` sendiri
-    (seperti UI) dan extra `evals`. Entrypoint `run_evals`, exit 0/1/2. Laporan di
-    `eval-reports/` (gitignore).
-  - Skill yang dimuat dibaca dari argumen `load_skill` di `/history`; latensi/token dari trace.
-- **Hasil ukur:** `qwen3.5:9b` dengan `evals/skills.yaml`: 2/3 lolos. Meeting notes memuat skill
-  (16 dtk, 1928/274 token), pertanyaan umum tanpa skill (1,4 dtk). Briefing solar/angin **tidak**
-  memuat `research-report` (temuan perilaku model, bukan bug). Ollama mengirim usage saat
-  streaming dengan `stream_usage=True`.
-- **Pelajaran:**
-  - Nama model di callback: `metadata["ls_model_name"]` (ChatOpenAI), kwarg `name` bisa `None`,
-    jadi fallback ke `serialized["name"]` (FakeModel).
-  - Schema login client memvalidasi username sebelum request, jadi CLI harus menangkap
-    `ValidationError` selain `AgentClientError`.
-  - Jangan melakukan mutation check di `src/` selama test e2e Docker berjalan: build image
-    menyalin `src/` dan mutasi bisa ikut masuk.
-  - Fixture di `tests/<folder>/conftest.py` tidak terlihat dari test di folder lain.
-
-### 2026-11-17: Long-term memory dari F30
-
-- **Keputusan user:** persetujuan `save_memory` lewat balasan teks pada interrupt (tanpa field API).
-  Prompt berisi memory terbaru (≤ 20), `search_memory` mencari kata kunci. Memory hanya untuk
-  `chatbot` dan `research-assistant`.
-- **Keputusan desain:**
-  - `memory/store.py` `StoreProvider` + `memory/pool.py` (pool bersama checkpointer).
-    `memory/user_memories.py` `UserMemoryRepository`: namespace `("users", user_id, "memories")`,
-    ID uuid5 dari teks, maksimal 200 memory × 500 karakter, `delete` → `MemoryNotFoundError` (404).
-  - `BaseAgent.build(model, checkpointer, store=None)`, `AgentRegistry(..., store)`. Tool dibuat
-    per graph (closure atas repository), bukan `get_store()`.
-  - `ContextBuilder` tidak lagi punya slot `memory`; `system_message(config, summary, memories)`.
-  - `is_approval`: kata pertama harus kata setuju, dan semua kata harus kata setuju/pengisi.
-  - `USER_ID_CONFIG_KEY` di `core/constants.py`. Revisi Alembic `0004` tanpa perubahan skema
-    sebagai penanda tabel store.
-- **Pelajaran:**
-  - `interrupt()` di dalam tool bekerja di `ToolNode`, tetapi saat run dilanjutkan **semua** tool
-    call di giliran itu dijalankan ulang, termasuk yang sudah disetujui. Efek samping tool harus
-    idempoten. Dua interrupt dalam satu giliran ditanyakan bergantian, dan jawaban dipasangkan
-    berurutan.
-  - `InMemoryStore.asearch` mengembalikan urutan sisip dan memotong `limit` sebelum urutan apa
-    pun, sedangkan `AsyncPostgresStore` mengurutkan `updated_at` menurun. Urutkan di repository.
-  - Timestamp dua penyimpanan beruntun di Windows bisa sama persis. Test urutan butuh jeda kecil.
-  - Prefix namespace store dicocokkan per elemen: `("users", "u")` tidak cocok dengan `u1`.
-  - Fixture test mengosongkan semua tabel kecuali tabel migrasi. Tabel migrasi baru
-    (`store_migrations`) harus masuk `KEPT_TABLES`.
-  - Mengubah signature method abstract (`build`) mewajibkan semua agent tiruan di test ikut diubah,
-    karena pyrefly menandai override yang kurang parameter.
-
-### 2026-11-17: Context policy dari F29
-
-- **Keputusan user:** `CONTEXT_MAX_TOKENS` default 16.000. Peringkasan bertahap: saat anggaran
-  terlampaui, unit lama diringkas sampai riwayat langsung tinggal ±50% anggaran.
-- **Keputusan desain:**
-  - `harness/context_policy.py`: `message_units` (AI + `ToolMessage`-nya = satu unit),
-    `ContextPolicy.prepare(model, messages, summary, summarized_through) -> ContextWindow`.
-    Anggaran = riwayat + ringkasan. Ringkasan ≤ min(4000 karakter, ¼ anggaran).
-  - State agent (`ToolCallingState`, `SupervisorState`): `summary` dan `summarized_through`
-    (`NotRequired`, ID message). `messages` tidak diubah, jadi `/history` lengkap.
-  - Ringkasan masuk `ContextBuilder.system_message(config, summary)` sebagai bagian sebelum
-    lingkungan, bukan message tambahan.
-  - Peringkasan: model yang sama tanpa tool, tag `skip_stream`, per batch jika backlog > anggaran.
-    Respons kosong mempertahankan ringkasan lama. Error model tidak ditangkap.
-  - Unit tunggal yang melebihi anggaran dipotong di salinan (penanda `[truncated]` ikut dihitung).
-  - `SKIP_STREAM_TAG` dipindah ke `core/constants.py`.
-- **Hasil ukur:** Ollama `qwen3.5:9b` (`context_length` 262144) membaca prompt 1,6k/13,5k/35k token
-  tanpa pemotongan diam-diam. `count_tokens_approximately` 1–8% di atas hitungan Ollama.
-  Smoke test anggaran 1000: satu peringkasan ±15 detik, dan fakta giliran pertama tetap diingat.
-- **Pelajaran:**
-  - `MessagesState` memakai `typing_extensions.TypedDict`. Mewarisi `typing.TypedDict` bersamaan
-    dengannya menghasilkan `metaclass conflict`. Deklarasikan field langsung di state agent.
-  - Return node berupa `{"messages": ..., **typed_dict}` dibaca pyrefly sebagai
-    `dict[str, object]`. Buat `TypedDict` update sendiri dan isi field-nya secara eksplisit.
-  - Respons `FakeModel` berputar. Test yang memicu beberapa panggilan ringkasan (batch) harus
-    menyediakan respons yang cukup, kalau tidak hasilnya kembali ke respons pertama.
-  - Agent tidak boleh menjalankan command git apa pun, termasuk `git diff` di dalam rangkaian
-    perintah verifikasi (aturan user F21). Classifier menolak perintah itu.
-
-### 2026-11-16: Skill built-in dari F28
-
-- **Keputusan user:** `Project.skill_ids` = ID lengkap `<scope>/<name>`. `load_skill` di-bind hanya
-  saat project punya skill aktif, termasuk di chatbot.
-- **Keputusan desain:**
-  - `harness/skills/`: `Skill` (model ADR 0005), `parse_skill_markdown` (spesifikasi agentskills.io),
-    `FilesystemSkillSource` (`BUILTIN_SKILLS_DIR`), `SkillRegistry` (sumber pertama menang untuk ID
-    sama), dan `SkillToolkit` (indeks prompt + `tools_for(config)`).
-  - `load_skill(name, config, path=None)`: skill aktif dari `configurable["project_skill_ids"]`,
-    resource harus tercatat (tidak ada akses file bebas), dibatasi 20.000 karakter.
-  - `ChatbotAgent(ToolCallingAgent)` tanpa tool bawaan. `ToolCallingAgent` menyiapkan model dasar
-    dan model + `load_skill`, lalu memilih per giliran.
-  - Registry dibuat di `create_app`, dimuat di lifespan (`app.state.skill_registry`).
-- **Pelajaran:**
-  - `@tool` dengan parameter `config: RunnableConfig` menerima config run, dan parameter itu tidak
-    masuk schema tool.
-  - Untuk menguji model mana yang dipakai per giliran, `bind_tools` di FakeModel tiruan harus
-    mengembalikan salinan berlabel dengan log bersama. Mencatat panggilan `bind_tools` saja hanya
-    membuktikan binding saat build.
-  - `"\\\\"` di string Python yang ditulis lewat script menjadi dua backslash di file. Doctest
-    `_normalize_path` menangkapnya.
-  - File data (`.md`) di dalam package ikut di wheel hatch tanpa konfigurasi tambahan. Diverifikasi
-    lewat `uv build` dan test e2e.
-
-### 2026-11-16: ContextBuilder dari F27
-
-- **Keputusan user:** bagian lingkungan (tanggal + timezone) selalu ada di semua agent, walaupun
-  prompt v1 berubah (chatbot kini punya system prompt).
-- **Keputusan desain:**
-  - `harness/context.py`: `PromptSection` (`max_chars`, penanda `[truncated]`) dan
-    `ContextBuilder(instructions, clock, use_project_instructions, skills, memory)`. Urutan tetap:
-    agent → project → skills → memory → environment. Bagian kosong dilewati.
-  - Agent menerima `ContextBuilder` lewat konstruktor dan memanggil `system_message(config)` di
-    node yang menerima `config`. Placeholder `{current_date}` dihapus dari prompt.
-  - Expert supervisor tanpa instruksi project (`expert_context()`).
-  - `Clock`/`local_now` di harness. Test layering harness melarang import `agents/`, `service/`,
-    `schema/`, `client/`, `ui/`, `langchain`, dan `deepagents`.
-- **Pelajaran:**
-  - `SystemMessage.content` bertipe `str | list`. Untuk pyrefly, pakai `message.text`.
-  - Saat menulis file lewat script Python di heredoc, `\n` di dalam string bisa berubah menjadi
-    baris baru sungguhan di file tujuan. Periksa hasilnya atau pakai Edit.
-  - `.env.example` jangan berisi nilai yang hanya cocok untuk satu provider. Developer menyalinnya
-    apa adanya (`LLM_MAX_TOKENS_PARAM=max_completion_tokens` membuat batas token tidak berlaku di
-    Ollama).
-
-### 2026-11-15: Projects dari F26
-
-- **Keputusan user:** route `/projects/{project_id}/...` (PRD §11 no. 8 terjawab). Model: request →
-  project → default. Hapus project = hapus thread-nya. `ProjectSettings` hanya `max_tokens`.
-- **Keputusan desain:**
-  - `ProjectRepository` (memory, tanpa aturan akses) + `ProjectService` (service: 404/403/422,
-    seed, hapus berantai). `ProjectRecord` memakai tipe biasa (`settings` berupa dict), karena
-    `memory/` tidak boleh import `schema/`.
-  - `base_agent_id` immutable. `owner_id` berisi `sub` token (Text, bukan FK ke users).
-  - `project_id` di metadata run hanya untuk thread project. `is_thread_owner(..., project_id)`
-    membandingkannya, sehingga `None` cocok dengan key yang tidak ada (thread lama).
-  - `RunTarget` + `ProjectRunContext` di `service/run_input.py`. Kunci `configurable` project ada
-    di `core/constants.py` dan juga di `RESERVED_AGENT_CONFIG_KEYS` (schema).
-  - Built-in project sebagai data di `agents/catalog.py`, di-upsert di lifespan.
-- **Pelajaran:**
-  - Containment JSONB (`metadata @> filter`) tidak bisa memilih "key tidak ada", jadi listing
-    thread tanpa project disaring di Python oleh cek pemilik.
-  - Built-in yang di-upsert setiap startup tidak boleh diurutkan berdasarkan `updated_at`; urutan
-    berubah setiap restart. Urutkan berdasarkan nama.
-  - Iterasi `model_fields_set` (sebuah `set`) tidak berurutan. Iterasi `Model.model_fields`, lalu
-    saring dengan `model_fields_set`, supaya hasilnya deterministik.
-  - Mutation check (patahkan logika sebentar, pastikan test gagal) berguna saat test baru lulus
-    di percobaan pertama.
 
 ### 2026-11-15: Rencana Fase 2 (M4–M10)
 
