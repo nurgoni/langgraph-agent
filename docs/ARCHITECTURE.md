@@ -194,7 +194,7 @@ prompt di **setiap** panggilan model, dengan urutan bagian yang tetap:
 |---|---|---|---|
 | 1 | Instruksi agent (tanpa judul) | Konstruktor `ContextBuilder(instructions)` | 8000 |
 | 2 | `## Project instructions` | `configurable["project_instructions"]` (F26) | 8000 |
-| 3 | `## Skills` | `SectionProvider` slot `skills` (F28) | 4000 |
+| 3 | `## Skills` | `SkillToolkit` (F28): nama + deskripsi skill aktif | 4000 |
 | 4 | `## Memory` | `SectionProvider` slot `memory` (F30) | 4000 |
 | 5 | `## Environment` | `clock` yang di-inject: tanggal dan timezone | 300 |
 
@@ -210,6 +210,32 @@ prompt di **setiap** panggilan model, dengan urutan bagian yang tetap:
   menyusun jawaban akhir, yang menerapkan instruksi project.
 - `interrupt-agent` masih memakai prompt tetap untuk ekstraksi dan jawaban, sehingga instruksi
   project belum berlaku untuknya.
+
+## Skill
+
+Skill built-in (FR-38, [ADR 0005](adr/0005-skill-format-and-sources.md)) memakai format Agent
+Skills: `skills/builtin/<name>/SKILL.md` (frontmatter YAML + Markdown) dan file pendukung di
+subfolder.
+
+- **Pemuatan.** `SkillRegistry([FilesystemSkillSource(BUILTIN_SKILLS_DIR)])` dibuat di `create_app`
+  (agent butuh referensinya), lalu `load()` dijalankan di awal lifespan. `parse_skill_markdown`
+  memvalidasi `name` (sama dengan nama folder, huruf kecil, ≤ 64), `description` (≤ 1024),
+  `compatibility`, dan `metadata`. Skill tidak valid dicatat lalu dilewati, tanpa menggagalkan
+  startup. Sumber lain (B1) cukup memenuhi protokol `SkillSource`.
+- **ID** berbentuk `<scope>/<name>` (`builtin/meeting-notes`), dipakai di `Project.skill_ids`.
+  Model memakai nama pendek, karena nama unik di antara skill aktif satu project.
+- **Progressive disclosure.** `SkillToolkit` mengisi slot `skills` di `ContextBuilder` dengan nama
+  dan deskripsi skill aktif (dari `configurable["project_skill_ids"]`), dan menyediakan tool
+  `load_skill(name, path?)`. Tool membaca config yang disuntikkan LangChain (tidak terlihat di
+  schema tool), menolak skill yang tidak aktif dengan `ToolException`, hanya membaca file yang
+  tercatat sebagai resource skill, dan memotong isi di 20.000 karakter.
+- **Bind per giliran.** `ToolCallingAgent` (termasuk `ChatbotAgent`, yang kini dibangun di atasnya
+  tanpa tool bawaan) menyiapkan dua model: tanpa tool skill, dan dengan `load_skill`. Model kedua
+  hanya dipakai pada giliran yang project-nya punya skill aktif. Tanpa tool sama sekali, graph
+  chatbot tetap `agent → END`.
+- **Validasi project.** `ProjectService` menolak `skill_ids` yang tidak dikenal registry (422), dan
+  saat seeding melewati skill built-in yang tidak termuat.
+- Supervisor belum memakai skill.
 
 ## Project
 

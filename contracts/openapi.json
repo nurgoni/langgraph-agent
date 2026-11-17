@@ -348,9 +348,15 @@
             "$ref": "#/components/schemas/ProjectSettings"
           },
           "skill_ids": {
+            "description": "Active skills, as ids from GET /skills.",
+            "examples": [
+              [
+                "builtin/research-report"
+              ]
+            ],
             "items": {
-              "maxLength": 64,
-              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+              "maxLength": 72,
+              "pattern": "^(builtin|org|user|project)/[a-z0-9]+(-[a-z0-9]+)*$",
               "type": "string"
             },
             "maxItems": 20,
@@ -476,8 +482,8 @@
             "anyOf": [
               {
                 "items": {
-                  "maxLength": 64,
-                  "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+                  "maxLength": 72,
+                  "pattern": "^(builtin|org|user|project)/[a-z0-9]+(-[a-z0-9]+)*$",
                   "type": "string"
                 },
                 "maxItems": 20,
@@ -526,6 +532,139 @@
           "default_model"
         ],
         "title": "ServiceMetadata",
+        "type": "object"
+      },
+      "SkillDetail": {
+        "description": "Skill lengkap dengan isi Markdown-nya.",
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "description": {
+            "description": "When the model should load this skill.",
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "examples": [
+              "builtin/research-report"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "description": "Short name the model uses with load_skill.",
+            "title": "Name",
+            "type": "string"
+          },
+          "read_only": {
+            "title": "Read Only",
+            "type": "boolean"
+          },
+          "resources": {
+            "description": "Supporting files, relative to the skill folder.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Resources",
+            "type": "array"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/SkillScope"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "scope",
+          "version",
+          "read_only",
+          "body"
+        ],
+        "title": "SkillDetail",
+        "type": "object"
+      },
+      "SkillList": {
+        "description": "Isi `GET /skills`, urut ID.",
+        "properties": {
+          "skills": {
+            "items": {
+              "$ref": "#/components/schemas/SkillSummary"
+            },
+            "title": "Skills",
+            "type": "array"
+          }
+        },
+        "required": [
+          "skills"
+        ],
+        "title": "SkillList",
+        "type": "object"
+      },
+      "SkillScope": {
+        "enum": [
+          "builtin",
+          "org",
+          "user",
+          "project"
+        ],
+        "type": "string"
+      },
+      "SkillSummary": {
+        "description": "Skill tanpa isi lengkap, untuk daftar dan pemilih skill di project.",
+        "properties": {
+          "description": {
+            "description": "When the model should load this skill.",
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "examples": [
+              "builtin/research-report"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "description": "Short name the model uses with load_skill.",
+            "title": "Name",
+            "type": "string"
+          },
+          "read_only": {
+            "title": "Read Only",
+            "type": "boolean"
+          },
+          "resources": {
+            "description": "Supporting files, relative to the skill folder.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Resources",
+            "type": "array"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/SkillScope"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "scope",
+          "version",
+          "read_only"
+        ],
+        "title": "SkillSummary",
         "type": "object"
       },
       "StreamInput": {
@@ -1649,6 +1788,81 @@
         "summary": "Rename Project Thread",
         "tags": [
           "projects"
+        ]
+      }
+    },
+    "/skills": {
+      "get": {
+        "description": "Semua skill yang tersedia, urut ID.",
+        "operationId": "list_skills_skills_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Skills",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/skills/{skill_id}": {
+      "get": {
+        "description": "Satu skill beserta isinya. ID berbentuk `<scope>/<name>`. Skill tidak dikenal → 404.",
+        "operationId": "get_skill_skills__skill_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "title": "Skill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Skill",
+        "tags": [
+          "skills"
         ]
       }
     },

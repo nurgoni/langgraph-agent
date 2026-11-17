@@ -61,7 +61,7 @@ async def test_created_project_is_listed_after_builtin(client: AsyncClient) -> N
         client,
         description="Untuk rapat mingguan",
         instructions="Ringkas dalam poin.",
-        skill_ids=["meeting-notes"],
+        skill_ids=["builtin/meeting-notes"],
         settings={"max_tokens": 512},
     )
 
@@ -96,6 +96,7 @@ async def test_unknown_agent_or_model_is_422(
     [
         {"name": "   "},
         {"skill_ids": ["Not Valid"]},
+        {"skill_ids": ["meeting-notes"]},
         {"settings": {"max_tokens": 0}},
         {"settings": {"unknown": True}},
         {"owner_id": "someone-else"},

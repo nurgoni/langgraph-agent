@@ -153,6 +153,7 @@ menunjuk ke container itu sendiri.
 | GET, PATCH, DELETE | `/projects/{project_id}` | Satu project. Built-in read-only (403). Hapus = ikut hapus thread-nya |
 | POST | `/projects/{project_id}/invoke`, `/stream`, `/history` | Chat di dalam project |
 | GET, PATCH, DELETE | `/projects/{project_id}/threads[/{thread_id}]` | Thread di dalam project |
+| GET | `/skills`, `/skills/{scope}/{name}` | Skill yang bisa diaktifkan di project (read-only) |
 | GET | `/health` | Health check, selalu tanpa auth |
 
 Semua endpoint selain `/health` dan `/auth/login` butuh `Authorization: Bearer <access_token>`.
@@ -196,6 +197,19 @@ project = client.create_project(
 client.project_id = project.id  # chat dan thread berikutnya masuk ke project ini
 reply = client.invoke("Siapa pemain utama pasar EV di Asia Tenggara?")
 ```
+
+### Skill
+
+Skill adalah instruksi prosedural (format [Agent Skills](https://agentskills.io)) yang dimuat model
+hanya saat relevan ([ADR 0005](docs/adr/0005-skill-format-and-sources.md)). Skill built-in ada di
+`src/agent_service/skills/builtin/<name>/SKILL.md`: `meeting-notes` dan `research-report`.
+
+- Aktifkan skill di project lewat `skill_ids`, dengan ID dari `GET /skills`
+  (`builtin/research-report`).
+- Setiap giliran, system prompt berisi daftar nama + deskripsi skill aktif, dan model memanggil
+  tool `load_skill(name, path?)` untuk isi lengkapnya. Tool ini hanya muncul jika project punya skill
+  aktif, dan hanya bisa memuat skill yang aktif di project itu.
+- Skill dengan `SKILL.md` tidak valid dilewati saat startup dan dicatat di log.
 
 ## Menggunakan AgentClient
 

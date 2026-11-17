@@ -42,7 +42,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F25 | API contract export | M4 | done |
 | F26 | Projects | M5 | done |
 | F27 | Context builder | M5 | done |
-| F28 | Built-in skills | M5 | todo |
+| F28 | Built-in skills | M5 | done |
 | F29 | Context policy | M5 | todo |
 | F30 | Long-term memory | M5 | todo |
 | F31 | Evals & tracing | M5 | todo |
@@ -1271,11 +1271,30 @@ F32 → F33 → F34 → *rilis v0.6.0* → F35 → F36 → F37 → F38 → *rili
   5. `feat(service): add read-only skill routes`
   6. `feat(agents): add built-in demo skills`
   7. `docs: record F28 skill decisions`
+- **Langkah 1 (keputusan user):** `Project.skill_ids` memakai ID lengkap `<scope>/<name>` (ADR 0005),
+  sehingga pola `SkillId` dari F26 diubah (belum dirilis). `load_skill` di-bind hanya pada giliran
+  yang project-nya punya skill aktif, termasuk untuk chatbot.
+- **Penyesuaian saat implementasi:**
+  - Paket di `harness/skills/` (`model`, `parser`, `sources`, `registry`, `toolkit`) dan
+    `harness/tools/load_skill.py`. `SkillToolkit` menggabungkan indeks prompt dan tool, dan
+    `ContextBuilder.with_skills()` memasangnya, supaya indeks dan tool berasal dari sumber yang sama.
+  - `ChatbotAgent` menjadi subclass `ToolCallingAgent` tanpa tool bawaan. `ToolCallingAgent`
+    memilih model tanpa/dengan `load_skill` per giliran.
+  - `SkillRegistry` dibuat di `create_app` (agent memegang referensinya) dan dimuat di lifespan.
+  - `config` di tool disuntikkan LangChain (parameter `RunnableConfig`), tidak terlihat oleh model.
+  - Dependency: `pyyaml` dideklarasikan di extra `service` (sebelumnya hanya transitif), dan
+    `types-pyyaml` di grup dev untuk pyrefly.
+  - Ditambah `AgentClient.list_skills()`/`get_skill()` dan test e2e bahwa skill ada di image service
+    (data `.md` ikut di wheel).
+  - Commit 1–4 digabung menjadi commit harness, dan 5–6 menjadi commit service/agent, karena
+    `app.py`, `catalog.py`, dan `tool_calling.py` disentuh bersama.
 - **Acceptance criteria:**
-  - [ ] `FakeModel` yang di-script memanggil `load_skill` dan menerima isi skill.
-  - [ ] Skill yang tidak aktif di project → error tool, bukan isi skill.
-  - [ ] Skill tidak valid dilewati dan tercatat di log, dan startup tetap berjalan.
-  - [ ] Smoke test `qwen3.5:9b`: model memuat skill yang relevan dari deskripsinya.
+  - [x] `FakeModel` yang di-script memanggil `load_skill` dan menerima isi skill.
+  - [x] Skill yang tidak aktif di project → error tool, bukan isi skill.
+  - [x] Skill tidak valid dilewati dan tercatat di log, dan startup tetap berjalan.
+  - [x] Smoke test `qwen3.5:9b`: transkrip rapat → model memanggil `load_skill("meeting-notes")` dan
+        menulis catatan sesuai format skill. Pertanyaan umum ("capital of Japan") → tidak ada skill
+        yang dimuat.
 - **Squash title:** `feat(harness): add built-in skills with progressive disclosure (F28)`
 
 ### F29: Context policy

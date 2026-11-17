@@ -208,3 +208,15 @@ def test_other_user_cannot_read_thread(stack: ComposeStack) -> None:
         other.get_history(reply.thread_id)
 
     assert error_info.value.status_code == 404
+
+
+def test_builtin_skills_ship_in_the_service_image(stack: ComposeStack) -> None:
+    with stack.client() as client:
+        skills = client.list_skills()
+        notes = client.get_skill("builtin/meeting-notes")
+
+    assert [skill.id for skill in skills.skills] == [
+        "builtin/meeting-notes",
+        "builtin/research-report",
+    ]
+    assert notes.body.startswith("# Meeting notes")

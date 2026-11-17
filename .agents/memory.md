@@ -13,15 +13,39 @@ ada keputusan penting (lihat Definition of Done di [AGENTS.md](../AGENTS.md)).
 
 ## Status Saat Ini
 
-- **Fase:** M5 Harness Core. `v0.4.0` sudah dirilis. **F26** (Projects) menunggu push/PR user,
-  dan **F27** (Context builder) selesai di `feature/F27-context-builder` di atasnya.
-- **Berikutnya:** **F28** (Built-in skills): provider slot `skills` di `ContextBuilder`.
+- **Fase:** M5 Harness Core. **F28** (Built-in skills) selesai, menunggu user commit, push, dan
+  PR (F26 dan F27 mungkin belum di-merge; lihat daftar command terakhir).
+- **Berikutnya:** **F29** (Context policy).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   Push dari shell agent gagal: belum ada kredensial HTTPS, dan SSH key lokal belum terdaftar di
   GitHub. User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Terakhir diperbarui:** 2026-11-15
 
 ## Decision Log
+
+### 2026-11-16: Skill built-in dari F28
+
+- **Keputusan user:** `Project.skill_ids` = ID lengkap `<scope>/<name>`. `load_skill` di-bind hanya
+  saat project punya skill aktif, termasuk di chatbot.
+- **Keputusan desain:**
+  - `harness/skills/`: `Skill` (model ADR 0005), `parse_skill_markdown` (spesifikasi agentskills.io),
+    `FilesystemSkillSource` (`BUILTIN_SKILLS_DIR`), `SkillRegistry` (sumber pertama menang untuk ID
+    sama), dan `SkillToolkit` (indeks prompt + `tools_for(config)`).
+  - `load_skill(name, config, path=None)`: skill aktif dari `configurable["project_skill_ids"]`,
+    resource harus tercatat (tidak ada akses file bebas), dibatasi 20.000 karakter.
+  - `ChatbotAgent(ToolCallingAgent)` tanpa tool bawaan. `ToolCallingAgent` menyiapkan model dasar
+    dan model + `load_skill`, lalu memilih per giliran.
+  - Registry dibuat di `create_app`, dimuat di lifespan (`app.state.skill_registry`).
+- **Pelajaran:**
+  - `@tool` dengan parameter `config: RunnableConfig` menerima config run, dan parameter itu tidak
+    masuk schema tool.
+  - Untuk menguji model mana yang dipakai per giliran, `bind_tools` di FakeModel tiruan harus
+    mengembalikan salinan berlabel dengan log bersama. Mencatat panggilan `bind_tools` saja hanya
+    membuktikan binding saat build.
+  - `"\\\\"` di string Python yang ditulis lewat script menjadi dua backslash di file. Doctest
+    `_normalize_path` menangkapnya.
+  - File data (`.md`) di dalam package ikut di wheel hatch tanpa konfigurasi tambahan. Diverifikasi
+    lewat `uv build` dan test e2e.
 
 ### 2026-11-16: ContextBuilder dari F27
 
@@ -775,7 +799,6 @@ Langkah 1 fitur terkait:
   1. Prosedur yang sama dijalankan berulang dengan banyak langkah. Kandidat pertama: rilis
      `v0.4.0` (setelah F25), lalu "ubah schema → export kontrak → generate tipe TS" setelah F32.
   2. `AGENTS.md` + `.agents/memory.md` terasa terlalu panjang untuk dimuat setiap sesi.
-  3. Sebelum mulai F28 (`SkillRegistry`): membuat satu dev-time skill (misalnya `release`) adalah
-     latihan paling murah untuk memahami format `SKILL.md`.
+  3. ~~Sebelum mulai F28~~: sudah diingatkan 2026-11-16. Pemicu 1 dan 2 tetap berlaku.
 - [ ] Ringkas `.agents/memory.md` (±600 baris, melewati batas ±300): pindahkan entri Decision Log
       Fase 1 yang sudah stabil ke `docs/adr/` atau arsip.

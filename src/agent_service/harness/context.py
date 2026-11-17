@@ -128,6 +128,20 @@ class ContextBuilder:
         self._skills = skills
         self._memory = memory
 
+    def with_skills(self, skills: SectionProvider) -> "ContextBuilder":
+        """Builder yang sama dengan sumber indeks skill, untuk agent yang punya `load_skill`.
+
+        Agent memasangnya sendiri dari toolkit skill-nya, supaya indeks di prompt dan tool yang
+        di-bind selalu berasal dari sumber yang sama.
+        """
+        return ContextBuilder(
+            self._instructions,
+            clock=self._clock,
+            use_project_instructions=self._use_project_instructions,
+            skills=skills,
+            memory=self._memory,
+        )
+
     def sections(self, config: RunConfig | None = None) -> list[PromptSection]:
         """Semua bagian yang berisi, urut sesuai FR-37.
 

@@ -12,6 +12,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from agent_service.agents.errors import AgentNotFoundError, AgentUnavailableError
+from agent_service.harness.skills.registry import SkillNotFoundError
 from agent_service.llm.factory import ModelNotConfiguredError, UnknownModelError
 from agent_service.service.auth import AuthenticationError
 from agent_service.service.projects import (
@@ -28,6 +29,7 @@ DOMAIN_ERROR_STATUS: Final[Mapping[type[Exception], int]] = {
     AgentNotFoundError: status.HTTP_404_NOT_FOUND,
     ThreadNotFoundError: status.HTTP_404_NOT_FOUND,
     ProjectNotFoundError: status.HTTP_404_NOT_FOUND,
+    SkillNotFoundError: status.HTTP_404_NOT_FOUND,
     ProjectReadOnlyError: status.HTTP_403_FORBIDDEN,
     InvalidProjectError: status.HTTP_422_UNPROCESSABLE_CONTENT,
     AgentUnavailableError: status.HTTP_503_SERVICE_UNAVAILABLE,

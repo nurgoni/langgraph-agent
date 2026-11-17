@@ -13,6 +13,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from agent_service.agents.registry import AgentRegistry
 from agent_service.core.settings import Settings
+from agent_service.harness.skills.registry import SkillRegistry
 from agent_service.llm.factory import ModelFactory
 from agent_service.service.auth import Authenticator, InvalidTokenError, Principal
 from agent_service.service.projects import ProjectService
@@ -46,6 +47,11 @@ def get_thread_repository(request: Request) -> ThreadRepository:
 def get_project_service(request: Request) -> ProjectService:
     """Ambil `ProjectService` yang dibuat di lifespan."""
     return request.app.state.project_service
+
+
+def get_skill_registry(request: Request) -> SkillRegistry:
+    """Ambil `SkillRegistry` yang dimuat di lifespan."""
+    return request.app.state.skill_registry
 
 
 def get_default_agent_id(request: Request) -> str:
@@ -82,4 +88,5 @@ ThreadRepositoryDep = Annotated[ThreadRepository, Depends(get_thread_repository)
 DefaultAgentIdDep = Annotated[str, Depends(get_default_agent_id)]
 AuthenticatorDep = Annotated[Authenticator, Depends(get_authenticator)]
 ProjectServiceDep = Annotated[ProjectService, Depends(get_project_service)]
+SkillRegistryDep = Annotated[SkillRegistry, Depends(get_skill_registry)]
 PrincipalDep = Annotated[Principal, Depends(current_principal)]
