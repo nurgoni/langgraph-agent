@@ -7,6 +7,8 @@ repos:
     rev: v6.0.0
     hooks:
       - id: check-yaml
+        # frontend/pnpm-lock.yaml (pnpm 12) berisi dua dokumen YAML.
+        args: [--allow-multiple-documents]
       - id: check-toml
       - id: end-of-file-fixer
       - id: trailing-whitespace
@@ -36,6 +38,16 @@ repos:
         entry: uv run python -m agent_service.export_contracts --check
         language: system
         files: ^(src/agent_service/(schema|service)/|contracts/)
+        pass_filenames: false
+      - id: frontend-check
+        # Tipe API TS sinkron dengan contracts/, lalu typecheck dan lint (F32). Butuh
+        # `corepack pnpm install` sekali di frontend/. Corepack membaca `packageManager` dari
+        # folder kerja (root repo), bukan dari `--dir`, jadi versinya ditulis eksplisit di sini dan
+        # harus sama dengan `frontend/package.json`; jika berbeda, pnpm gagal dengan jelas.
+        name: frontend check
+        entry: corepack pnpm@12.17.0 --dir frontend run check
+        language: system
+        files: ^(frontend/|contracts/openapi\.json$)
         pass_filenames: false
       - id: pytest
         name: pytest
