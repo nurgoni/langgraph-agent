@@ -216,3 +216,16 @@ async def test_memories_through_client(client: AgentClient) -> None:
 
     assert listing.memories == []
     assert error_info.value.status_code == 404
+
+
+async def test_run_trace_through_client(client: AgentClient, other_client: AgentClient) -> None:
+    reply = await client.ainvoke("Halo")
+    run_id = reply.message.run_id or ""
+
+    trace = await client.aget_run_trace(run_id)
+    with pytest.raises(AgentClientError) as error_info:
+        await other_client.aget_run_trace(run_id)
+
+    assert (trace.run_id, trace.thread_id, trace.status) == (run_id, reply.thread_id, "ok")
+    assert [span.kind for span in trace.spans] == ["model"]
+    assert error_info.value.status_code == 404

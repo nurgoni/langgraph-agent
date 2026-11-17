@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from agent_service.agents.errors import AgentNotFoundError, AgentUnavailableError
 from agent_service.harness.skills.registry import SkillNotFoundError
 from agent_service.llm.factory import ModelNotConfiguredError, UnknownModelError
+from agent_service.memory.traces import RunTraceNotFoundError
 from agent_service.memory.user_memories import MemoryNotFoundError
 from agent_service.service.auth import AuthenticationError
 from agent_service.service.projects import (
@@ -32,6 +33,7 @@ DOMAIN_ERROR_STATUS: Final[Mapping[type[Exception], int]] = {
     ProjectNotFoundError: status.HTTP_404_NOT_FOUND,
     SkillNotFoundError: status.HTTP_404_NOT_FOUND,
     MemoryNotFoundError: status.HTTP_404_NOT_FOUND,
+    RunTraceNotFoundError: status.HTTP_404_NOT_FOUND,
     ProjectReadOnlyError: status.HTTP_403_FORBIDDEN,
     InvalidProjectError: status.HTTP_422_UNPROCESSABLE_CONTENT,
     AgentUnavailableError: status.HTTP_503_SERVICE_UNAVAILABLE,

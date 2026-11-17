@@ -456,3 +456,35 @@ def test_memory_requests() -> None:
     methods = [(r.method, r.url.raw_path) for r in transport.requests]
     assert methods == [("GET", b"/memories"), ("DELETE", b"/memories/m%2F1")]
     assert listing.memories[0].text == "Likes tea"
+
+
+TRACE = {
+    "run_id": "r/1",
+    "thread_id": "t1",
+    "agent_id": "chatbot",
+    "project_id": None,
+    "status": "ok",
+    "started_at": "2026-11-17T00:00:00Z",
+    "ended_at": "2026-11-17T00:00:01Z",
+    "duration_ms": 1000,
+    "spans": [
+        {
+            "kind": "model",
+            "name": "fake",
+            "status": "ok",
+            "started_at": "2026-11-17T00:00:00Z",
+            "ended_at": "2026-11-17T00:00:01Z",
+            "duration_ms": 1000,
+        }
+    ],
+}
+
+
+def test_run_trace_request() -> None:
+    client, transport = make_client(lambda request: httpx.Response(200, json=TRACE))
+
+    with client:
+        trace = client.get_run_trace("r/1")
+
+    assert transport.requests[0].url.raw_path == b"/runs/r%2F1/trace"
+    assert trace.spans[0].name == "fake"

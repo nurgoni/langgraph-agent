@@ -157,6 +157,9 @@ class ModelFactory:
             # Tanpa ini, stream_mode="messages" LangGraph hanya menerima satu chunk berisi seluruh
             # jawaban, sehingga /stream tidak mengirim token satu per satu.
             streaming=True,
+            # Minta usage token di chunk terakhir stream (`stream_options.include_usage`), supaya
+            # trace run punya jumlah token (FR-41).
+            stream_usage=True,
         )
 
 

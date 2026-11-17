@@ -36,6 +36,7 @@ from agent_service.schema.responses import (
     UserThreads,
 )
 from agent_service.schema.skills import SkillDetail, SkillList
+from agent_service.schema.traces import RunTrace
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ LOGIN_PATH: Final = "/auth/login"
 PROJECTS_PATH: Final = "/projects"
 SKILLS_PATH: Final = "/skills"
 MEMORIES_PATH: Final = "/memories"
+RUNS_PATH: Final = "/runs"
 
 
 class AgentClient:
@@ -347,6 +349,18 @@ class AgentClient:
         """
         self._send(RequestSpec("DELETE", _memory_path(memory_id)))
 
+    def get_run_trace(self, run_id: str) -> RunTrace:
+        """Trace satu run milik user yang login (FR-41). `run_id` ada di `ChatMessage.run_id`.
+
+        Raises:
+            AgentClientError: 404 jika run tidak punya trace atau milik user lain.
+        """
+        return parse_model(self._send(RequestSpec("GET", _trace_path(run_id))), RunTrace)
+
+    async def aget_run_trace(self, run_id: str) -> RunTrace:
+        """Versi async `get_run_trace`."""
+        return parse_model(await self._asend(RequestSpec("GET", _trace_path(run_id))), RunTrace)
+
     async def alist_memories(self) -> MemoryList:
         """Versi async `list_memories`."""
         return parse_model(await self._asend(RequestSpec("GET", MEMORIES_PATH)), MemoryList)
@@ -539,6 +553,15 @@ def _project_path(project_id: str) -> str:
     '/projects/p%2F1'
     """
     return f"{PROJECTS_PATH}/{path_segment(project_id)}"
+
+
+def _trace_path(run_id: str) -> str:
+    """Path trace satu run.
+
+    >>> _trace_path("0f1e")
+    '/runs/0f1e/trace'
+    """
+    return f"{RUNS_PATH}/{path_segment(run_id)}/trace"
 
 
 def _memory_path(memory_id: str) -> str:

@@ -62,7 +62,7 @@ def expected_heads() -> set[str]:
     """Revisi terbaru yang ada di folder migrasi.
 
     >>> expected_heads()
-    {'0004'}
+    {'0005'}
     """
     return set(ScriptDirectory.from_config(alembic_config()).get_heads())
 

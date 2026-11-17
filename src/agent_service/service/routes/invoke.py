@@ -6,11 +6,18 @@ from typing import Any, Final
 from fastapi import APIRouter, Response
 
 from agent_service.agents.registry import AgentRegistry
+from agent_service.memory.traces import RunTraceRepository
 from agent_service.schema.requests import UserInput
 from agent_service.schema.responses import ChatMessage
-from agent_service.service.converters import final_chat_message
-from agent_service.service.dependencies import DefaultAgentIdDep, PrincipalDep, RegistryDep
+from agent_service.service.converters import INTERRUPT_KEY, final_chat_message
+from agent_service.service.dependencies import (
+    DefaultAgentIdDep,
+    PrincipalDep,
+    RegistryDep,
+    TraceRepositoryDep,
+)
 from agent_service.service.run_input import RUN_RESPONSE_HEADERS, RunTarget, build_run_input
+from agent_service.service.tracing import RunTraceCollector
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +33,12 @@ async def invoke_default_agent(
     response: Response,
     principal: PrincipalDep,
     registry: RegistryDep,
+    traces: TraceRepositoryDep,
     default_agent_id: DefaultAgentIdDep,
 ) -> ChatMessage:
     """Sama dengan `POST /{agent_id}/invoke` untuk agent default."""
     target = RunTarget(default_agent_id, user_input.model)
-    return await invoke(target, user_input, principal.user_id, response, registry)
+    return await invoke(target, user_input, principal.user_id, response, registry, traces)
 
 
 @router.post("/{agent_id}/invoke", responses=INVOKE_RESPONSES)
@@ -40,13 +48,14 @@ async def invoke_agent(
     response: Response,
     principal: PrincipalDep,
     registry: RegistryDep,
+    traces: TraceRepositoryDep,
 ) -> ChatMessage:
     """Jalankan agent dan kembalikan message terakhirnya, atau pertanyaan interrupt.
 
     Header `X-Thread-Id` berisi ID thread yang dipakai run, untuk melanjutkan thread.
     """
     target = RunTarget(agent_id, user_input.model)
-    return await invoke(target, user_input, principal.user_id, response, registry)
+    return await invoke(target, user_input, principal.user_id, response, registry, traces)
 
 
 async def invoke(
@@ -55,8 +64,9 @@ async def invoke(
     user_id: str,
     response: Response,
     registry: AgentRegistry,
+    traces: RunTraceRepository,
 ) -> ChatMessage:
-    """Jalankan satu run agent sampai selesai.
+    """Jalankan satu run agent sampai selesai, dan simpan trace-nya (FR-41).
 
     Args:
         target: Agent, model, batas token, dan project untuk run ini.
@@ -64,6 +74,7 @@ async def invoke(
         user_id: Pemilik run, dari access token.
         response: Response FastAPI, untuk header ID thread.
         registry: Registry agent milik app.
+        traces: Tempat trace run disimpan.
 
     Returns:
         Jawaban akhir dengan `run_id` terisi.
@@ -85,6 +96,14 @@ async def invoke(
         run.run_id,
         run.thread_id,
     )
-    state = await graph.ainvoke(run.graph_input, run.config)
+    tracer = RunTraceCollector(traces, run, target.agent_id, target.project_id)
+    traced = run.with_callbacks(tracer)
+    try:
+        state = await graph.ainvoke(traced.graph_input, traced.config)
+    # Bukan penanganan error: trace run yang gagal disimpan, lalu error diteruskan ke handler.
+    except Exception as error:
+        await tracer.save("error", error)
+        raise
+    await tracer.save("interrupted" if state.get(INTERRUPT_KEY) else "ok")
     response.headers.update(run.response_headers())
     return final_chat_message(state).model_copy(update={"run_id": str(run.run_id)})

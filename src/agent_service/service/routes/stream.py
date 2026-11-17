@@ -7,10 +7,17 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 from agent_service.agents.registry import AgentRegistry
+from agent_service.memory.traces import RunTraceRepository
 from agent_service.schema.requests import StreamInput
-from agent_service.service.dependencies import DefaultAgentIdDep, PrincipalDep, RegistryDep
+from agent_service.service.dependencies import (
+    DefaultAgentIdDep,
+    PrincipalDep,
+    RegistryDep,
+    TraceRepositoryDep,
+)
 from agent_service.service.run_input import RUN_RESPONSE_HEADERS, RunTarget, build_run_input
 from agent_service.service.streaming import StreamService
+from agent_service.service.tracing import RunTraceCollector
 
 logger = logging.getLogger(__name__)
 
@@ -32,27 +39,36 @@ async def stream_default_agent(
     stream_input: StreamInput,
     principal: PrincipalDep,
     registry: RegistryDep,
+    traces: TraceRepositoryDep,
     default_agent_id: DefaultAgentIdDep,
 ) -> StreamingResponse:
     """Sama dengan `POST /{agent_id}/stream` untuk agent default."""
     target = RunTarget(default_agent_id, stream_input.model)
-    return await stream(target, stream_input, principal.user_id, registry)
+    return await stream(target, stream_input, principal.user_id, registry, traces)
 
 
 @router.post("/{agent_id}/stream", response_class=StreamingResponse, responses=SSE_RESPONSES)
 async def stream_agent(
-    agent_id: str, stream_input: StreamInput, principal: PrincipalDep, registry: RegistryDep
+    agent_id: str,
+    stream_input: StreamInput,
+    principal: PrincipalDep,
+    registry: RegistryDep,
+    traces: TraceRepositoryDep,
 ) -> StreamingResponse:
     """Alirkan frame `token`, `message`, dan `error`, selalu diakhiri `data: [DONE]`.
 
     Header `X-Thread-Id` berisi ID thread yang dipakai run, sama seperti `/invoke`.
     """
     target = RunTarget(agent_id, stream_input.model)
-    return await stream(target, stream_input, principal.user_id, registry)
+    return await stream(target, stream_input, principal.user_id, registry, traces)
 
 
 async def stream(
-    target: RunTarget, stream_input: StreamInput, user_id: str, registry: AgentRegistry
+    target: RunTarget,
+    stream_input: StreamInput,
+    user_id: str,
+    registry: AgentRegistry,
+    traces: RunTraceRepository,
 ) -> StreamingResponse:
     """Validasi request lalu mulai stream.
 
@@ -64,6 +80,7 @@ async def stream(
         stream_input: Body request.
         user_id: Pemilik run, dari access token.
         registry: Registry agent milik app.
+        traces: Tempat trace run disimpan setelah stream selesai.
 
     Returns:
         Response SSE.
@@ -85,7 +102,8 @@ async def stream(
         run.run_id,
         run.thread_id,
     )
-    service = StreamService(graph, run, stream_input.stream_tokens)
+    tracer = RunTraceCollector(traces, run, target.agent_id, target.project_id)
+    service = StreamService(graph, run.with_callbacks(tracer), stream_input.stream_tokens, tracer)
     return StreamingResponse(
         service.stream(), media_type=SSE_MEDIA_TYPE, headers=run.response_headers()
     )
