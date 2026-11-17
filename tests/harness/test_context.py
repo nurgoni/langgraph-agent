@@ -9,6 +9,8 @@ from agent_service.harness.context import (
     MEMORY_SECTION,
     PROJECT_MAX_CHARS,
     SKILLS_SECTION,
+    SUMMARY_MAX_CHARS,
+    SUMMARY_SECTION,
     TRUNCATION_MARKER,
     ContextBuilder,
     PromptSection,
@@ -47,7 +49,7 @@ def test_full_prompt_snapshot() -> None:
         ),
     )
 
-    prompt = builder.build(PROJECT_CONFIG)
+    prompt = builder.build(PROJECT_CONFIG, summary="User is planning a trip to Bali.")
 
     assert prompt == (
         "You are a research assistant.\n"
@@ -61,9 +63,23 @@ def test_full_prompt_snapshot() -> None:
         "## Memory\n"
         "- Prefers short answers\n"
         "\n"
+        "## Summary of earlier conversation\n"
+        "User is planning a trip to Bali.\n"
+        "\n"
         "## Environment\n"
         "Current date: Monday, November 16, 2026. Timezone: WIB (UTC+07:00)."
     )
+
+
+def test_summary_section_is_bounded_and_skipped_when_empty() -> None:
+    builder = ContextBuilder("Be concise.", clock=fixed_clock)
+
+    long_summary = builder.sections(summary="s" * (SUMMARY_MAX_CHARS + 50))
+    no_summary = builder.sections(summary="  ")
+
+    [summary] = [section for section in long_summary if section.name == SUMMARY_SECTION]
+    assert summary.render().endswith("s" + TRUNCATION_MARKER)
+    assert SUMMARY_SECTION not in [section.name for section in no_summary]
 
 
 def test_prompt_without_project_is_agent_instructions_plus_environment() -> None:

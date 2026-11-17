@@ -9,6 +9,7 @@ from langgraph.types import Interrupt, StreamMode
 
 from agent_service.agents.base import AgentGraph
 from agent_service.agents.supervisor import SUBAGENT_TAG
+from agent_service.core.constants import SKIP_STREAM_TAG
 from agent_service.llm.reasoning import message_reasoning
 from agent_service.schema.responses import ChatMessage
 from agent_service.schema.stream import (
@@ -35,9 +36,6 @@ UPDATES_MODE: Final = "updates"
 MESSAGES_MODE: Final = "messages"
 CUSTOM_MODE: Final = "custom"
 STREAM_MODES: Final[list[StreamMode]] = [UPDATES_MODE, MESSAGES_MODE, CUSTOM_MODE]
-# Node yang memanggil LLM untuk keperluan internal (misalnya klasifikasi) diberi tag ini supaya
-# tokennya tidak tampil ke user.
-SKIP_STREAM_TAG: Final = "skip_stream"
 STREAM_ERROR_DETAIL: Final = "Internal server error"
 
 SSE_DATA_PREFIX: Final = "data: "
