@@ -4,6 +4,7 @@ import pytest
 from httpx import AsyncClient
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
+from langgraph.store.base import BaseStore
 
 from agent_service.agents.base import AgentGraph, BaseAgent, Checkpointer
 from agent_service.agents.chatbot import ChatbotAgent
@@ -18,7 +19,9 @@ PARTIAL_ANSWER = "Jawaban ini terpo"
 class TruncatingAgent(ChatbotAgent):
     """Chatbot yang modelnya selalu berhenti karena batas token (`finish_reason="length"`)."""
 
-    def build(self, model: BaseChatModel, checkpointer: Checkpointer) -> AgentGraph:
+    def build(
+        self, model: BaseChatModel, checkpointer: Checkpointer, store: BaseStore | None = None
+    ) -> AgentGraph:
         truncating_model = FakeModel(
             responses=[
                 AIMessage(content=PARTIAL_ANSWER, response_metadata={"finish_reason": "length"})

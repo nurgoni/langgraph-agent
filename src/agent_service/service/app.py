@@ -27,7 +27,9 @@ from agent_service.memory.checkpointer import CheckpointerProvider
 from agent_service.memory.database import DatabaseEngineProvider
 from agent_service.memory.migrator import ensure_database_migrated
 from agent_service.memory.projects import ProjectRepository
+from agent_service.memory.store import StoreProvider
 from agent_service.memory.thread_metadata import ThreadMetadataRepository
+from agent_service.memory.user_memories import UserMemoryRepository
 from agent_service.memory.users import UserRepository
 from agent_service.schema.headers import THREAD_ID_HEADER
 from agent_service.service.auth import Authenticator
@@ -40,6 +42,7 @@ from agent_service.service.routes import (
     history,
     info,
     invoke,
+    memories,
     projects,
     skills,
     stream,
@@ -132,6 +135,7 @@ def create_app(
     app.include_router(threads.router, dependencies=protected)
     app.include_router(projects.router, dependencies=protected)
     app.include_router(skills.router, dependencies=protected)
+    app.include_router(memories.router, dependencies=protected)
     app.state.settings = resolved_settings
     app.state.default_agent_id = default_agent_id
     return app
@@ -161,11 +165,11 @@ def _build_lifespan(
 ) -> Lifespan:
     """Buat lifespan yang membuka database, mendaftarkan, dan memuat semua agent.
 
-    Urutan: muat skill → `ModelFactory` → engine + `CheckpointerProvider` → cek migrasi →
-    `AgentRegistry.load_all()` → seed project built-in. Factory, registry, `ThreadRepository`,
-    `ProjectService`, dan `Authenticator` disimpan di `app.state`. Engine dan pool checkpointer
-    ditutup saat shutdown. Startup gagal jika Postgres tidak terjangkau atau migrasi belum
-    dijalankan.
+    Urutan: muat skill → `ModelFactory` → engine + `CheckpointerProvider` + `StoreProvider` → cek
+    migrasi → `AgentRegistry.load_all()` → seed project built-in. Factory, registry,
+    `ThreadRepository`, `ProjectService`, `UserMemoryRepository`, dan `Authenticator` disimpan di
+    `app.state`. Engine dan pool checkpointer/store ditutup saat shutdown. Startup gagal jika
+    Postgres tidak terjangkau atau migrasi belum dijalankan.
     """
 
     @asynccontextmanager
@@ -177,6 +181,7 @@ def _build_lifespan(
         async with (
             DatabaseEngineProvider(database_url) as engine,
             CheckpointerProvider(database_url) as checkpointer,
+            StoreProvider(database_url) as store,
         ):
             await ensure_database_migrated(engine)
             titles = ThreadMetadataRepository(engine)
@@ -185,7 +190,7 @@ def _build_lifespan(
                 settings.jwt_secret.get_secret_value(),
                 settings.jwt_ttl_seconds,
             )
-            registry = AgentRegistry(model_factory, checkpointer)
+            registry = AgentRegistry(model_factory, checkpointer, store)
             for agent in agents:
                 registry.register(agent)
             await registry.load_all()
@@ -201,6 +206,7 @@ def _build_lifespan(
             )
             await project_service.seed_builtin(builtin_projects)
             app.state.thread_repository = thread_repository
+            app.state.memory_repository = UserMemoryRepository(store)
             app.state.project_service = project_service
             yield
         logger.info("Service shut down")

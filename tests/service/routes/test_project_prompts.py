@@ -8,6 +8,7 @@ from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, SystemMessage
 from langchain_core.outputs import ChatResult
+from langgraph.store.base import BaseStore
 from pydantic import PrivateAttr
 
 from agent_service.agents.base import AgentGraph, BaseAgent, Checkpointer
@@ -45,7 +46,9 @@ class RecordedChatbot(ChatbotAgent):
         super().__init__()
         self._recorder = recorder
 
-    def build(self, model: BaseChatModel, checkpointer: Checkpointer) -> AgentGraph:
+    def build(
+        self, model: BaseChatModel, checkpointer: Checkpointer, store: BaseStore | None = None
+    ) -> AgentGraph:
         return super().build(self._recorder, checkpointer)
 
 

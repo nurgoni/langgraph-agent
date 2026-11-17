@@ -155,6 +155,8 @@ menunjuk ke container itu sendiri.
 | POST | `/projects/{project_id}/invoke`, `/stream`, `/history` | Chat di dalam project |
 | GET, PATCH, DELETE | `/projects/{project_id}/threads[/{thread_id}]` | Thread di dalam project |
 | GET | `/skills`, `/skills/{scope}/{name}` | Skill yang bisa diaktifkan di project (read-only) |
+| GET | `/memories` | Long-term memory milik user, yang terakhir diubah lebih dulu |
+| DELETE | `/memories/{memory_id}` | Hapus satu memory. Memory user lain menjawab 404 |
 | GET | `/health` | Health check, selalu tanpa auth |
 
 Semua endpoint selain `/health` dan `/auth/login` butuh `Authorization: Bearer <access_token>`.
@@ -211,6 +213,20 @@ hanya saat relevan ([ADR 0005](docs/adr/0005-skill-format-and-sources.md)). Skil
   tool `load_skill(name, path?)` untuk isi lengkapnya. Tool ini hanya muncul jika project punya skill
   aktif, dan hanya bisa memuat skill yang aktif di project itu.
 - Skill dengan `SKILL.md` tidak valid dilewati saat startup dan dicatat di log.
+
+### Long-term memory
+
+`chatbot` dan `research-assistant` bisa mengingat fakta tentang user lintas thread.
+
+- Saat user meminta sesuatu diingat, model memanggil `save_memory`, dan agent bertanya dulu:
+  `Save this to memory for future conversations? "..." Reply "yes" to save it`. Balas `yes`, `ya`,
+  `ok`, atau `simpan` untuk menyimpan. Balasan lain membatalkan, dan model menanggapi balasan itu.
+- Hingga 20 memory terbaru masuk ke system prompt setiap giliran. Model mencari memory lama lewat
+  tool `search_memory` (pencarian kata, belum memakai embedding).
+- Memory tersimpan per user (maksimal 200), dilihat lewat `GET /memories`, dan dihapus lewat
+  `DELETE /memories/{memory_id}` (`AgentClient.list_memories()`/`delete_memory()`).
+- Setelah update ke versi ini, jalankan lagi `run_migrate` untuk membuat tabel store. Tanpa itu,
+  service menolak start.
 
 ## Menggunakan AgentClient
 

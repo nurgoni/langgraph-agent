@@ -220,6 +220,58 @@
         "title": "LoginRequest",
         "type": "object"
       },
+      "Memory": {
+        "description": "Satu fakta tentang user yang disimpan dengan persetujuannya.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "description": "Memory ID, used to delete it.",
+            "title": "Id",
+            "type": "string"
+          },
+          "text": {
+            "examples": [
+              "User prefers answers in Indonesian"
+            ],
+            "title": "Text",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "Memory",
+        "type": "object"
+      },
+      "MemoryList": {
+        "description": "Isi `GET /memories`: memory milik user, yang terakhir diubah lebih dulu.",
+        "properties": {
+          "memories": {
+            "items": {
+              "$ref": "#/components/schemas/Memory"
+            },
+            "title": "Memories",
+            "type": "array"
+          }
+        },
+        "required": [
+          "memories"
+        ],
+        "title": "MemoryList",
+        "type": "object"
+      },
       "Project": {
         "description": "Project yang terlihat oleh user: miliknya sendiri atau built-in.",
         "properties": {
@@ -1212,6 +1264,74 @@
         "summary": "Invoke Default Agent",
         "tags": [
           "agents"
+        ]
+      }
+    },
+    "/memories": {
+      "get": {
+        "description": "Semua memory milik user, yang terakhir diubah lebih dulu.",
+        "operationId": "list_memories_memories_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Memories",
+        "tags": [
+          "memories"
+        ]
+      }
+    },
+    "/memories/{memory_id}": {
+      "delete": {
+        "description": "Hapus satu memory. Memory yang tidak ada atau milik user lain → 404.",
+        "operationId": "delete_memory_memories__memory_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memory_id",
+            "required": true,
+            "schema": {
+              "title": "Memory Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Memory",
+        "tags": [
+          "memories"
         ]
       }
     },

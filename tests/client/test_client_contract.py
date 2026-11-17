@@ -6,6 +6,7 @@ import httpx
 import pytest
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
+from langgraph.store.base import BaseStore
 
 from agent_service.agents.base import AgentGraph, Checkpointer
 from agent_service.agents.chatbot import ChatbotAgent
@@ -34,7 +35,9 @@ class ThinkingAgent(ChatbotAgent):
     def __init__(self) -> None:
         super().__init__(agent_id="thinking", description="Reasons before answering")
 
-    def build(self, model: BaseChatModel, checkpointer: Checkpointer) -> AgentGraph:
+    def build(
+        self, model: BaseChatModel, checkpointer: Checkpointer, store: BaseStore | None = None
+    ) -> AgentGraph:
         return super().build(FakeModel(responses=[THINKING_REPLY]), checkpointer)
 
 
@@ -203,3 +206,13 @@ async def test_skills_through_client(client: AgentClient) -> None:
 
     assert "builtin/meeting-notes" in [skill.id for skill in listing.skills]
     assert report.resources == ["references/report-template.md"]
+
+
+async def test_memories_through_client(client: AgentClient) -> None:
+    listing = await client.alist_memories()
+
+    with pytest.raises(AgentClientError) as error_info:
+        await client.adelete_memory("missing")
+
+    assert listing.memories == []
+    assert error_info.value.status_code == 404
