@@ -13,11 +13,14 @@ from agent_service.agents.interrupt import InterruptAgent
 from agent_service.agents.research import RESEARCH_ASSISTANT_ID, create_research_assistant
 from agent_service.agents.supervisor import create_supervisor_agent
 from agent_service.agents.tools.web_search import SearchBackend
+from agent_service.harness.skills.toolkit import SkillToolkit
 
 DEFAULT_AGENT_ID: Final = CHATBOT_AGENT_ID
 
 
-def create_default_agents(search_backend: SearchBackend | None = None) -> list[BaseAgent]:
+def create_default_agents(
+    search_backend: SearchBackend | None = None, skills: SkillToolkit | None = None
+) -> list[BaseAgent]:
     """Buat instance baru untuk setiap agent bawaan.
 
     Function, bukan class: factory tanpa state. Instance baru di setiap panggilan supaya
@@ -25,6 +28,7 @@ def create_default_agents(search_backend: SearchBackend | None = None) -> list[B
 
     Args:
         search_backend: Mesin pencari untuk tool web search. Default: tanpa pencarian.
+        skills: Toolkit skill untuk chatbot dan research assistant. Default: tanpa skill.
 
     Returns:
         Agent bawaan, urut sesuai tampilan di `/info`.
@@ -35,8 +39,8 @@ def create_default_agents(search_backend: SearchBackend | None = None) -> list[B
     'chatbot'
     """
     return [
-        ChatbotAgent(),
-        create_research_assistant(search_backend),
+        ChatbotAgent(skills=skills),
+        create_research_assistant(search_backend, skills),
         InterruptAgent(),
         create_supervisor_agent(search_backend),
     ]
@@ -65,6 +69,7 @@ BUILTIN_PROJECTS: Final = (
         description="Everyday questions, writing, and brainstorming.",
         base_agent_id=CHATBOT_AGENT_ID,
         instructions="Keep answers concise. Use bullet points when listing several items.",
+        skill_ids=("builtin/meeting-notes",),
     ),
     BuiltinProject(
         project_id="research-assistant",
@@ -75,5 +80,6 @@ BUILTIN_PROJECTS: Final = (
             "Search before answering questions about recent events or facts you are unsure of. "
             "End every answer with a short list of the sources you used."
         ),
+        skill_ids=("builtin/research-report",),
     ),
 )

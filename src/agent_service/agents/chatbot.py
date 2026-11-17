@@ -1,25 +1,22 @@
-"""Agent minimal: satu panggilan LLM dengan riwayat percakapan."""
+"""Agent minimal: satu panggilan LLM dengan riwayat percakapan, plus skill jika project aktif."""
 
 from typing import Final
 
-from langchain_core.language_models import BaseChatModel
-from langchain_core.runnables import RunnableConfig
-from langgraph.graph import END, START, MessagesState, StateGraph
-
-from agent_service.agents.base import AgentGraph, BaseAgent, Checkpointer
+from agent_service.agents.tool_calling import ToolCallingAgent
 from agent_service.harness.context import ContextBuilder
+from agent_service.harness.skills.toolkit import SkillToolkit
 
 CHATBOT_AGENT_ID: Final = "chatbot"
 CHATBOT_DESCRIPTION: Final = "A simple chatbot that answers using the conversation history."
-CHAT_NODE: Final = "chat"
 
 
-class ChatbotAgent(BaseAgent):
-    """Agent referensi: graph `START → chat → END` yang menyimpan riwayat lewat checkpointer.
+class ChatbotAgent(ToolCallingAgent):
+    """Agent referensi tanpa tool bawaan: `START → agent → END`, riwayat lewat checkpointer.
 
-    Node-nya async, jadi graph dijalankan lewat API async (`ainvoke`, `astream`). System prompt
-    dirakit `ContextBuilder` setiap giliran: instruksi agent (kosong secara default), instruksi
-    project, dan lingkungan (tanggal).
+    Ditulis di atas `ToolCallingAgent` supaya chatbot bisa memakai skill (F28): jika project punya
+    skill aktif, `load_skill` di-bind dan graph bisa memanggilnya. Tanpa skill aktif, model
+    dipanggil sekali tanpa tool, sama seperti v1. Node-nya async, jadi graph dijalankan lewat API
+    async (`ainvoke`, `astream`).
 
     >>> import asyncio
     >>> from langgraph.checkpoint.memory import InMemorySaver
@@ -36,6 +33,7 @@ class ChatbotAgent(BaseAgent):
         agent_id: str = CHATBOT_AGENT_ID,
         description: str = CHATBOT_DESCRIPTION,
         context: ContextBuilder | None = None,
+        skills: SkillToolkit | None = None,
     ) -> None:
         """Inisialisasi chatbot.
 
@@ -43,33 +41,15 @@ class ChatbotAgent(BaseAgent):
             agent_id: ID agent di registry.
             description: Deskripsi untuk `/info`.
             context: Perakit system prompt. Default: tanpa instruksi agent.
+            skills: Toolkit skill. `None` berarti chatbot tidak bisa memakai skill.
         """
-        super().__init__(agent_id=agent_id, description=description)
-        self._context = ContextBuilder() if context is None else context
-
-    def build(self, model: BaseChatModel, checkpointer: Checkpointer) -> AgentGraph:
-        """Compile graph satu node yang memanggil `model` dengan seluruh riwayat thread.
-
-        Args:
-            model: Chat model untuk graph ini.
-            checkpointer: Saver tempat riwayat thread disimpan.
-
-        Returns:
-            Graph chatbot yang sudah di-compile.
-        """
-
-        # Closure, bukan method: satu instance agent membangun graph untuk beberapa model.
-        async def chat(state: MessagesState, config: RunnableConfig) -> MessagesState:
-            prompt = self._context.system_message(config)
-            response = await model.ainvoke([prompt, *state["messages"]])
-            return {"messages": [response]}
-
-        # pyrefly tidak mengenali TypedDict sebagai TypedDictLike milik LangGraph.
-        builder = StateGraph(MessagesState)  # pyrefly: ignore[bad-specialization]
-        builder.add_node(CHAT_NODE, chat)
-        builder.add_edge(START, CHAT_NODE)
-        builder.add_edge(CHAT_NODE, END)
-        return builder.compile(checkpointer=checkpointer)
+        super().__init__(
+            agent_id=agent_id,
+            description=description,
+            tools=[],
+            context=ContextBuilder() if context is None else context,
+            skills=skills,
+        )
 
 
 if __name__ == "__main__":

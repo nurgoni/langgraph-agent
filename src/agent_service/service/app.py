@@ -18,6 +18,9 @@ from agent_service.agents.catalog import (
 from agent_service.agents.registry import AgentRegistry
 from agent_service.agents.tools.web_search import SearchBackend, create_search_backend
 from agent_service.core.settings import Settings
+from agent_service.harness.skills.registry import SkillRegistry
+from agent_service.harness.skills.sources import BUILTIN_SKILLS_DIR, FilesystemSkillSource
+from agent_service.harness.skills.toolkit import SkillToolkit
 from agent_service.llm.factory import ModelFactory
 from agent_service.memory.checkpointer import CheckpointerProvider
 from agent_service.memory.database import DatabaseEngineProvider
@@ -37,6 +40,7 @@ from agent_service.service.routes import (
     info,
     invoke,
     projects,
+    skills,
     stream,
     threads,
 )
@@ -61,6 +65,7 @@ def create_app(
     agents: Sequence[BaseAgent] | None = None,
     default_agent_id: str = DEFAULT_AGENT_ID,
     builtin_projects: Sequence[BuiltinProject] = BUILTIN_PROJECTS,
+    skill_registry: SkillRegistry | None = None,
 ) -> FastAPI:
     """Bangun app FastAPI. Tidak ada koneksi atau load agent sebelum lifespan berjalan.
 
@@ -74,6 +79,8 @@ def create_app(
         default_agent_id: Agent untuk `/info` dan route tanpa `{agent_id}`.
         builtin_projects: Project built-in yang di-seed saat startup, jika agent dasarnya
             terdaftar.
+        skill_registry: Registry skill. Default: skill built-in dari folder package. File baru
+            dibaca di lifespan.
 
     Returns:
         App yang siap dijalankan.
@@ -87,8 +94,11 @@ def create_app(
     ('Agent Service', 'chatbot')
     """
     resolved_settings = Settings() if settings is None else settings
+    resolved_skills = default_skill_registry() if skill_registry is None else skill_registry
     if agents is None:
-        resolved_agents = create_default_agents(build_search_backend(resolved_settings))
+        resolved_agents = create_default_agents(
+            build_search_backend(resolved_settings), SkillToolkit(resolved_skills)
+        )
     else:
         resolved_agents = list(agents)
     agent_ids = [agent.agent_id for agent in resolved_agents]
@@ -97,7 +107,9 @@ def create_app(
             f"Default agent {default_agent_id!r} is not in registered agents {agent_ids}"
         )
 
-    lifespan = _build_lifespan(resolved_settings, resolved_agents, builtin_projects)
+    lifespan = _build_lifespan(
+        resolved_settings, resolved_agents, builtin_projects, resolved_skills
+    )
     app = FastAPI(title=APP_TITLE, lifespan=lifespan)
     register_exception_handlers(app)
     app.add_middleware(
@@ -116,9 +128,15 @@ def create_app(
     app.include_router(history.router, dependencies=protected)
     app.include_router(threads.router, dependencies=protected)
     app.include_router(projects.router, dependencies=protected)
+    app.include_router(skills.router, dependencies=protected)
     app.state.settings = resolved_settings
     app.state.default_agent_id = default_agent_id
     return app
+
+
+def default_skill_registry() -> SkillRegistry:
+    """Registry berisi skill built-in dari `skills/builtin/` (belum dimuat)."""
+    return SkillRegistry([FilesystemSkillSource(BUILTIN_SKILLS_DIR)])
 
 
 def build_search_backend(settings: Settings) -> SearchBackend:
@@ -133,11 +151,14 @@ def build_search_backend(settings: Settings) -> SearchBackend:
 
 
 def _build_lifespan(
-    settings: Settings, agents: Sequence[BaseAgent], builtin_projects: Sequence[BuiltinProject]
+    settings: Settings,
+    agents: Sequence[BaseAgent],
+    builtin_projects: Sequence[BuiltinProject],
+    skill_registry: SkillRegistry,
 ) -> Lifespan:
     """Buat lifespan yang membuka database, mendaftarkan, dan memuat semua agent.
 
-    Urutan: `ModelFactory` → engine + `CheckpointerProvider` → cek migrasi →
+    Urutan: muat skill → `ModelFactory` → engine + `CheckpointerProvider` → cek migrasi →
     `AgentRegistry.load_all()` → seed project built-in. Factory, registry, `ThreadRepository`,
     `ProjectService`, dan `Authenticator` disimpan di `app.state`. Engine dan pool checkpointer
     ditutup saat shutdown. Startup gagal jika Postgres tidak terjangkau atau migrasi belum
@@ -146,6 +167,8 @@ def _build_lifespan(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
+        await skill_registry.load()
+        app.state.skill_registry = skill_registry
         model_factory = ModelFactory(settings)
         database_url = settings.database_url.get_secret_value()
         async with (
@@ -167,7 +190,11 @@ def _build_lifespan(
             app.state.registry = registry
             thread_repository = ThreadRepository(checkpointer, titles)
             project_service = ProjectService(
-                ProjectRepository(engine), thread_repository, registry, model_factory
+                ProjectRepository(engine),
+                thread_repository,
+                registry,
+                model_factory,
+                skill_registry,
             )
             await project_service.seed_builtin(builtin_projects)
             app.state.thread_repository = thread_repository

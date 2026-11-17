@@ -10,6 +10,7 @@ from agent_service.agents.tools.web_search import (
     create_web_search_tool,
 )
 from agent_service.harness.context import ContextBuilder
+from agent_service.harness.skills.toolkit import SkillToolkit
 
 RESEARCH_ASSISTANT_ID: Final = "research-assistant"
 RESEARCH_ASSISTANT_DESCRIPTION: Final = (
@@ -29,7 +30,9 @@ The user cannot see tool results, so put everything that matters into your answe
 - Answer in the same language as the user."""
 
 
-def create_research_assistant(search_backend: SearchBackend | None = None) -> ToolCallingAgent:
+def create_research_assistant(
+    search_backend: SearchBackend | None = None, skills: SkillToolkit | None = None
+) -> ToolCallingAgent:
     """Buat research assistant dengan tool web search dan kalkulator.
 
     Function, bukan class: factory konfigurasi untuk `ToolCallingAgent`, tanpa state sendiri.
@@ -37,6 +40,7 @@ def create_research_assistant(search_backend: SearchBackend | None = None) -> To
     Args:
         search_backend: Mesin pencari untuk tool web search. Default: `UnconfiguredSearch`
             (tool menjawab "not configured").
+        skills: Toolkit skill. `None` berarti tanpa skill.
 
     Returns:
         Agent `research-assistant` yang siap didaftarkan.
@@ -52,4 +56,5 @@ def create_research_assistant(search_backend: SearchBackend | None = None) -> To
         description=RESEARCH_ASSISTANT_DESCRIPTION,
         tools=tools,
         context=ContextBuilder(RESEARCH_SYSTEM_PROMPT),
+        skills=skills,
     )

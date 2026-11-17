@@ -11,6 +11,7 @@ from typing import Any, Final
 
 from agent_service.agents.catalog import BuiltinProject
 from agent_service.agents.registry import AgentRegistry
+from agent_service.harness.skills.registry import SkillRegistry
 from agent_service.llm.factory import ModelFactory
 from agent_service.memory.projects import (
     BUILTIN_SCOPE,
@@ -102,6 +103,7 @@ class ProjectService:
         threads: ThreadRepository,
         registry: AgentRegistry,
         model_factory: ModelFactory,
+        skills: SkillRegistry,
     ) -> None:
         """Inisialisasi service.
 
@@ -110,11 +112,13 @@ class ProjectService:
             threads: Repository thread, untuk menghapus thread saat project dihapus.
             registry: Registry agent, untuk memvalidasi `base_agent_id`.
             model_factory: Factory model, untuk memvalidasi `model` terhadap allowlist.
+            skills: Registry skill, untuk memvalidasi `skill_ids`.
         """
         self._projects = projects
         self._threads = threads
         self._registry = registry
         self._model_factory = model_factory
+        self._skills = skills
 
     async def seed_builtin(self, builtins: Iterable[BuiltinProject]) -> list[str]:
         """Upsert project built-in yang agent dasarnya terdaftar. Aman dijalankan berulang.
@@ -132,7 +136,8 @@ class ProjectService:
                     builtin.base_agent_id,
                 )
                 continue
-            await self._projects.upsert_builtin(builtin.project_id, _builtin_fields(builtin))
+            fields = _builtin_fields(builtin, self._known_skills(builtin.skill_ids))
+            await self._projects.upsert_builtin(builtin.project_id, fields)
             seeded.append(builtin.project_id)
         return seeded
 
@@ -162,6 +167,7 @@ class ProjectService:
         """
         self._validate_agent(project_create.base_agent_id)
         self._validate_model(project_create.model)
+        self._validate_skills(project_create.skill_ids)
         fields = ProjectFields(
             name=project_create.name,
             base_agent_id=project_create.base_agent_id,
@@ -187,6 +193,8 @@ class ProjectService:
         changes = _changes(project_update)
         if "model" in changes:
             self._validate_model(changes["model"])
+        if "skill_ids" in changes:
+            self._validate_skills(changes["skill_ids"])
         if not changes:
             return project_to_schema(await self._get_owned(project_id, user_id))
         record = await self._projects.update(project_id, changes)
@@ -227,6 +235,26 @@ class ProjectService:
         if not self._registry.is_available(agent_id):
             raise InvalidProjectError(f"Agent {agent_id!r} is not available for projects")
 
+    def _validate_skills(self, skill_ids: Iterable[str]) -> None:
+        """Pastikan semua skill dikenal registry.
+
+        Raises:
+            InvalidProjectError: Jika ada ID skill yang tidak dikenal.
+        """
+        unknown = [skill_id for skill_id in skill_ids if not self._skills.contains(skill_id)]
+        if unknown:
+            raise InvalidProjectError(f"Unknown skills: {unknown}. See GET /skills.")
+
+    def _known_skills(self, skill_ids: Iterable[str]) -> tuple[str, ...]:
+        """Skill built-in yang dikenal registry. Yang tidak dikenal dicatat dan dilewati."""
+        known: list[str] = []
+        for skill_id in skill_ids:
+            if self._skills.contains(skill_id):
+                known.append(skill_id)
+            else:
+                logger.warning("Built-in project skill %s is not loaded; skipping it", skill_id)
+        return tuple(known)
+
     def _validate_model(self, model_name: str | None) -> None:
         """Pastikan model ada di allowlist. `None` berarti model default service.
 
@@ -237,14 +265,14 @@ class ProjectService:
             self._model_factory.resolve_name(model_name)
 
 
-def _builtin_fields(builtin: BuiltinProject) -> ProjectFields:
-    """Isi project dari definisi built-in di katalog."""
+def _builtin_fields(builtin: BuiltinProject, skill_ids: tuple[str, ...]) -> ProjectFields:
+    """Isi project dari definisi built-in di katalog, dengan skill yang sudah disaring."""
     return ProjectFields(
         name=builtin.name,
         base_agent_id=builtin.base_agent_id,
         description=builtin.description,
         instructions=builtin.instructions,
-        skill_ids=builtin.skill_ids,
+        skill_ids=skill_ids,
     )
 
 

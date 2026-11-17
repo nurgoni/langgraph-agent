@@ -7,12 +7,13 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, ToolException
-from langgraph.graph import START, MessagesState, StateGraph
+from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.managed import RemainingSteps
 from langgraph.prebuilt import ToolNode, tools_condition
 
 from agent_service.agents.base import AgentGraph, BaseAgent, Checkpointer
 from agent_service.harness.context import ContextBuilder
+from agent_service.harness.skills.toolkit import SkillToolkit
 
 AGENT_NODE: Final = "agent"
 TOOLS_NODE: Final = "tools"
@@ -35,6 +36,9 @@ class ToolCallingAgent(BaseAgent):
     menjawab tanpa tool call. Research assistant adalah satu instance class ini, dan agent RAG
     nantinya cukup menjadi instance lain dengan tool retriever. System prompt dirakit ulang di
     setiap panggilan model (FR-37), jadi tanggal dan instruksi project selalu terbaru.
+
+    Dengan `skills`, tool `load_skill` dan indeks skill hanya muncul pada giliran yang project-nya
+    punya skill aktif (FR-38). Tanpa tool sama sekali, graph-nya `agent → END`.
     """
 
     def __init__(
@@ -43,6 +47,7 @@ class ToolCallingAgent(BaseAgent):
         description: str,
         tools: Sequence[BaseTool],
         context: ContextBuilder,
+        skills: SkillToolkit | None = None,
     ) -> None:
         """Inisialisasi agent.
 
@@ -51,10 +56,12 @@ class ToolCallingAgent(BaseAgent):
             description: Deskripsi untuk `/info`.
             tools: Tool yang boleh dipanggil model. Dibuat sekali dan dipakai semua graph.
             context: Perakit system prompt (instruksi agent, project, lingkungan).
+            skills: Toolkit skill. `None` berarti agent tidak bisa memakai skill.
         """
         super().__init__(agent_id=agent_id, description=description)
         self._tools = list(tools)
-        self._context = context
+        self._skills = skills
+        self._context = context if skills is None else context.with_skills(skills)
 
     def build(self, model: BaseChatModel, checkpointer: Checkpointer) -> AgentGraph:
         """Compile graph `agent → tools → agent`, yang berhenti saat model tidak memanggil tool.
@@ -84,14 +91,18 @@ class ToolCallingAgent(BaseAgent):
 
     def _graph_builder(self, model: BaseChatModel) -> StateGraph:
         """Susun graph `agent → tools → agent` untuk `model`, belum di-compile."""
-        model_with_tools = model.bind_tools(self._tools)
+        all_tools = self._all_tools()
+        base_model = model.bind_tools(self._tools) if self._tools else model
+        skill_model = model.bind_tools(all_tools) if self._skills is not None else base_model
 
         # Closure, bukan method: satu instance agent membangun graph untuk beberapa model.
         async def call_model(
             state: ToolCallingState, config: RunnableConfig
         ) -> dict[str, list[AIMessage]]:
             prompt = self._context.system_message(config)
-            response = await model_with_tools.ainvoke([prompt, *state["messages"]])
+            uses_skills = self._skills is not None and bool(self._skills.tools_for(config))
+            bound_model = skill_model if uses_skills else base_model
+            response = await bound_model.ainvoke([prompt, *state["messages"]])
             if response.tool_calls and state["remaining_steps"] < MIN_REMAINING_STEPS:
                 return {"messages": [AIMessage(id=response.id, content=STEP_LIMIT_MESSAGE)]}
             return {"messages": [response]}
@@ -99,13 +110,21 @@ class ToolCallingAgent(BaseAgent):
         # pyrefly tidak mengenali TypedDict sebagai TypedDictLike milik LangGraph.
         builder = StateGraph(ToolCallingState)  # pyrefly: ignore[bad-specialization]
         builder.add_node(AGENT_NODE, call_model)
+        builder.add_edge(START, AGENT_NODE)
+        if not all_tools:
+            builder.add_edge(AGENT_NODE, END)
+            return builder
         # Hanya ToolException (input salah, pencarian gagal) yang dikembalikan ke model sebagai
         # pesan error. Bug lain tetap menggagalkan run supaya terlihat.
-        builder.add_node(TOOLS_NODE, ToolNode(self._tools, handle_tool_errors=(ToolException,)))
-        builder.add_edge(START, AGENT_NODE)
+        builder.add_node(TOOLS_NODE, ToolNode(all_tools, handle_tool_errors=(ToolException,)))
         builder.add_conditional_edges(AGENT_NODE, tools_condition)
         builder.add_edge(TOOLS_NODE, AGENT_NODE)
         return builder
+
+    def _all_tools(self) -> list[BaseTool]:
+        """Tool agent ditambah tool skill, yang semuanya didaftarkan di `ToolNode`."""
+        skill_tools = [] if self._skills is None else self._skills.tools
+        return [*self._tools, *skill_tools]
 
 
 if __name__ == "__main__":

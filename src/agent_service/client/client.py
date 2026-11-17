@@ -34,6 +34,7 @@ from agent_service.schema.responses import (
     ThreadSummary,
     UserThreads,
 )
+from agent_service.schema.skills import SkillDetail, SkillList
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ AUTHORIZATION_HEADER: Final = "Authorization"
 BEARER_PREFIX: Final = "Bearer "
 LOGIN_PATH: Final = "/auth/login"
 PROJECTS_PATH: Final = "/projects"
+SKILLS_PATH: Final = "/skills"
 
 
 class AgentClient:
@@ -311,6 +313,31 @@ class AgentClient:
         """
         self._send(RequestSpec("DELETE", _project_path(project_id)))
 
+    def list_skills(self) -> SkillList:
+        """Skill yang bisa diaktifkan di project (FR-38).
+
+        Raises:
+            AgentClientError: Request gagal.
+        """
+        return parse_model(self._send(RequestSpec("GET", SKILLS_PATH)), SkillList)
+
+    def get_skill(self, skill_id: str) -> SkillDetail:
+        """Satu skill beserta isinya. `skill_id` berbentuk `<scope>/<name>`.
+
+        Raises:
+            AgentClientError: 404 jika skill tidak dikenal.
+        """
+        return parse_model(self._send(RequestSpec("GET", _skill_path(skill_id))), SkillDetail)
+
+    async def alist_skills(self) -> SkillList:
+        """Versi async `list_skills`."""
+        return parse_model(await self._asend(RequestSpec("GET", SKILLS_PATH)), SkillList)
+
+    async def aget_skill(self, skill_id: str) -> SkillDetail:
+        """Versi async `get_skill`."""
+        response = await self._asend(RequestSpec("GET", _skill_path(skill_id)))
+        return parse_model(response, SkillDetail)
+
     async def alist_projects(self) -> ProjectList:
         """Versi async `list_projects`."""
         return parse_model(await self._asend(RequestSpec("GET", PROJECTS_PATH)), ProjectList)
@@ -486,6 +513,16 @@ def _project_path(project_id: str) -> str:
     '/projects/p%2F1'
     """
     return f"{PROJECTS_PATH}/{path_segment(project_id)}"
+
+
+def _skill_path(skill_id: str) -> str:
+    """Path satu skill. Scope dan nama di-escape terpisah, karena `/` adalah pemisah ID.
+
+    >>> _skill_path("builtin/meeting-notes")
+    '/skills/builtin/meeting-notes'
+    """
+    segments = [path_segment(segment) for segment in skill_id.split("/")]
+    return "/".join([SKILLS_PATH, *segments])
 
 
 def _update_project_spec(project_id: str, changes: ProjectUpdate) -> RequestSpec:
