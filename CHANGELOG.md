@@ -19,8 +19,17 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
   project, slot skill (F28) dan memory (F30), lalu bagian lingkungan (tanggal dan timezone), masing-
   masing dengan batas ukuran. Instruksi project kini benar-benar sampai ke model (F27).
 
+- Skill built-in (FR-38, ADR 0005): `meeting-notes` dan `research-report` dalam format Agent Skills,
+  divalidasi saat startup (yang tidak valid dilewati dan dicatat di log). `GET /skills` dan
+  `GET /skills/{scope}/{name}`. Model melihat daftar skill aktif project di system prompt dan
+  memuat isinya lewat tool `load_skill(name, path?)`, yang hanya muncul jika project punya skill
+  aktif. Project built-in kini membawa skill. `AgentClient.list_skills()`/`get_skill()` (F28).
+
 ### Changed
 
+- **Breaking (belum dirilis):** `Project.skill_ids` berisi ID skill `<scope>/<name>`
+  (`builtin/research-report`), dan ID yang tidak dikenal ditolak (422). `ChatbotAgent` kini dibangun
+  di atas `ToolCallingAgent`, sehingga bisa memakai skill (F28).
 - Semua agent, termasuk `chatbot`, mendapat bagian lingkungan di akhir system prompt, sehingga
   model tahu tanggal hari ini. `ToolCallingAgent` menerima `ContextBuilder` alih-alih
   `system_prompt` + `clock`, dan placeholder `{current_date}` tidak dipakai lagi (F27).

@@ -329,6 +329,7 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
 | GET | `/{agent_id}/threads` | query `limit` (1–100, default 20) | `UserThreads` |
 | PATCH | `/{agent_id}/threads/{thread_id}` | `ThreadRenameInput` | `ThreadSummary` |
 | DELETE | `/{agent_id}/threads/{thread_id}` | – | 204 |
+| GET | `/skills`, `/skills/{scope}/{name}` | – | `SkillList` / `SkillDetail` |
 | GET, POST | `/projects` | – / `ProjectCreate` | `ProjectList` / `Project` (201) |
 | GET, PATCH, DELETE | `/projects/{project_id}` | – / `ProjectUpdate` / – | `Project` / `Project` / 204 |
 | POST | `/projects/{project_id}/invoke`, `/stream`, `/history` | sama dengan route agent | sama dengan route agent |
@@ -343,7 +344,6 @@ dan pemilik thread diambil dari token (FR-33).
 
 | Method | Path | FR | Fitur |
 |---|---|---|---|
-| GET | `/skills`, `/skills/{skill_id}` | FR-38 | F28 |
 | GET, DELETE | `/memories`, `/memories/{memory_id}` | FR-40 | F30 |
 | POST, GET | `/artifacts`, `/artifacts/{artifact_id}` | FR-46 | F35 |
 | GET | `/jobs`, `/jobs/{job_id}/runs` | FR-53 | F41 |
@@ -366,9 +366,13 @@ ChatHistory     { messages: list[ChatMessage] }
 ThreadSummary   { thread_id: str, agent_id: str, project_id?: str, title: str,
                   updated_at?: datetime }
 ProjectCreate   { name: str, base_agent_id: str, description?: str, model?: str,
-                  instructions?: str, skill_ids?: list[str], settings?: ProjectSettings }
+                  instructions?: str, skill_ids?: list["<scope>/<name>"],
+                  settings?: ProjectSettings }
 ProjectUpdate   ProjectCreate tanpa base_agent_id, semua opsional (PATCH)
 ProjectSettings { max_tokens?: int }
+SkillSummary    { id: "<scope>/<name>", name, description, scope, version, read_only,
+                  resources: list[str] }
+SkillDetail     SkillSummary + { body: str }
 Project         ProjectCreate + { id, scope: "builtin"|"user", read_only, created_at,
                   updated_at }
 ThreadRenameInput { title: str (1–TITLE_MAX_LENGTH karakter) }
