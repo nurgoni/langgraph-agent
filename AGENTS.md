@@ -46,6 +46,7 @@ uv run python -m agent_service.manage create-user demo   # buat akun login
 uv run python -m agent_service.export_contracts          # ekspor ulang contracts/ (FR-35)
 uv run python -m agent_service.run_evals evals/skills.yaml   # eval agent lewat API (FR-41)
 uv run python -m agent_service.run_service   # jalankan API di :8080
+docker compose up -d --build sandbox-runner   # sandbox kode (F37); runner hanya jalan di container
 uv run streamlit run src/agent_service/ui/app.py  # jalankan dev console Streamlit di :8501
 cd frontend                                # perintah frontend dijalankan dari sini (corepack
 corepack pnpm install                      #   membaca versi pnpm dari package.json di folder kerja)

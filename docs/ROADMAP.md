@@ -51,7 +51,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F34 | Projects & threads UI | M6 | done |
 | F35 | Artifact storage | M7 | done |
 | F36 | Workspace & file tools | M7 | done |
-| F37 | Sandbox | M7 | todo |
+| F37 | Sandbox | M7 | done |
 | F38 | Artifact panel UI | M7 | todo |
 | F39 | SQL data source | M8 | todo |
 | F40 | Data analyst project | M8 | todo |
@@ -1685,6 +1685,10 @@ Scope commit frontend: `frontend`. Aturan kode frontend ada di [ADR 0003](adr/00
 - **Langkah 1 (klarifikasi):** cara service menjalankan container. Rekomendasi: service kecil
   `sandbox-runner` yang memegang akses Docker, supaya container API tidak pernah me-mount
   `docker.sock` (akses `docker.sock` setara root di host).
+  - **Keputusan user:** service **`sandbox-runner`** yang satu-satunya memegang `docker.sock`,
+    dipanggil agent-service lewat HTTP internal dengan `SANDBOX_TOKEN`. **`tool_approval` di
+    `ProjectSettings`, default `never`** (job terjadwal F41 tetap jalan tanpa user). `run_python` dan
+    `run_shell` untuk **chatbot + research assistant** jika `SANDBOX_URL` diisi. **Timeout 60 detik.**
 - **Catatan desain:**
   - Container per eksekusi: `network=none`, rootfs read-only + tmpfs `/workspace`, batas memori,
     CPU, dan pids, serta timeout `SANDBOX_TIMEOUT_SECONDS`.
@@ -1698,11 +1702,34 @@ Scope commit frontend: `frontend`. Aturan kode frontend ada di [ADR 0003](adr/00
   4. `feat(harness): add run_python and run_shell tools`
   5. `feat(harness): ask for approval before execution when the project requires it`
   6. `docs: record F37 sandbox decisions`
+- **Penyesuaian saat implementasi:**
+  - `DockerSandbox` memakai Docker Engine API langsung (httpx lewat Unix socket), tanpa dependency
+    `docker`. Probe: `/workspace` berupa **volume anonim** (bukan tmpfs), karena arsip tidak bisa
+    disalin ke tmpfs container yang belum start; image sandbox membuat `/workspace` milik UID 10001
+    supaya volume mewarisi pemiliknya. Rootfs read-only, `/tmp` tmpfs, `network=none`, tanpa
+    capability, `no-new-privileges`, 512 MB, 1 CPU, 128 proses. Container dan volumenya selalu
+    dihapus.
+  - Kode ditulis ke `/workspace/.sandbox/main.py|main.sh` (folder ini tidak disalin keluar). File
+    yang baru atau berubah kembali ke workspace thread; path yang tidak valid atau file terlalu besar
+    dilewati dan disebut ke model. Batas transfer 50 MB, stdout/stderr 64 KB.
+  - Model eksekusi (`ExecutionRequest`/`ExecutionResult`) menjadi body HTTP runner: `bytes` di
+    Python, base64 hanya saat JSON (`ser_json_bytes`/`val_json_bytes`).
+  - Sandbox masuk `HarnessContext` (runtime context F36). Persetujuan memakai `is_approval` milik
+    memory dengan kata tambahan ("run", "jalankan"). `ProjectSettings.tool_approval` diteruskan ke
+    `configurable["project_tool_approval"]`; form project frontend mendapat checkbox
+    "Ask before running code".
+  - Compose: service `sandbox-image` hanya membangun image lalu selesai; `sandbox-runner` (target
+    baru di `docker/Dockerfile`, root karena izin socket, tanpa port host). Pandas/numpy/matplotlib
+    hanya di image sandbox.
+  - Rencana commit 1–5 digabung: runner, tool, dan persetujuan berbagi model eksekusi dan
+    `HarnessContext`.
 - **Acceptance criteria:**
-  - [ ] Akses jaringan dari sandbox gagal. Infinite loop berhenti karena timeout.
-  - [ ] File yang ditulis di sandbox muncul di workspace.
-  - [ ] Test memastikan tidak ada `exec`/`eval`/subprocess untuk kode model di `service/`, `agents/`,
-        dan `harness/`.
+  - [x] Akses jaringan dari sandbox gagal. Infinite loop berhenti karena timeout: e2e Compose
+        (`test_sandbox_blocks_network_stops_loops_and_returns_files`, Docker asli).
+  - [x] File yang ditulis di sandbox muncul di workspace: `tests/harness/tools/test_execute.py` dan
+        e2e (pandas menulis `out.csv`).
+  - [x] Test memastikan tidak ada `exec`/`eval`/subprocess untuk kode model di `service/`,
+        `agents/`, dan `harness/` (juga `sandbox/`): `tests/test_no_code_execution.py`.
 - **Squash title:** `feat(sandbox): run model code in an isolated docker sandbox (F37)`
 
 ### F38: Artifact panel UI

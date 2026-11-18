@@ -14,16 +14,16 @@ berulang ada di dev-time skill `.claude/skills/` (daftar di AGENTS.md § Dev-tim
 
 ## Status Saat Ini
 
-- **Fase:** M7 Files & Execution. F35 di-merge. F36 (Workspace & file tools) selesai di working tree
-  `develop`, menunggu user membuat `feature/F36-workspace`, commit, dan PR.
-- **Berikutnya:** **F37** (Sandbox).
+- **Fase:** M7 Files & Execution. F35 dan F36 di-merge. F37 (Sandbox) selesai di working tree
+  `develop`, menunggu user membuat `feature/F37-sandbox`, commit, dan PR.
+- **Berikutnya:** **F38** (Artifact panel UI), lalu rilis v0.7.0.
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Arsip:** Decision Log M0–M4 ada di
   [archive/decision-log-m0-m4.md](archive/decision-log-m0-m4.md), F26–F31 di
   [archive/decision-log-m4-m5.md](archive/decision-log-m4-m5.md), dan dev-time skill + F32–F34 di
   [archive/decision-log-m6.md](archive/decision-log-m6.md).
-- **Terakhir diperbarui:** 2026-11-18 (F36)
+- **Terakhir diperbarui:** 2026-11-18 (F37)
 
 ## Aturan Kerja
 
@@ -87,6 +87,36 @@ Ringkasan pelajaran dari M0–M6 yang masih berlaku (detail di arsip dan entri f
   `\n\n` (dikecualikan), dan `check-yaml` butuh `--allow-multiple-documents` untuk lockfile pnpm.
 
 ## Decision Log
+
+### 2026-11-18: Sandbox dari F37
+
+- **Keputusan user:** service `sandbox-runner` (satu-satunya dengan `docker.sock`, HTTP internal +
+  `SANDBOX_TOKEN`); `ProjectSettings.tool_approval` default `never`; `run_python`/`run_shell` untuk
+  chatbot + research jika `SANDBOX_URL` diisi; timeout 60 detik.
+- **Keputusan desain:**
+  - `DockerSandbox` lewat Docker Engine API (httpx UDS), satu container per eksekusi: `network=none`,
+    rootfs read-only, UID 10001, tanpa capability, `no-new-privileges`, 512 MB / 1 CPU / 128 pids,
+    `/tmp` tmpfs, `/workspace` volume anonim; container + volume selalu dihapus.
+  - `ExecutionRequest`/`ExecutionResult` = body HTTP runner; `bytes` + `ser_json_bytes`/
+    `val_json_bytes="base64"` (bukan `Base64Bytes`, yang juga men-decode input Python).
+  - Sandbox masuk `HarnessContext`; `ArtifactService` meneruskannya ke `run_context()`.
+  - Compose `sandbox-image` (build lalu selesai) + `sandbox-runner` (target Dockerfile baru, root).
+  - Test AST NFR-10 di `service/`, `agents/`, `harness/`, `sandbox/`.
+- **Hasil ukur:** 1102 pytest (+41), mutation check 15/15, e2e Compose 19/19 (jaringan diblokir,
+  loop berhenti 3 dtk, pandas menulis file, agent-service tanpa `docker.sock`). Smoke
+  `qwen3.5:9b` + runner sementara: `read_file` → `run_python` (pandas + matplotlib, total benar) →
+  `share_file chart.png` (19.341 byte) dalam 23,1 dtk; sapaan tanpa tool 1,0 dtk. Image sandbox
+  519 MB.
+- **Pelajaran:**
+  - Probe Docker: `docker cp` ke volume container yang belum start berhasil, tetapi volume anonim
+    milik root kecuali image membuat foldernya dengan pemilik user sandbox. Tmpfs tidak bisa diisi
+    sebelum start.
+  - Di Git Bash, `docker` dengan path `/workspace` diubah menjadi path Windows; pakai
+    `MSYS_NO_PATHCONV=1`.
+  - Script Python di dalam string test e2e: tulis `\\n` (escape dua kali), kalau tidak literal bytes
+    terputus (gagal hanya di e2e).
+  - Model menyisipkan `![...](chart.png)` (path workspace) di jawaban; F38 perlu menampilkan
+    artifact dari tool message, bukan link markdown itu.
 
 ### 2026-11-18: Workspace & file tools dari F36
 

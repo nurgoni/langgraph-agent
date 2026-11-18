@@ -580,6 +580,36 @@ ToolCallingAgent(files=WorkspaceToolkit)
 - **`grep` literal.** Pola dari model dicocokkan sebagai substring, bukan regex, karena `re` tidak
   punya timeout dan berjalan di event loop service.
 
+### Sandbox (F37)
+
+```text
+agent-service                                   sandbox-runner (satu-satunya dengan docker.sock)
+ run_python / run_shell                          POST /execute  (Bearer SANDBOX_TOKEN)
+  ├─ tool_approval = "always"? → interrupt         └─ DockerSandbox → Docker Engine API (httpx UDS)
+  ├─ workspace thread → ExecutionRequest.files         create (network none, rootfs ro, uid 10001,
+  └─ RemoteSandbox ──── HTTP internal compose ───►       no caps, 512 MB, 1 CPU, 128 pids)
+       ExecutionResult.files → workspace ◄────────     put archive /workspace (volume anonim)
+                                                       start → wait (timeout → kill)
+                                                       logs → archive /workspace → delete -v
+```
+
+- **NFR-10.** Kode model tidak pernah dijalankan di proses service. `tests/test_no_code_execution.py`
+  memeriksa AST `service/`, `agents/`, `harness/`, dan `sandbox/`: tanpa `exec`/`eval`/`compile`,
+  `subprocess`, `os.system`/`exec*`/`spawn*`, atau `asyncio.create_subprocess_*`.
+- **Akses Docker terpisah.** `docker.sock` setara root di host, jadi hanya `sandbox-runner` (tanpa
+  port di host) yang me-mount-nya. Agent-service memanggilnya lewat `RemoteSandbox` dengan token
+  bersama; tanpa `SANDBOX_URL`, tool eksekusi tidak di-bind.
+- **Satu container per eksekusi.** `/workspace` berupa volume anonim karena arsip tidak bisa disalin
+  ke tmpfs container yang belum berjalan; image sandbox membuat folder itu milik UID 10001. Kode
+  ditulis ke `/workspace/.sandbox/` (tidak disalin keluar). Hanya file yang baru atau berubah yang
+  kembali, dibatasi 50 MB; stdout/stderr dipotong 64 KB. Symlink dan path di luar `/workspace`
+  diabaikan saat arsip dibuka.
+- **Persetujuan.** `ProjectSettings.tool_approval` diteruskan ke `configurable`. Dengan `always`,
+  tool memanggil `interrupt()` berisi kodenya sebelum eksekusi; jawaban yang bukan persetujuan
+  dikembalikan ke model. Default `never`, supaya job terjadwal (F41) tetap jalan tanpa user.
+- **Image.** `docker/sandbox.Dockerfile` (Python 3.12 + numpy, pandas, matplotlib dipin, `MPLBACKEND=Agg`,
+  HOME dan cache di `/tmp`). Library analisa tidak ada di image service.
+
 ## Agent dengan Tool
 
 `ToolCallingAgent` (`agents/tool_calling.py`) adalah agent generik yang dikonfigurasi lewat daftar

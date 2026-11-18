@@ -103,6 +103,11 @@ docker compose down              # hentikan (tambahkan -v untuk menghapus data P
   `web` (nginx) menyajikan build React dan meneruskan `/api/*` ke service, jadi browser tidak butuh
   CORS.
 - **Akun:** `docker compose exec agent-service python -m agent_service.manage create-user demo`.
+- **Sandbox kode (F37):** `sandbox-image` membangun image eksekusi (Python + pandas, numpy,
+  matplotlib) lalu selesai, dan `sandbox-runner` menjalankan satu container sekali pakai per
+  `run_python`/`run_shell`: tanpa jaringan, rootfs read-only, user non-root, 512 MB, 1 CPU, 128
+  proses, timeout `SANDBOX_TIMEOUT_SECONDS`. Hanya `sandbox-runner` yang me-mount `docker.sock`,
+  tanpa port di host; agent-service memanggilnya dengan `SANDBOX_TOKEN`.
 - **Urutan start:** `postgres` (healthy) → `migrate` (Alembic + tabel checkpointer, lalu selesai)
   → `agent-service` → `web` dan `ui`. Migrasi tidak dijalankan di lifespan, supaya beberapa replika tidak
   menjalankannya bersamaan.
@@ -141,6 +146,8 @@ menunjuk ke container itu sendiri.
 | `FIRECRAWL_API_KEY` | tidak | Key [Firecrawl](https://firecrawl.dev) untuk tool `web_search` (research-assistant, supervisor). Kosong = tanpa pencarian web |
 | `ARTIFACT_DIR` | tidak | Folder isi file artifact, default `data/artifacts`. Compose memakai volume `artifacts` |
 | `TOOL_OUTPUT_MAX_TOKENS` | tidak | Output tool lebih besar dari ini (default `4000` token) disimpan di workspace thread, dan model menerima cuplikan + path |
+| `SANDBOX_URL`, `SANDBOX_TOKEN` | tidak | URL service `sandbox-runner` dan token bersamanya. Kosong = tanpa `run_python`/`run_shell`. Compose mengisi `SANDBOX_URL` sendiri; `SANDBOX_TOKEN` default nilai dev yang tidak aman |
+| `SANDBOX_TIMEOUT_SECONDS` | tidak | Batas waktu satu eksekusi kode, default `60`, maksimum `600` |
 | `ARTIFACT_MAX_BYTES` | tidak | Batas ukuran upload, default `26214400` (25 MB). Upload lebih besar → 413. Di balik proxy `web`, naikkan juga `API_MAX_BODY_SIZE` (default `26m`) |
 | `AGENT_URL` | tidak | URL service untuk UI/client/eval, default `http://localhost:8080` |
 | `EVAL_USERNAME`, `EVAL_PASSWORD` | eval | Akun untuk `run_evals`, sebaiknya service account (`--role service`) |
@@ -197,6 +204,12 @@ Chatbot dan research assistant punya workspace per thread (F36): lampiran disali
 `grep` (teks literal), serta `share_file` untuk memberi file ke user sebagai artifact. Output tool
 yang lebih besar dari `TOOL_OUTPUT_MAX_TOKENS` disimpan di `tool-outputs/`. Workspace ikut
 terhapus bersama thread-nya.
+
+Jika sandbox dikonfigurasi (F37), agent yang sama juga punya `run_python` dan `run_shell`. Kode
+berjalan di container terisolasi dengan seluruh isi workspace di `/workspace`, dan file yang ditulis
+kembali ke workspace (misalnya chart, lalu dibagikan dengan `share_file`). Project dengan
+`settings.tool_approval = "always"` (checkbox "Ask before running code" di form) meminta
+persetujuan sebelum setiap eksekusi.
 
 ```python
 with AgentClient(base_url="http://localhost:8080") as client:

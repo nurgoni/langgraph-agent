@@ -23,6 +23,14 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
   melebihi `TOOL_OUTPUT_MAX_TOKENS` (default 4.000) disimpan di `tool-outputs/` dan model menerima
   cuplikan + path. Workspace ikut terhapus bersama thread. Langkah upgrade: `run_migrate` (revisi
   `0007`, tabel `workspace_files`) (F36).
+- Sandbox kode (FR-49, NFR-10): tool `run_python` dan `run_shell` untuk chatbot dan research
+  assistant, dijalankan di container sekali pakai tanpa jaringan (rootfs read-only, non-root,
+  512 MB, 1 CPU, 128 proses, timeout `SANDBOX_TIMEOUT_SECONDS` default 60 detik). File workspace
+  disalin masuk, file baru atau berubah kembali ke workspace. Service compose baru `sandbox-image`
+  dan `sandbox-runner` (satu-satunya dengan `docker.sock`), env `SANDBOX_URL`, `SANDBOX_TOKEN`, dan
+  `SANDBOX_TIMEOUT_SECONDS` (F37).
+- `ProjectSettings.tool_approval` (`never`/`always`, default `never`): minta persetujuan user
+  sebelum setiap eksekusi kode; checkbox "Ask before running code" di form project (F37).
 
 ## [0.6.0] - 2026-11-18
 
