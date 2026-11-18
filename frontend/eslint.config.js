@@ -4,6 +4,9 @@
 // aturan yang dilanggar kode upstream dimatikan: Fast Refresh (vendor mengekspor `buttonVariants`
 // bersama komponen), dan dua aturan React Compiler (`Math.random` di skeleton sidebar, `setState`
 // di effect `useIsMobile`).
+// Template registry assistant-ui di `src/components/assistant-ui/elements/` (F33) disalin apa
+// adanya supaya bisa dibandingkan dengan registry saat upgrade. Aturan yang dilanggar kode upstream
+// dimatikan hanya untuk folder itu; `thread.tsx` (template yang disesuaikan) memakai semua aturan.
 import js from "@eslint/js";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
@@ -12,7 +15,7 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default defineConfig([
-  globalIgnores(["dist", "coverage", "src/api/schema.d.ts"]),
+  globalIgnores(["dist", "coverage", "src/api/schema.d.ts", "src/api/stream-event.d.ts"]),
   {
     files: ["**/*.{ts,tsx}"],
     extends: [
@@ -32,6 +35,16 @@ export default defineConfig([
       "react-refresh/only-export-components": "off",
       "react-hooks/purity": "off",
       "react-hooks/set-state-in-effect": "off",
+    },
+  },
+  {
+    files: ["src/components/assistant-ui/elements/**"],
+    rules: {
+      "react-refresh/only-export-components": "off",
+      "no-empty": "off",
+      "react-hooks/exhaustive-deps": "off",
+      "@typescript-eslint/no-unnecessary-type-assertion": "off",
+      "@typescript-eslint/no-unsafe-assignment": "off",
     },
   },
 ]);

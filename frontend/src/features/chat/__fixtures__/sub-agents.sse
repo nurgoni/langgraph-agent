@@ -1,0 +1,320 @@
+data: {"type":"reasoning","content":"The"}
+
+data: {"type":"reasoning","content":" user"}
+
+data: {"type":"reasoning","content":" wants"}
+
+data: {"type":"reasoning","content":" me"}
+
+data: {"type":"reasoning","content":" to"}
+
+data: {"type":"reasoning","content":" ask"}
+
+data: {"type":"reasoning","content":" the"}
+
+data: {"type":"reasoning","content":" math"}
+
+data: {"type":"reasoning","content":" expert"}
+
+data: {"type":"reasoning","content":" to"}
+
+data: {"type":"reasoning","content":" compute"}
+
+data: {"type":"reasoning","content":" ("}
+
+data: {"type":"reasoning","content":"1"}
+
+data: {"type":"reasoning","content":"7"}
+
+data: {"type":"reasoning","content":" +"}
+
+data: {"type":"reasoning","content":" 2"}
+
+data: {"type":"reasoning","content":"5"}
+
+data: {"type":"reasoning","content":")"}
+
+data: {"type":"reasoning","content":" *"}
+
+data: {"type":"reasoning","content":" 3"}
+
+data: {"type":"reasoning","content":" and"}
+
+data: {"type":"reasoning","content":" report"}
+
+data: {"type":"reasoning","content":" the"}
+
+data: {"type":"reasoning","content":" answer"}
+
+data: {"type":"reasoning","content":"."}
+
+data: {"type":"reasoning","content":" This"}
+
+data: {"type":"reasoning","content":" is"}
+
+data: {"type":"reasoning","content":" a"}
+
+data: {"type":"reasoning","content":" straightforward"}
+
+data: {"type":"reasoning","content":" arithmetic"}
+
+data: {"type":"reasoning","content":" calculation"}
+
+data: {"type":"reasoning","content":" that"}
+
+data: {"type":"reasoning","content":" I"}
+
+data: {"type":"reasoning","content":" should"}
+
+data: {"type":"reasoning","content":" delegate"}
+
+data: {"type":"reasoning","content":" to"}
+
+data: {"type":"reasoning","content":" the"}
+
+data: {"type":"reasoning","content":" math"}
+
+data: {"type":"reasoning","content":"_exp"}
+
+data: {"type":"reasoning","content":"ert"}
+
+data: {"type":"reasoning","content":" tool"}
+
+data: {"type":"reasoning","content":"."}
+
+data: {"type":"reasoning","content":"\n\nI"}
+
+data: {"type":"reasoning","content":" need"}
+
+data: {"type":"reasoning","content":" to"}
+
+data: {"type":"reasoning","content":" provide"}
+
+data: {"type":"reasoning","content":" a"}
+
+data: {"type":"reasoning","content":" complete"}
+
+data: {"type":"reasoning","content":","}
+
+data: {"type":"reasoning","content":" self"}
+
+data: {"type":"reasoning","content":"-contained"}
+
+data: {"type":"reasoning","content":" task"}
+
+data: {"type":"reasoning","content":" for"}
+
+data: {"type":"reasoning","content":" the"}
+
+data: {"type":"reasoning","content":" expert"}
+
+data: {"type":"reasoning","content":"."}
+
+data: {"type":"reasoning","content":" The"}
+
+data: {"type":"reasoning","content":" task"}
+
+data: {"type":"reasoning","content":" should"}
+
+data: {"type":"reasoning","content":" be"}
+
+data: {"type":"reasoning","content":":"}
+
+data: {"type":"reasoning","content":" compute"}
+
+data: {"type":"reasoning","content":" ("}
+
+data: {"type":"reasoning","content":"1"}
+
+data: {"type":"reasoning","content":"7"}
+
+data: {"type":"reasoning","content":" +"}
+
+data: {"type":"reasoning","content":" 2"}
+
+data: {"type":"reasoning","content":"5"}
+
+data: {"type":"reasoning","content":")"}
+
+data: {"type":"reasoning","content":" *"}
+
+data: {"type":"reasoning","content":" 3"}
+
+data: {"type":"reasoning","content":" and"}
+
+data: {"type":"reasoning","content":" report"}
+
+data: {"type":"reasoning","content":" the"}
+
+data: {"type":"reasoning","content":" answer"}
+
+data: {"type":"reasoning","content":"."}
+
+data: {"type":"message","content":{"type":"ai","content":"","tool_calls":[{"name":"ask_math_expert","args":{"task":"Compute (17 + 25) * 3 and report the answer."},"id":"call_c2aonn6e"}],"tool_call_id":null,"run_id":"01a1ea2b-7a90-7953-9fd4-32e07ef39653","agent":null,"reasoning":"The user wants me to ask the math expert to compute (17 + 25) * 3 and report the answer. This is a straightforward arithmetic calculation that I should delegate to the math_expert tool.\n\nI need to provide a complete, self-contained task for the expert. The task should be: compute (17 + 25) * 3 and report the answer.","truncated":false,"response_metadata":{"finish_reason":"tool_calls","model_name":"qwen3.5:9b","system_fingerprint":"fp_ollama","model_provider":"openai"},"custom_data":{}}}
+
+data: {"type":"message","content":{"type":"ai","content":"","tool_calls":[{"name":"calculator","args":{"expression":"(17 + 25) * 3"},"id":"call_kxl3tfet"}],"tool_call_id":null,"run_id":"01a1ea2b-7a90-7953-9fd4-32e07ef39653","agent":"math_expert","reasoning":"The user wants me to compute (17 + 25) * 3 using the calculator tool. I need to use the calculator function with the expression \"(17 + 25) * 3\".","truncated":false,"response_metadata":{"finish_reason":"tool_calls","model_name":"qwen3.5:9b","system_fingerprint":"fp_ollama","model_provider":"openai"},"custom_data":{}}}
+
+data: {"type":"message","content":{"type":"tool","content":"126","tool_calls":[],"tool_call_id":"call_kxl3tfet","run_id":"01a1ea2b-7a90-7953-9fd4-32e07ef39653","agent":"math_expert","reasoning":null,"truncated":false,"response_metadata":{},"custom_data":{}}}
+
+data: {"type":"message","content":{"type":"ai","content":"The result of $(17 + 25) \\times 3$ is **126**.\n\nHere's the calculation:\n- First, add $17 + 25 = 42$\n- Then multiply by 3: $42 \\times 3 = 126$","tool_calls":[],"tool_call_id":null,"run_id":"01a1ea2b-7a90-7953-9fd4-32e07ef39653","agent":"math_expert","reasoning":"The calculator returned 126. I should report this answer with a brief explanation.","truncated":false,"response_metadata":{"finish_reason":"stop","model_name":"qwen3.5:9b","system_fingerprint":"fp_ollama","model_provider":"openai"},"custom_data":{}}}
+
+data: {"type":"message","content":{"type":"tool","content":"The result of $(17 + 25) \\times 3$ is **126**.\n\nHere's the calculation:\n- First, add $17 + 25 = 42$\n- Then multiply by 3: $42 \\times 3 = 126$","tool_calls":[],"tool_call_id":"call_c2aonn6e","run_id":"01a1ea2b-7a90-7953-9fd4-32e07ef39653","agent":null,"reasoning":null,"truncated":false,"response_metadata":{},"custom_data":{}}}
+
+data: {"type":"reasoning","content":"The"}
+
+data: {"type":"reasoning","content":" math"}
+
+data: {"type":"reasoning","content":" expert"}
+
+data: {"type":"reasoning","content":" has"}
+
+data: {"type":"reasoning","content":" computed"}
+
+data: {"type":"reasoning","content":" the"}
+
+data: {"type":"reasoning","content":" result"}
+
+data: {"type":"reasoning","content":"."}
+
+data: {"type":"reasoning","content":" Now"}
+
+data: {"type":"reasoning","content":" I"}
+
+data: {"type":"reasoning","content":" need"}
+
+data: {"type":"reasoning","content":" to"}
+
+data: {"type":"reasoning","content":" report"}
+
+data: {"type":"reasoning","content":" it"}
+
+data: {"type":"reasoning","content":" to"}
+
+data: {"type":"reasoning","content":" the"}
+
+data: {"type":"reasoning","content":" user"}
+
+data: {"type":"reasoning","content":"."}
+
+data: {"type":"reasoning","content":"\n\n("}
+
+data: {"type":"reasoning","content":"1"}
+
+data: {"type":"reasoning","content":"7"}
+
+data: {"type":"reasoning","content":" +"}
+
+data: {"type":"reasoning","content":" 2"}
+
+data: {"type":"reasoning","content":"5"}
+
+data: {"type":"reasoning","content":")"}
+
+data: {"type":"reasoning","content":" *"}
+
+data: {"type":"reasoning","content":" 3"}
+
+data: {"type":"reasoning","content":" ="}
+
+data: {"type":"reasoning","content":" 4"}
+
+data: {"type":"reasoning","content":"2"}
+
+data: {"type":"reasoning","content":" *"}
+
+data: {"type":"reasoning","content":" 3"}
+
+data: {"type":"reasoning","content":" ="}
+
+data: {"type":"reasoning","content":" 1"}
+
+data: {"type":"reasoning","content":"2"}
+
+data: {"type":"reasoning","content":"6"}
+
+data: {"type":"token","content":"The"}
+
+data: {"type":"token","content":" answer"}
+
+data: {"type":"token","content":" is"}
+
+data: {"type":"token","content":" **"}
+
+data: {"type":"token","content":"1"}
+
+data: {"type":"token","content":"2"}
+
+data: {"type":"token","content":"6"}
+
+data: {"type":"token","content":"**."}
+
+data: {"type":"token","content":"\n\nHere"}
+
+data: {"type":"token","content":"'s"}
+
+data: {"type":"token","content":" how"}
+
+data: {"type":"token","content":" it"}
+
+data: {"type":"token","content":" breaks"}
+
+data: {"type":"token","content":" down"}
+
+data: {"type":"token","content":":"}
+
+data: {"type":"token","content":"\n-"}
+
+data: {"type":"token","content":" First"}
+
+data: {"type":"token","content":","}
+
+data: {"type":"token","content":" add"}
+
+data: {"type":"token","content":" 1"}
+
+data: {"type":"token","content":"7"}
+
+data: {"type":"token","content":" +"}
+
+data: {"type":"token","content":" 2"}
+
+data: {"type":"token","content":"5"}
+
+data: {"type":"token","content":" ="}
+
+data: {"type":"token","content":" 4"}
+
+data: {"type":"token","content":"2"}
+
+data: {"type":"token","content":"\n-"}
+
+data: {"type":"token","content":" Then"}
+
+data: {"type":"token","content":" multiply"}
+
+data: {"type":"token","content":" by"}
+
+data: {"type":"token","content":" 3"}
+
+data: {"type":"token","content":":"}
+
+data: {"type":"token","content":" 4"}
+
+data: {"type":"token","content":"2"}
+
+data: {"type":"token","content":" ×"}
+
+data: {"type":"token","content":" 3"}
+
+data: {"type":"token","content":" ="}
+
+data: {"type":"token","content":" 1"}
+
+data: {"type":"token","content":"2"}
+
+data: {"type":"token","content":"6"}
+
+data: {"type":"message","content":{"type":"ai","content":"The answer is **126**.\n\nHere's how it breaks down:\n- First, add 17 + 25 = 42\n- Then multiply by 3: 42 × 3 = 126","tool_calls":[],"tool_call_id":null,"run_id":"01a1ea2b-7a90-7953-9fd4-32e07ef39653","agent":null,"reasoning":"The math expert has computed the result. Now I need to report it to the user.\n\n(17 + 25) * 3 = 42 * 3 = 126","truncated":false,"response_metadata":{"finish_reason":"stop","model_name":"qwen3.5:9b","system_fingerprint":"fp_ollama","model_provider":"openai"},"custom_data":{}}}
+
+data: [DONE]
+

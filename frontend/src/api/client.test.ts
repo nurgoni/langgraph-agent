@@ -22,7 +22,7 @@ describe("createApiClient", () => {
 
     expect(data?.default_agent).toBe("chatbot");
     expect(service.requests).toEqual([
-      { method: "GET", path: "/api/info", authorization: "Bearer jwt" },
+      { method: "GET", path: "/api/info", authorization: "Bearer jwt", body: null },
     ]);
   });
 

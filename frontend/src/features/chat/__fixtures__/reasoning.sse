@@ -1,0 +1,498 @@
+data: {"type":"reasoning","content":"The"}
+
+data: {"type":"reasoning","content":" user"}
+
+data: {"type":"reasoning","content":" is"}
+
+data: {"type":"reasoning","content":" asking"}
+
+data: {"type":"reasoning","content":" whether"}
+
+data: {"type":"reasoning","content":" 2"}
+
+data: {"type":"reasoning","content":"2"}
+
+data: {"type":"reasoning","content":"1"}
+
+data: {"type":"reasoning","content":" is"}
+
+data: {"type":"reasoning","content":" a"}
+
+data: {"type":"reasoning","content":" prime"}
+
+data: {"type":"reasoning","content":" number"}
+
+data: {"type":"reasoning","content":"."}
+
+data: {"type":"reasoning","content":" Let"}
+
+data: {"type":"reasoning","content":" me"}
+
+data: {"type":"reasoning","content":" think"}
+
+data: {"type":"reasoning","content":" about"}
+
+data: {"type":"reasoning","content":" this"}
+
+data: {"type":"reasoning","content":" math"}
+
+data: {"type":"reasoning","content":"em"}
+
+data: {"type":"reasoning","content":"atically"}
+
+data: {"type":"reasoning","content":"."}
+
+data: {"type":"reasoning","content":"\n\nA"}
+
+data: {"type":"reasoning","content":" prime"}
+
+data: {"type":"reasoning","content":" number"}
+
+data: {"type":"reasoning","content":" is"}
+
+data: {"type":"reasoning","content":" a"}
+
+data: {"type":"reasoning","content":" number"}
+
+data: {"type":"reasoning","content":" greater"}
+
+data: {"type":"reasoning","content":" than"}
+
+data: {"type":"reasoning","content":" 1"}
+
+data: {"type":"reasoning","content":" that"}
+
+data: {"type":"reasoning","content":" has"}
+
+data: {"type":"reasoning","content":" no"}
+
+data: {"type":"reasoning","content":" positive"}
+
+data: {"type":"reasoning","content":" div"}
+
+data: {"type":"reasoning","content":"isors"}
+
+data: {"type":"reasoning","content":" other"}
+
+data: {"type":"reasoning","content":" than"}
+
+data: {"type":"reasoning","content":" 1"}
+
+data: {"type":"reasoning","content":" and"}
+
+data: {"type":"reasoning","content":" itself"}
+
+data: {"type":"reasoning","content":"."}
+
+data: {"type":"reasoning","content":"\n\nTo"}
+
+data: {"type":"reasoning","content":" check"}
+
+data: {"type":"reasoning","content":" if"}
+
+data: {"type":"reasoning","content":" 2"}
+
+data: {"type":"reasoning","content":"2"}
+
+data: {"type":"reasoning","content":"1"}
+
+data: {"type":"reasoning","content":" is"}
+
+data: {"type":"reasoning","content":" prime"}
+
+data: {"type":"reasoning","content":","}
+
+data: {"type":"reasoning","content":" I"}
+
+data: {"type":"reasoning","content":" need"}
+
+data: {"type":"reasoning","content":" to"}
+
+data: {"type":"reasoning","content":" see"}
+
+data: {"type":"reasoning","content":" if"}
+
+data: {"type":"reasoning","content":" it"}
+
+data: {"type":"reasoning","content":" has"}
+
+data: {"type":"reasoning","content":" any"}
+
+data: {"type":"reasoning","content":" div"}
+
+data: {"type":"reasoning","content":"isors"}
+
+data: {"type":"reasoning","content":" other"}
+
+data: {"type":"reasoning","content":" than"}
+
+data: {"type":"reasoning","content":" 1"}
+
+data: {"type":"reasoning","content":" and"}
+
+data: {"type":"reasoning","content":" 2"}
+
+data: {"type":"reasoning","content":"2"}
+
+data: {"type":"reasoning","content":"1"}
+
+data: {"type":"reasoning","content":"."}
+
+data: {"type":"reasoning","content":"\n\nLet"}
+
+data: {"type":"reasoning","content":" me"}
+
+data: {"type":"reasoning","content":" check"}
+
+data: {"type":"reasoning","content":" some"}
+
+data: {"type":"reasoning","content":" common"}
+
+data: {"type":"reasoning","content":" factors"}
+
+data: {"type":"reasoning","content":":"}
+
+data: {"type":"reasoning","content":"\n-"}
+
+data: {"type":"reasoning","content":" 2"}
+
+data: {"type":"reasoning","content":"2"}
+
+data: {"type":"reasoning","content":"1"}
+
+data: {"type":"reasoning","content":" is"}
+
+data: {"type":"reasoning","content":" not"}
+
+data: {"type":"reasoning","content":" divisible"}
+
+data: {"type":"reasoning","content":" by"}
+
+data: {"type":"reasoning","content":" 2"}
+
+data: {"type":"reasoning","content":" ("}
+
+data: {"type":"reasoning","content":"it"}
+
+data: {"type":"reasoning","content":"'s"}
+
+data: {"type":"reasoning","content":" odd"}
+
+data: {"type":"reasoning","content":")"}
+
+data: {"type":"reasoning","content":"\n-"}
+
+data: {"type":"reasoning","content":" 2"}
+
+data: {"type":"reasoning","content":"+"}
+
+data: {"type":"reasoning","content":"2"}
+
+data: {"type":"reasoning","content":"+"}
+
+data: {"type":"reasoning","content":"1"}
+
+data: {"type":"reasoning","content":" ="}
+
+data: {"type":"reasoning","content":" 5"}
+
+data: {"type":"reasoning","content":","}
+
+data: {"type":"reasoning","content":" not"}
+
+data: {"type":"reasoning","content":" divisible"}
+
+data: {"type":"reasoning","content":" by"}
+
+data: {"type":"reasoning","content":" 3"}
+
+data: {"type":"reasoning","content":"\n-"}
+
+data: {"type":"reasoning","content":" Doesn"}
+
+data: {"type":"reasoning","content":"'t"}
+
+data: {"type":"reasoning","content":" end"}
+
+data: {"type":"reasoning","content":" in"}
+
+data: {"type":"reasoning","content":" 0"}
+
+data: {"type":"reasoning","content":" or"}
+
+data: {"type":"reasoning","content":" 5"}
+
+data: {"type":"reasoning","content":","}
+
+data: {"type":"reasoning","content":" so"}
+
+data: {"type":"reasoning","content":" not"}
+
+data: {"type":"reasoning","content":" divisible"}
+
+data: {"type":"reasoning","content":" by"}
+
+data: {"type":"reasoning","content":" 5"}
+
+data: {"type":"reasoning","content":"\n-"}
+
+data: {"type":"reasoning","content":" Let"}
+
+data: {"type":"reasoning","content":" me"}
+
+data: {"type":"reasoning","content":" check"}
+
+data: {"type":"reasoning","content":" 7"}
+
+data: {"type":"reasoning","content":":"}
+
+data: {"type":"reasoning","content":" 2"}
+
+data: {"type":"reasoning","content":"2"}
+
+data: {"type":"reasoning","content":"1"}
+
+data: {"type":"reasoning","content":" ÷"}
+
+data: {"type":"reasoning","content":" 7"}
+
+data: {"type":"reasoning","content":" ="}
+
+data: {"type":"reasoning","content":" 3"}
+
+data: {"type":"reasoning","content":"1"}
+
+data: {"type":"reasoning","content":"."}
+
+data: {"type":"reasoning","content":"5"}
+
+data: {"type":"reasoning","content":"7"}
+
+data: {"type":"reasoning","content":"..."}
+
+data: {"type":"reasoning","content":" ("}
+
+data: {"type":"reasoning","content":"not"}
+
+data: {"type":"reasoning","content":" divisible"}
+
+data: {"type":"reasoning","content":")"}
+
+data: {"type":"reasoning","content":"\n-"}
+
+data: {"type":"reasoning","content":" Let"}
+
+data: {"type":"reasoning","content":" me"}
+
+data: {"type":"reasoning","content":" check"}
+
+data: {"type":"reasoning","content":" 1"}
+
+data: {"type":"reasoning","content":"1"}
+
+data: {"type":"reasoning","content":":"}
+
+data: {"type":"reasoning","content":" 2"}
+
+data: {"type":"reasoning","content":"2"}
+
+data: {"type":"reasoning","content":"1"}
+
+data: {"type":"reasoning","content":" ÷"}
+
+data: {"type":"reasoning","content":" 1"}
+
+data: {"type":"reasoning","content":"1"}
+
+data: {"type":"reasoning","content":" ="}
+
+data: {"type":"reasoning","content":" 2"}
+
+data: {"type":"reasoning","content":"0"}
+
+data: {"type":"reasoning","content":"."}
+
+data: {"type":"reasoning","content":"0"}
+
+data: {"type":"reasoning","content":"9"}
+
+data: {"type":"reasoning","content":"..."}
+
+data: {"type":"reasoning","content":" ("}
+
+data: {"type":"reasoning","content":"not"}
+
+data: {"type":"reasoning","content":" divisible"}
+
+data: {"type":"reasoning","content":")"}
+
+data: {"type":"reasoning","content":"\n-"}
+
+data: {"type":"reasoning","content":" Let"}
+
+data: {"type":"reasoning","content":" me"}
+
+data: {"type":"reasoning","content":" check"}
+
+data: {"type":"reasoning","content":" 1"}
+
+data: {"type":"reasoning","content":"3"}
+
+data: {"type":"reasoning","content":":"}
+
+data: {"type":"reasoning","content":" 2"}
+
+data: {"type":"reasoning","content":"2"}
+
+data: {"type":"reasoning","content":"1"}
+
+data: {"type":"reasoning","content":" ÷"}
+
+data: {"type":"reasoning","content":" 1"}
+
+data: {"type":"reasoning","content":"3"}
+
+data: {"type":"reasoning","content":" ="}
+
+data: {"type":"reasoning","content":" 1"}
+
+data: {"type":"reasoning","content":"7"}
+
+data: {"type":"reasoning","content":"\n\nSo"}
+
+data: {"type":"reasoning","content":" 2"}
+
+data: {"type":"reasoning","content":"2"}
+
+data: {"type":"reasoning","content":"1"}
+
+data: {"type":"reasoning","content":" ="}
+
+data: {"type":"reasoning","content":" 1"}
+
+data: {"type":"reasoning","content":"3"}
+
+data: {"type":"reasoning","content":" ×"}
+
+data: {"type":"reasoning","content":" 1"}
+
+data: {"type":"reasoning","content":"7"}
+
+data: {"type":"reasoning","content":","}
+
+data: {"type":"reasoning","content":" which"}
+
+data: {"type":"reasoning","content":" means"}
+
+data: {"type":"reasoning","content":" it"}
+
+data: {"type":"reasoning","content":" has"}
+
+data: {"type":"reasoning","content":" div"}
+
+data: {"type":"reasoning","content":"isors"}
+
+data: {"type":"reasoning","content":" other"}
+
+data: {"type":"reasoning","content":" than"}
+
+data: {"type":"reasoning","content":" 1"}
+
+data: {"type":"reasoning","content":" and"}
+
+data: {"type":"reasoning","content":" itself"}
+
+data: {"type":"reasoning","content":"."}
+
+data: {"type":"reasoning","content":" Therefore"}
+
+data: {"type":"reasoning","content":","}
+
+data: {"type":"reasoning","content":" 2"}
+
+data: {"type":"reasoning","content":"2"}
+
+data: {"type":"reasoning","content":"1"}
+
+data: {"type":"reasoning","content":" is"}
+
+data: {"type":"reasoning","content":" NOT"}
+
+data: {"type":"reasoning","content":" a"}
+
+data: {"type":"reasoning","content":" prime"}
+
+data: {"type":"reasoning","content":" number"}
+
+data: {"type":"reasoning","content":"."}
+
+data: {"type":"reasoning","content":"\n\nI"}
+
+data: {"type":"reasoning","content":" need"}
+
+data: {"type":"reasoning","content":" to"}
+
+data: {"type":"reasoning","content":" answer"}
+
+data: {"type":"reasoning","content":" in"}
+
+data: {"type":"reasoning","content":" one"}
+
+data: {"type":"reasoning","content":" sentence"}
+
+data: {"type":"reasoning","content":" as"}
+
+data: {"type":"reasoning","content":" requested"}
+
+data: {"type":"reasoning","content":"."}
+
+data: {"type":"token","content":"No"}
+
+data: {"type":"token","content":","}
+
+data: {"type":"token","content":" 2"}
+
+data: {"type":"token","content":"2"}
+
+data: {"type":"token","content":"1"}
+
+data: {"type":"token","content":" is"}
+
+data: {"type":"token","content":" not"}
+
+data: {"type":"token","content":" a"}
+
+data: {"type":"token","content":" prime"}
+
+data: {"type":"token","content":" number"}
+
+data: {"type":"token","content":" because"}
+
+data: {"type":"token","content":" it"}
+
+data: {"type":"token","content":" can"}
+
+data: {"type":"token","content":" be"}
+
+data: {"type":"token","content":" fact"}
+
+data: {"type":"token","content":"ored"}
+
+data: {"type":"token","content":" into"}
+
+data: {"type":"token","content":" 1"}
+
+data: {"type":"token","content":"3"}
+
+data: {"type":"token","content":" ×"}
+
+data: {"type":"token","content":" 1"}
+
+data: {"type":"token","content":"7"}
+
+data: {"type":"token","content":"."}
+
+data: {"type":"message","content":{"type":"ai","content":"No, 221 is not a prime number because it can be factored into 13 × 17.","tool_calls":[],"tool_call_id":null,"run_id":"01a1ea2b-21fd-7453-a102-7281a64b51b6","agent":null,"reasoning":"The user is asking whether 221 is a prime number. Let me think about this mathematically.\n\nA prime number is a number greater than 1 that has no positive divisors other than 1 and itself.\n\nTo check if 221 is prime, I need to see if it has any divisors other than 1 and 221.\n\nLet me check some common factors:\n- 221 is not divisible by 2 (it's odd)\n- 2+2+1 = 5, not divisible by 3\n- Doesn't end in 0 or 5, so not divisible by 5\n- Let me check 7: 221 ÷ 7 = 31.57... (not divisible)\n- Let me check 11: 221 ÷ 11 = 20.09... (not divisible)\n- Let me check 13: 221 ÷ 13 = 17\n\nSo 221 = 13 × 17, which means it has divisors other than 1 and itself. Therefore, 221 is NOT a prime number.\n\nI need to answer in one sentence as requested.","truncated":false,"response_metadata":{"finish_reason":"stop","model_name":"qwen3.5:9b","system_fingerprint":"fp_ollama","model_provider":"openai"},"custom_data":{}}}
+
+data: [DONE]
+

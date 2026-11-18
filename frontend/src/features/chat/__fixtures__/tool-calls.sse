@@ -1,0 +1,292 @@
+data: {"type":"reasoning","content":"The"}
+
+data: {"type":"reasoning","content":" user"}
+
+data: {"type":"reasoning","content":" wants"}
+
+data: {"type":"reasoning","content":" me"}
+
+data: {"type":"reasoning","content":" to"}
+
+data: {"type":"reasoning","content":" use"}
+
+data: {"type":"reasoning","content":" the"}
+
+data: {"type":"reasoning","content":" calculator"}
+
+data: {"type":"reasoning","content":" to"}
+
+data: {"type":"reasoning","content":" compute"}
+
+data: {"type":"reasoning","content":" 1"}
+
+data: {"type":"reasoning","content":"2"}
+
+data: {"type":"reasoning","content":"3"}
+
+data: {"type":"reasoning","content":"4"}
+
+data: {"type":"reasoning","content":" *"}
+
+data: {"type":"reasoning","content":" 5"}
+
+data: {"type":"reasoning","content":"6"}
+
+data: {"type":"reasoning","content":"7"}
+
+data: {"type":"reasoning","content":"8"}
+
+data: {"type":"reasoning","content":" and"}
+
+data: {"type":"reasoning","content":" then"}
+
+data: {"type":"reasoning","content":" state"}
+
+data: {"type":"reasoning","content":" the"}
+
+data: {"type":"reasoning","content":" result"}
+
+data: {"type":"reasoning","content":"."}
+
+data: {"type":"reasoning","content":" I"}
+
+data: {"type":"reasoning","content":" need"}
+
+data: {"type":"reasoning","content":" to"}
+
+data: {"type":"reasoning","content":" call"}
+
+data: {"type":"reasoning","content":" the"}
+
+data: {"type":"reasoning","content":" calculator"}
+
+data: {"type":"reasoning","content":" tool"}
+
+data: {"type":"reasoning","content":" with"}
+
+data: {"type":"reasoning","content":" the"}
+
+data: {"type":"reasoning","content":" expression"}
+
+data: {"type":"reasoning","content":" \""}
+
+data: {"type":"reasoning","content":"1"}
+
+data: {"type":"reasoning","content":"2"}
+
+data: {"type":"reasoning","content":"3"}
+
+data: {"type":"reasoning","content":"4"}
+
+data: {"type":"reasoning","content":" *"}
+
+data: {"type":"reasoning","content":" 5"}
+
+data: {"type":"reasoning","content":"6"}
+
+data: {"type":"reasoning","content":"7"}
+
+data: {"type":"reasoning","content":"8"}
+
+data: {"type":"reasoning","content":"\"."}
+
+data: {"type":"message","content":{"type":"ai","content":"","tool_calls":[{"name":"calculator","args":{"expression":"1234 * 5678"},"id":"call_wltltkf6"}],"tool_call_id":null,"run_id":"01a1ea2b-6924-7953-97e3-3862030d3640","agent":null,"reasoning":"The user wants me to use the calculator to compute 1234 * 5678 and then state the result. I need to call the calculator tool with the expression \"1234 * 5678\".","truncated":false,"response_metadata":{"finish_reason":"tool_calls","model_name":"qwen3.5:9b","system_fingerprint":"fp_ollama","model_provider":"openai"},"custom_data":{}}}
+
+data: {"type":"message","content":{"type":"tool","content":"7006652","tool_calls":[],"tool_call_id":"call_wltltkf6","run_id":"01a1ea2b-6924-7953-97e3-3862030d3640","agent":null,"reasoning":null,"truncated":false,"response_metadata":{},"custom_data":{}}}
+
+data: {"type":"reasoning","content":"The"}
+
+data: {"type":"reasoning","content":" user"}
+
+data: {"type":"reasoning","content":" asked"}
+
+data: {"type":"reasoning","content":" me"}
+
+data: {"type":"reasoning","content":" to"}
+
+data: {"type":"reasoning","content":" compute"}
+
+data: {"type":"reasoning","content":" 1"}
+
+data: {"type":"reasoning","content":"2"}
+
+data: {"type":"reasoning","content":"3"}
+
+data: {"type":"reasoning","content":"4"}
+
+data: {"type":"reasoning","content":" *"}
+
+data: {"type":"reasoning","content":" 5"}
+
+data: {"type":"reasoning","content":"6"}
+
+data: {"type":"reasoning","content":"7"}
+
+data: {"type":"reasoning","content":"8"}
+
+data: {"type":"reasoning","content":" using"}
+
+data: {"type":"reasoning","content":" the"}
+
+data: {"type":"reasoning","content":" calculator"}
+
+data: {"type":"reasoning","content":"."}
+
+data: {"type":"reasoning","content":" The"}
+
+data: {"type":"reasoning","content":" result"}
+
+data: {"type":"reasoning","content":" is"}
+
+data: {"type":"reasoning","content":" 7"}
+
+data: {"type":"reasoning","content":","}
+
+data: {"type":"reasoning","content":"0"}
+
+data: {"type":"reasoning","content":"0"}
+
+data: {"type":"reasoning","content":"6"}
+
+data: {"type":"reasoning","content":","}
+
+data: {"type":"reasoning","content":"6"}
+
+data: {"type":"reasoning","content":"5"}
+
+data: {"type":"reasoning","content":"2"}
+
+data: {"type":"reasoning","content":"."}
+
+data: {"type":"reasoning","content":" I"}
+
+data: {"type":"reasoning","content":" should"}
+
+data: {"type":"reasoning","content":" state"}
+
+data: {"type":"reasoning","content":" this"}
+
+data: {"type":"reasoning","content":" clearly"}
+
+data: {"type":"reasoning","content":" in"}
+
+data: {"type":"reasoning","content":" my"}
+
+data: {"type":"reasoning","content":" answer"}
+
+data: {"type":"reasoning","content":"."}
+
+data: {"type":"reasoning","content":"\n\nI"}
+
+data: {"type":"reasoning","content":" don"}
+
+data: {"type":"reasoning","content":"'t"}
+
+data: {"type":"reasoning","content":" need"}
+
+data: {"type":"reasoning","content":" to"}
+
+data: {"type":"reasoning","content":" use"}
+
+data: {"type":"reasoning","content":" web"}
+
+data: {"type":"reasoning","content":"_search"}
+
+data: {"type":"reasoning","content":" for"}
+
+data: {"type":"reasoning","content":" this"}
+
+data: {"type":"reasoning","content":" simple"}
+
+data: {"type":"reasoning","content":" calculation"}
+
+data: {"type":"reasoning","content":","}
+
+data: {"type":"reasoning","content":" and"}
+
+data: {"type":"reasoning","content":" there"}
+
+data: {"type":"reasoning","content":"'s"}
+
+data: {"type":"reasoning","content":" no"}
+
+data: {"type":"reasoning","content":" memory"}
+
+data: {"type":"reasoning","content":" to"}
+
+data: {"type":"reasoning","content":" save"}
+
+data: {"type":"reasoning","content":" or"}
+
+data: {"type":"reasoning","content":" search"}
+
+data: {"type":"reasoning","content":" for"}
+
+data: {"type":"reasoning","content":" since"}
+
+data: {"type":"reasoning","content":" this"}
+
+data: {"type":"reasoning","content":" is"}
+
+data: {"type":"reasoning","content":" a"}
+
+data: {"type":"reasoning","content":" straightforward"}
+
+data: {"type":"reasoning","content":" math"}
+
+data: {"type":"reasoning","content":" problem"}
+
+data: {"type":"reasoning","content":"."}
+
+data: {"type":"token","content":"The"}
+
+data: {"type":"token","content":" result"}
+
+data: {"type":"token","content":" of"}
+
+data: {"type":"token","content":" 1"}
+
+data: {"type":"token","content":"2"}
+
+data: {"type":"token","content":"3"}
+
+data: {"type":"token","content":"4"}
+
+data: {"type":"token","content":" *"}
+
+data: {"type":"token","content":" 5"}
+
+data: {"type":"token","content":"6"}
+
+data: {"type":"token","content":"7"}
+
+data: {"type":"token","content":"8"}
+
+data: {"type":"token","content":" is"}
+
+data: {"type":"token","content":" **"}
+
+data: {"type":"token","content":"7"}
+
+data: {"type":"token","content":","}
+
+data: {"type":"token","content":"0"}
+
+data: {"type":"token","content":"0"}
+
+data: {"type":"token","content":"6"}
+
+data: {"type":"token","content":","}
+
+data: {"type":"token","content":"6"}
+
+data: {"type":"token","content":"5"}
+
+data: {"type":"token","content":"2"}
+
+data: {"type":"token","content":"**."}
+
+data: {"type":"message","content":{"type":"ai","content":"The result of 1234 * 5678 is **7,006,652**.","tool_calls":[],"tool_call_id":null,"run_id":"01a1ea2b-6924-7953-97e3-3862030d3640","agent":null,"reasoning":"The user asked me to compute 1234 * 5678 using the calculator. The result is 7,006,652. I should state this clearly in my answer.\n\nI don't need to use web_search for this simple calculation, and there's no memory to save or search for since this is a straightforward math problem.","truncated":false,"response_metadata":{"finish_reason":"stop","model_name":"qwen3.5:9b","system_fingerprint":"fp_ollama","model_provider":"openai"},"custom_data":{}}}
+
+data: [DONE]
+
