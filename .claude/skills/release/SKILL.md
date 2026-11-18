@@ -48,7 +48,9 @@ git push -u origin release/vX.Y.Z
 ```
 
 3. PR `release/vX.Y.Z` → `main` lewat web, judul `chore(release): vX.Y.Z`, merge dengan **"Create a
-   merge commit"** (bukan squash).
+   merge commit"** (bukan squash). Ingatkan user memeriksa tombol merge: jika ruleset `main`
+   belum dipasang (CONTRIBUTING § Setup Awal Repo), tombol default GitHub bisa "Squash and merge"
+   (insiden v0.7.0).
 
 Lanjut ke langkah 4 hanya jika PR berstatus **Merged**. Tanpa itu, tag menunjuk ke rilis lama
 (insiden v0.6.0, lihat memory.md).
@@ -73,3 +75,11 @@ git push origin --delete release/vX.Y.Z
 Setelah rilis: sebutkan fitur pertama milestone berikutnya beserta pertanyaan Langkah 1-nya. Jika
 memory.md melewati ±300 baris, jalankan skill `memory-maintenance` (arsip milestone yang baru
 dirilis).
+
+## Jika release terlanjur di-squash
+
+Gejala: back-merge (langkah 5) konflik di `CHANGELOG.md` dan `.agents/memory.md`, dan `git log main`
+menampilkan `chore(release): vX.Y.Z (#NN)` tanpa merge commit. Ikuti CONTRIBUTING.md § Release
+("Jika release terlanjur di-squash"): pastikan `git diff --stat release/vX.Y.Z main` kosong,
+ambil versi `main` (`git checkout --theirs`), pastikan `git diff --cached --stat main` kosong, lalu
+commit back-merge. Jangan force-push `main`.
