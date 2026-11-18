@@ -10,6 +10,8 @@ import {
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import type { ApiClient } from "@/api/client";
+import { ArtifactsService } from "@/features/artifacts/artifacts-service";
+import { ArtifactAttachmentAdapter } from "@/features/artifacts/attachment-adapter";
 import { ChatController, type ChatSnapshot } from "@/features/chat/chat-controller";
 import { ChatService } from "@/features/chat/chat-service";
 import { toThreadMessages } from "@/features/chat/conversation";
@@ -42,6 +44,7 @@ const identity = (message: ThreadMessageLike): ThreadMessageLike => message;
 export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntime {
   const { api, projectId, threadId, model, onThreadCreated, onRunFinished } = options;
   const [controller] = useState(() => new ChatController(new ChatService(api, projectId)));
+  const [attachments] = useState(() => new ArtifactAttachmentAdapter(new ArtifactsService(api)));
   useEffect(() => {
     controller.setRunListeners({ onThreadCreated, onRunFinished });
   }, [controller, onThreadCreated, onRunFinished]);
@@ -62,8 +65,13 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntime {
     isRunning: snapshot.isRunning,
     isLoading: snapshot.isLoadingHistory,
     isDisabled: snapshot.historyError !== null,
-    onNew: (message: AppendMessage) => controller.send(messageText(message), model),
+    onNew: (message: AppendMessage) => {
+      const attachmentIds = (message.attachments ?? []).map((attachment) => attachment.id);
+      const artifacts = attachments.takeArtifacts(attachmentIds);
+      return controller.send(messageText(message), model, artifacts);
+    },
     onCancel: () => Promise.resolve(controller.cancel()),
+    adapters: { attachments },
   });
   return { runtime, snapshot };
 }

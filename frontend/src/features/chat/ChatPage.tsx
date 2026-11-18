@@ -14,6 +14,7 @@ import { useAuth } from "@/auth/auth-context";
 import { Thread } from "@/components/assistant-ui/thread";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ArtifactWorkspace } from "@/features/artifacts/ArtifactWorkspace";
 import { ModelPicker } from "@/features/chat/ModelPicker";
 import { useChatRuntime } from "@/features/chat/use-chat-runtime";
 import { chatPath, newChatPath, threadsQueryKey } from "@/features/threads/thread-paths";
@@ -70,7 +71,7 @@ export function ChatPage({ projectId = null, defaultModel = null, welcome }: Cha
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <div className="min-h-0 flex-1">
+      <ArtifactWorkspace>
         <Thread
           welcome={
             welcome ?? (
@@ -81,7 +82,7 @@ export function ChatPage({ projectId = null, defaultModel = null, welcome }: Cha
             <ModelPicker value={model} defaultModel={defaultModel} onChange={setModel} />
           }
         />
-      </div>
+      </ArtifactWorkspace>
     </AssistantRuntimeProvider>
   );
 }

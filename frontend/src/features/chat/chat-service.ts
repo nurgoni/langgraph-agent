@@ -29,6 +29,8 @@ export interface ChatRequest {
   threadId: string | null;
   /** Model pilihan user, atau `null` untuk model default service. */
   model: string | null;
+  /** Artifact hasil upload composer yang dilampirkan ke pesan (F38). */
+  artifactIds?: readonly string[];
 }
 
 export interface ChatRun {
@@ -62,6 +64,7 @@ export class ChatService {
       thread_id: request.threadId,
       model: request.model,
       stream_tokens: true,
+      artifact_ids: [...(request.artifactIds ?? [])],
     };
     const projectId = this.projectId;
     const { data, error, response } = await this.send(() =>
