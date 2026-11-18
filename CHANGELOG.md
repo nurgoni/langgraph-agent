@@ -6,23 +6,49 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-18
+
+M7 Files & Execution: file milik user dan agent. Upload dan unduh artifact, workspace per thread
+dengan tool file, eksekusi Python/shell di sandbox Docker terisolasi, dan panel artifact di
+frontend (preview gambar, CSV, PDF). Kode buatan model tidak pernah dijalankan di proses service.
+
+**Catatan upgrade:**
+
+1. `uv sync`, lalu `uv run python -m agent_service.run_migrate`. Migrasi menambah tabel
+   `artifacts` (revisi `0006`) dan `workspace_files` (revisi `0007`). Service menolak start sebelum
+   migrasi dijalankan.
+2. Docker Compose: `docker compose up -d --build`. Service baru `sandbox-image` (membangun image
+   eksekusi lalu selesai) dan `sandbox-runner`, yang me-mount `/var/run/docker.sock`; host harus
+   punya Docker Engine atau Docker Desktop. Volume baru `artifacts`. Build pertama image sandbox
+   mengunduh numpy, pandas, dan matplotlib.
+3. Di luar mesin dev, isi `SANDBOX_TOKEN` (minimal 32 karakter) seperti `JWT_SECRET`. Tanpa
+   `SANDBOX_URL` (service di host tanpa runner), `run_python`/`run_shell` tidak tersedia dan agent
+   tetap berjalan.
+4. Jika `ARTIFACT_MAX_BYTES` dinaikkan, naikkan juga `API_MAX_BODY_SIZE` image `web` (default
+   `26m`), karena proxy nginx menolak body yang lebih besar lebih dulu.
+5. Chatbot dan research assistant kini selalu punya tool file workspace (dan tool eksekusi jika
+   sandbox dikonfigurasi), jadi prompt tool ke model bertambah. Agent custom tidak terdampak:
+   signature `BaseAgent.build` tidak berubah; workspace datang lewat runtime context
+   (`ToolCallingAgent(files=WorkspaceToolkit(...))`).
+6. Frontend: `corepack pnpm install` di `frontend/` (dependency baru `papaparse` dan
+   `react-resizable-panels`). Kontrak API hanya bertambah (`artifact_ids`, `ChatMessage.artifacts`,
+   `ProjectSettings.tool_approval`, route `/artifacts`), tanpa perubahan yang breaking.
+
 ### Added
 
 - Artifact (FR-46): `POST /artifacts` (upload multipart), `GET /artifacts/{id}` (unduh, selalu
   `attachment`), dan `DELETE /artifacts/{id}`, hanya untuk pemiliknya. Pesan bisa melampirkan
   upload lewat `artifact_ids` di input run, dan lampiran tampil di `ChatMessage.artifacts`.
   Artifact ikut terhapus saat thread atau project-nya dihapus. `AgentClient` mendapat
-  `upload_artifact`, `download_artifact`, dan `delete_artifact` (+ versi async). Langkah upgrade:
-  `uv sync`, lalu `run_migrate` (revisi `0006`, tabel `artifacts`) (F35).
+  `upload_artifact`, `download_artifact`, dan `delete_artifact` (+ versi async) (F35).
 - Env `ARTIFACT_DIR` (default `data/artifacts`) dan `ARTIFACT_MAX_BYTES` (default 25 MB), volume
-  compose `artifacts`, dan `API_MAX_BODY_SIZE` untuk proxy nginx image `web` (default `26m`).
-  Rebuild image `agent-service` dan `web` (F35).
+  compose `artifacts`, dan `API_MAX_BODY_SIZE` untuk proxy nginx image `web` (default `26m`)
+  (F35).
 - Workspace per thread (FR-47, FR-48): chatbot dan research assistant mendapat tool `read_file`,
   `write_file`, `edit_file`, `list_files`, `grep` (teks literal), dan `share_file` (file workspace →
   artifact). Lampiran disalin ke `uploads/<nama>` supaya agent bisa membacanya. Output tool yang
   melebihi `TOOL_OUTPUT_MAX_TOKENS` (default 4.000) disimpan di `tool-outputs/` dan model menerima
-  cuplikan + path. Workspace ikut terhapus bersama thread. Langkah upgrade: `run_migrate` (revisi
-  `0007`, tabel `workspace_files`) (F36).
+  cuplikan + path. Workspace ikut terhapus bersama thread (F36).
 - Sandbox kode (FR-49, NFR-10): tool `run_python` dan `run_shell` untuk chatbot dan research
   assistant, dijalankan di container sekali pakai tanpa jaringan (rootfs read-only, non-root,
   512 MB, 1 CPU, 128 proses, timeout `SANDBOX_TIMEOUT_SECONDS` default 60 detik). File workspace
@@ -271,7 +297,8 @@ yang dipublikasikan.
 - `docs/ARCHITECTURE.md`: lifespan, alur request, kepemilikan thread, error, persistence, dan cara
   menambah agent (F10).
 
-[Unreleased]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.3.0...v0.4.0

@@ -14,17 +14,17 @@ berulang ada di dev-time skill `.claude/skills/` (daftar di AGENTS.md § Dev-tim
 
 ## Status Saat Ini
 
-- **Fase:** M7 Files & Execution. F35–F37 di-merge. F38 (Artifact panel UI, fitur terakhir M7)
-  selesai di working tree `develop`, menunggu user membuat `feature/F38-artifact-panel`, commit,
-  dan PR.
-- **Berikutnya:** rilis **v0.7.0**, lalu M8 (F39 SQL data source).
+- **Fase:** M7 Files & Execution selesai (F35–F38 di-merge). Rilis **v0.7.0** disiapkan di working
+  tree `develop` (versi, CHANGELOG, `uv.lock`, kontrak, `frontend/package.json`), menunggu user
+  membuat `release/v0.7.0`, PR ke `main` (pastikan **Merged**), tag, dan back-merge.
+- **Berikutnya:** M8 Data Analytics, mulai **F39** (SQL data source).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Arsip:** Decision Log M0–M4 ada di
   [archive/decision-log-m0-m4.md](archive/decision-log-m0-m4.md), F26–F31 di
   [archive/decision-log-m4-m5.md](archive/decision-log-m4-m5.md), dan dev-time skill + F32–F34 di
   [archive/decision-log-m6.md](archive/decision-log-m6.md).
-- **Terakhir diperbarui:** 2026-11-18 (F38)
+- **Terakhir diperbarui:** 2026-11-18 (rilis v0.7.0)
 
 ## Aturan Kerja
 
