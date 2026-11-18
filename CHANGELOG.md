@@ -14,6 +14,12 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 - Service compose `web` (`WEB_PORT`, default 3000): nginx menyajikan build React dan mem-proxy
   `/api/*` ke service (same-origin, SSE tanpa buffering). Job CI `frontend` dan hook pre-commit
   `frontend-check` (F32).
+- Chat di frontend (FR-43): assistant-ui dengan runtime custom untuk SSE `POST /stream`. Token
+  streaming, blok reasoning, status tool call, langkah sub-agent bertingkat, pertanyaan interrupt,
+  peringatan jawaban terpotong, tombol Stop, dan pemilih model. Thread dibuka ulang lewat
+  `/chat/<thread_id>`. Tipe event SSE digenerate dari `contracts/stream-event.schema.json` (F33).
+- Image `web` memakai cache mount BuildKit untuk store pnpm, jadi rebuild hanya mengunduh paket
+  yang berubah (F33).
 
 ## [0.5.0] - 2026-11-17
 

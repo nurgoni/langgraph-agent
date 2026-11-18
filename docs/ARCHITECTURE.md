@@ -414,9 +414,43 @@ dev:  vite :5173 ── /api/* → AGENT_URL (default 127.0.0.1:8080)
   membaca token dari store di setiap request, dan logout saat respons 401 untuk request yang
   membawa token. `RequireAuth` mengarahkan ke `/login`.
 - **Route** (mode data React Router): `/login`, lalu layout terproteksi `AppShell` (sidebar
-  shadcn: chat baru, Recents, user + logout) dengan beranda yang membaca `/info`.
-- **Tipe** dari `contracts/openapi.json` (`openapi-typescript`), dicek drift-nya oleh hook
-  `frontend-check` dan CI.
+  shadcn: chat baru, Recents, user + logout) dengan `ChatPage` di `/` (chat baru) dan
+  `/chat/:threadId` (keputusan user F33). Kedua route memakai komponen yang sama, jadi state tetap
+  utuh saat URL chat baru diganti ke thread yang baru dibuat.
+- **Tipe** dari `contracts/openapi.json` (`openapi-typescript`) dan
+  `contracts/stream-event.schema.json` (`scripts/stream-events.mjs`, json-schema-to-typescript),
+  dicek drift-nya oleh hook `frontend-check` dan CI.
+
+### Chat (F33)
+
+```text
+ChatPage ── useChatRuntime ── useExternalStoreRuntime (assistant-ui) ──► Thread
+                │
+                └─ ChatController (state di luar React, useSyncExternalStore)
+                      ├─ ChatService.startRun  → POST /stream (parseAs stream) → readStreamEvents
+                      ├─ ChatService.loadHistory → POST /history
+                      └─ conversation.ts: applyStreamEvent → toThreadMessages
+```
+
+- **Spesifikasi acuan** adalah `MessageRenderer` Streamlit. Semua message setelah satu pesan user
+  menjadi satu message asisten: reasoning dan token live, lalu diganti message utuh. Hasil tool
+  mengisi part tool call yang `tool_call_id`-nya sama. Part dari message ber-`agent` membawa
+  `parentId` = nama expert, dan `thread.tsx` mengelompokkannya per expert (FR-23).
+- **Status message** memakai status assistant-ui: `incomplete/length` untuk `truncated` (FR-30),
+  `incomplete/error` untuk frame `error`, dan `incomplete/cancelled` saat user menekan Stop. Teks
+  yang sudah di-stream tetap tampil saat run dihentikan.
+- **Pindah thread** menaikkan `generation` controller dan membatalkan run aktif (`AbortController`),
+  sehingga event atau riwayat yang terlambat dari thread sebelumnya diabaikan.
+- **Agent** selalu `default_agent` lewat `POST /stream`. Model dipilih di composer dari `/info`
+  (keputusan user F33). Agent lain dipakai lewat Project di F34.
+- **Template.** `src/components/assistant-ui/elements/` disalin dari registry assistant-ui tanpa
+  diubah; ESLint mematikan aturan yang dilanggar upstream hanya di folder itu. `thread.tsx`
+  dipangkas dan disesuaikan (keputusan user: template boleh diedit). Registry saat ini meminta
+  `@assistant-ui/react` ^0.15.36 (belum lolos jeda 14 hari); template lolos type check dengan
+  0.15.32 yang di-pin.
+- **Test** memakai rekaman SSE dan riwayat asli (`src/features/chat/__fixtures__/`, Ollama
+  `qwen3.5:9b`). Riwayat thread yang dibuka ulang harus menghasilkan message yang sama persis
+  dengan hasil stream-nya.
 - **Vendor.** `src/components/ui/` dan `src/hooks/use-mobile.ts` hasil CLI shadcn tidak diedit.
   ESLint mematikan tiga aturan untuk file vendor (Fast Refresh, `react-hooks/purity`,
   `react-hooks/set-state-in-effect`); kode aplikasi tetap memakai semuanya.

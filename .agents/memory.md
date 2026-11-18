@@ -14,15 +14,15 @@ berulang ada di dev-time skill `.claude/skills/` (daftar di AGENTS.md § Dev-tim
 
 ## Status Saat Ini
 
-- **Fase:** M6 Frontend. F32 (frontend scaffold & auth) selesai dan menunggu user commit, push,
-  dan PR di branch `feature/F32-frontend-scaffold`.
-- **Berikutnya:** **F33** (Chat UI), dikerjakan dengan skill `feature-workflow`.
+- **Fase:** M6 Frontend. F33 (Chat UI) selesai dan menunggu user commit, push, dan PR di branch
+  `feature/F33-chat-ui`. E2E Compose F33 belum dijalankan (build image `web` terputus).
+- **Berikutnya:** **F34** (Projects & threads UI), lalu rilis v0.6.0.
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Arsip:** Decision Log M0–M4 ada di
   [archive/decision-log-m0-m4.md](archive/decision-log-m0-m4.md), dan F26–F31 di
   [archive/decision-log-m4-m5.md](archive/decision-log-m4-m5.md).
-- **Terakhir diperbarui:** 2026-11-17 (F32)
+- **Terakhir diperbarui:** 2026-11-17 (F33)
 
 ## Aturan Kerja
 
@@ -76,6 +76,39 @@ Ringkasan pelajaran dari M0–M5 yang masih berlaku (detail di arsip dan entri f
   jalankan `generate:api`. Kode aplikasi tidak mengedit vendor shadcn.
 
 ## Decision Log
+
+### 2026-11-17: Chat UI dari F33
+
+- **Keputusan user:** pemilih model saja di composer (agent selalu `default_agent`, agent lain lewat
+  Project F34). Template registry assistant-ui boleh diedit (hanya `src/components/ui/` vendor).
+  URL thread `/chat/:threadId`, chat baru di `/`.
+- **Keputusan desain:**
+  - assistant-ui 0.15.32 + react-markdown 0.14.24 (dipin persis). Registry meminta ^0.15.36 yang
+    belum lolos jeda 14 hari; template diambil dari JSON registry (`r.assistant-ui.com/<nama>.json`,
+    butuh curl karena User-Agent Python ditolak 403) dan lolos tsc dengan 0.15.32.
+    `elements/` disalin apa adanya (override ESLint per folder), `thread.tsx` dipangkas.
+  - Tipe SSE dari `contracts/stream-event.schema.json` lewat `scripts/stream-events.mjs`
+    (json-schema-to-typescript, mode `--check`), bagian dari `generate:api`/`check:api`.
+  - `ChatController` di luar React (`useSyncExternalStore`) dengan `generation` untuk membuang hasil
+    terlambat saat pindah thread. `conversation.ts` murni: satu message asisten per pesan user,
+    `parentId` = nama expert, status `incomplete/length|error|cancelled`.
+  - Kedua route chat memakai `ChatPage` yang sama, jadi state tidak hilang saat URL chat baru
+    diganti ke `/chat/<id>` (tidak ada request `/history`).
+  - Dockerfile `web`: cache mount BuildKit untuk store pnpm.
+- **Hasil ukur:** rekaman Ollama `qwen3.5:9b`: reasoning 18 dtk (224 frame reasoning), tool call
+  4 dtk, supervisor 10 dtk, terpotong (600 token) 12 dtk. Bundle 1,1 MB (337 kB gzip), belum
+  code-split.
+- **Pelajaran:**
+  - `TextDecoderStream` bentrok dengan tipe lib TS (`BufferSource`); pakai `TextDecoder` dengan
+    `{ stream: true }`.
+  - jsdom butuh polyfill `ResizeObserver`, `scrollTo`, `scrollIntoView` untuk viewport assistant-ui.
+  - `new Request(request)` memakai body request asli; di wrapper `fetch` test, baca `input.url`.
+  - Lint `react-hooks/refs` melarang ref dibaca lewat callback di initializer `useState`; pasang
+    listener lewat effect.
+  - Mutation check menemukan guard `generation` di loop event tidak teruji, karena abort mematikan
+    stream; test baru memakai body yang mengabaikan abort.
+  - Rekaman `.sse` diakhiri `\n\n`, dan hook `end-of-file-fixer` memotongnya saat user commit.
+    Fixture dikecualikan dari hook itu. File data baru: cek hook pre-commit sebelum handoff.
 
 ### 2026-11-17: Frontend scaffold dari F32
 

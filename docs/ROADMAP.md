@@ -47,7 +47,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F30 | Long-term memory | M5 | done |
 | F31 | Evals & tracing | M5 | done |
 | F32 | Frontend scaffold & auth | M6 | done |
-| F33 | Chat UI | M6 | todo |
+| F33 | Chat UI | M6 | done |
 | F34 | Projects & threads UI | M6 | todo |
 | F35 | Artifact storage | M7 | todo |
 | F36 | Workspace & file tools | M7 | todo |
@@ -1475,6 +1475,13 @@ Scope commit frontend: `frontend`. Aturan kode frontend ada di [ADR 0003](adr/00
   status tool, grup sub-agent, interrupt, peringatan terpotong), `tests`
 - **Langkah 1 (klarifikasi):** cek ulang API assistant-ui untuk runtime custom dan part reasoning di
   versi yang di-pin.
+  - **Hasil cek (0.15.32, versi terbaru yang lolos jeda 14 hari):** `useExternalStoreRuntime`
+    (`messages`, `isRunning`, `onNew`, `onCancel`), part `reasoning`, `tool-call` dengan `result`,
+    `parentId` di setiap part, `MessagePrimitive.GroupedParts`, dan status
+    `incomplete/length|error|cancelled`. Semuanya cukup tanpa mengubah kontrak API.
+  - **Keputusan user:** pemilih **model saja** di composer (agent selalu `default_agent`; agent lain
+    lewat Project di F34). Template registry assistant-ui **boleh diedit** (hanya
+    `src/components/ui/` yang vendor). URL thread **`/chat/:threadId`**, chat baru di `/`.
 - **Catatan desain:**
   - Parser SSE TypeScript memakai tipe dari `stream-event.schema.json`.
   - Perilaku `MessageRenderer` Streamlit menjadi spesifikasi acuan (urutan reasoning → token →
@@ -1486,8 +1493,28 @@ Scope commit frontend: `frontend`. Aturan kode frontend ada di [ADR 0003](adr/00
   3. `feat(frontend): render sub-agent steps and interrupts`
   4. `feat(frontend): load thread history`
   5. `docs: record F33 chat ui decisions`
+- **Penyesuaian saat implementasi:**
+  - Registry assistant-ui saat ini meminta `@assistant-ui/react` ^0.15.36 (dirilis 2026-11-12,
+    belum lolos jeda 14 hari). Template (`thread`, `reasoning`, `tool-fallback`, `tool-group`,
+    `markdown-text`) diambil langsung dari JSON registry dan lolos type check dengan 0.15.32.
+    `elements/` disalin apa adanya; `thread.tsx` dipangkas (tanpa attachment, suara, cabang, edit,
+    saran) dan ditambah grup sub-agent, peringatan terpotong, tanda Stop, dan slot pemilih model.
+  - Tipe event SSE tidak ada di OpenAPI, jadi digenerate dari `contracts/stream-event.schema.json`
+    (`scripts/stream-events.mjs`, json-schema-to-typescript) dan dicek drift-nya di `check:api`.
+  - State percakapan di `ChatController` (di luar React, `useSyncExternalStore`), supaya run dan
+    riwayat yang terlambat bisa diabaikan saat pindah thread tanpa `setState` di effect.
+  - Satu message asisten per pesan user (seperti blok chat Streamlit), dengan status assistant-ui
+    untuk terpotong, error, dan dihentikan.
+  - Fixture: rekaman SSE dan riwayat asli dari Ollama `qwen3.5:9b` (reasoning, tool call,
+    sub-agent, interrupt, terpotong), direkam dengan template smoke di database sementara.
+  - Image `web`: cache mount BuildKit untuk store pnpm.
+  - Rencana commit 1–4 digabung menjadi satu commit frontend, karena converter yang sama menangani
+    token, reasoning, tool, sub-agent, dan riwayat.
 - **Acceptance criteria:**
-  - [ ] Setara Streamlit untuk FR-20, FR-23, FR-24, FR-29, dan FR-30 (dites dengan fixture SSE).
+  - [x] Setara Streamlit untuk FR-20, FR-23, FR-24, FR-29, dan FR-30 (dites dengan fixture SSE):
+        `conversation.test.ts` (rekaman asli, termasuk riwayat = hasil stream), `chat.test.tsx`
+        (route asli di jsdom), dan `chat-controller.test.ts` (model, Stop, pindah thread). Cek
+        visual di browser dilakukan user.
 - **Squash title:** `feat(frontend): add streaming chat with reasoning and sub-agents (F33)`
 
 ### F34: Projects & threads UI

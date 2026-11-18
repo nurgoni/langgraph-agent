@@ -268,14 +268,22 @@ corepack pnpm install          # sekali; resolusi versi memakai cooldown 14 hari
 corepack pnpm dev              # http://localhost:5173, /api di-proxy ke service :8080
 corepack pnpm test             # Vitest
 corepack pnpm run check        # tipe API sinkron dengan contracts/, tsc, ESLint
-corepack pnpm generate:api     # generate ulang src/api/schema.d.ts setelah contracts/ berubah
+corepack pnpm generate:api     # generate ulang tipe API setelah contracts/ berubah
 corepack pnpm build            # build statis ke dist/
 ```
 
-- **Tipe API** di `src/api/schema.d.ts` digenerate dari `contracts/openapi.json`, tidak ditulis
-  manual. Client `openapi-fetch` menambahkan `Authorization: Bearer` dan logout otomatis saat
-  service menjawab 401.
+- **Tipe API** digenerate dari kontrak, tidak ditulis manual: `src/api/schema.d.ts` dari
+  `contracts/openapi.json`, dan `src/api/stream-event.d.ts` (event SSE) dari
+  `contracts/stream-event.schema.json`. Client `openapi-fetch` menambahkan `Authorization: Bearer`
+  dan logout otomatis saat service menjawab 401.
+- **Chat** (F33) memakai assistant-ui dengan runtime yang membaca SSE `POST /stream` agent default:
+  token streaming, blok reasoning, status tool call, langkah sub-agent bertingkat, pertanyaan
+  interrupt, dan peringatan jawaban terpotong. Chat baru ada di `/`, dan setelah respons pertama
+  URL berganti ke `/chat/<thread_id>` sehingga bisa dibuka ulang. Model dipilih di composer.
 - **Token** disimpan di `sessionStorage`: bertahan saat refresh, hilang saat tab ditutup.
+- **`src/components/assistant-ui/`** berisi template registry assistant-ui. `thread.tsx` sudah
+  disesuaikan untuk service, sedangkan `elements/` disalin apa adanya supaya bisa dibandingkan saat
+  upgrade.
 - **`src/components/ui/`** adalah salinan vendor shadcn/ui dan tidak diedit. Tambah komponen dengan
   `corepack pnpm dlx shadcn@4.23.0 add <nama>`. CLI shadcn memanggil `pnpm` langsung, jadi
   jalankan `corepack enable` sekali (atau sediakan `pnpm` di PATH).

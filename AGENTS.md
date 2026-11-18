@@ -57,8 +57,8 @@ corepack pnpm test                         # Vitest
 Sebelum menyatakan pekerjaan selesai, jalankan: `ruff check`, `ruff format --check`,
 `pyrefly check`, dan `pytest`. Semua harus hijau. Jika API berubah, jalankan juga
 `export_contracts` dan `corepack pnpm generate:api` (di `frontend/`), lalu sertakan
-`contracts/` dan `frontend/src/api/schema.d.ts` di commit yang sama (CONTRIBUTING § Kontrak API).
-Jika `frontend/` berubah, jalankan juga `check` dan `test` frontend.
+`contracts/` dan `frontend/src/api/` (`schema.d.ts`, `stream-event.d.ts`) di commit yang sama
+(CONTRIBUTING § Kontrak API). Jika `frontend/` berubah, jalankan juga `check` dan `test` frontend.
 
 ## Struktur Folder Target
 
