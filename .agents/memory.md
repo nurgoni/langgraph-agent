@@ -14,11 +14,10 @@ berulang ada di dev-time skill `.claude/skills/` (daftar di AGENTS.md § Dev-tim
 
 ## Status Saat Ini
 
-- **Fase:** M6 Frontend. F33 sudah di-commit user di `feature/F33-chat-ui`, dan e2e Compose
-  lulus (15 test, 2026-11-18); menunggu push dan PR. F34 (Projects & threads UI) selesai di
-  working tree, dikerjakan di atas F33 sebelum F33 di-merge; branch `feature/F34-projects-ui`
-  dibuat user setelah F33 masuk `develop` (stash → pull → branch → stash pop).
-- **Berikutnya:** PR F33 → commit F34 → e2e F34 → rilis v0.6.0.
+- **Fase:** M6 Frontend selesai (F32–F34 di-merge). Rilis **v0.6.0** disiapkan di working tree
+  `develop` (versi, CHANGELOG, `uv.lock`, kontrak, `frontend/package.json`), menunggu user membuat
+  `release/v0.6.0`, PR ke `main`, tag, dan back-merge.
+- **Berikutnya:** M7 Files & Execution, mulai **F35** (Artifact storage).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Arsip:** Decision Log M0–M4 ada di
