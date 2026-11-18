@@ -9,9 +9,11 @@ FROM node:${NODE_VERSION}-alpine AS build
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 WORKDIR /app
 RUN corepack enable
-# Dependency dulu, supaya layer ini tetap ter-cache selama lockfile tidak berubah.
+# Dependency dulu, supaya layer ini tetap ter-cache selama lockfile tidak berubah. Store pnpm di
+# cache mount BuildKit: saat lockfile berubah, hanya paket baru yang diunduh (registry npm lambat).
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+    pnpm install --frozen-lockfile --store-dir /pnpm/store
 COPY . .
 RUN pnpm build
 

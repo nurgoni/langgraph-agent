@@ -25,7 +25,7 @@ describe("app", () => {
     expect(router.state.location.pathname).toBe("/login");
   });
 
-  it("logs in and shows the app shell with live service info", async () => {
+  it("logs in and shows the app shell with the chat and live service info", async () => {
     const service = new FakeService();
     const { router } = renderApp(service, "/");
 
@@ -33,7 +33,8 @@ describe("app", () => {
 
     expect(await screen.findByRole("heading", { name: "Hello, demo" })).toBeInTheDocument();
     expect(screen.getByText("Recents")).toBeInTheDocument();
-    expect(await screen.findByText("Connected · 2 agents · default chatbot")).toBeInTheDocument();
+    expect(await screen.findByRole("combobox", { name: "Model" })).toHaveTextContent("fake");
+    expect(screen.getByLabelText("Message input")).toBeInTheDocument();
     expect(router.state.location.pathname).toBe("/");
     expect(service.requests.map((request) => [request.path, request.authorization])).toEqual([
       ["/api/auth/login", null],

@@ -1,9 +1,9 @@
 /**
  * Layout utama setelah login (FR-42): sidebar ala Claude (chat baru, Recents) dan area konten.
- * Isi sidebar (thread, Projects) diisi F33/F34; di F32 sidebar masih kosong.
+ * Daftar thread dan Projects di sidebar diisi F34.
  */
 import { LogOut, MessageSquarePlus } from "lucide-react";
-import { Outlet } from "react-router";
+import { Link, Outlet } from "react-router";
 
 import { useAuth } from "@/auth/auth-context";
 import { Button } from "@/components/ui/button";
@@ -33,9 +33,11 @@ export function AppShell() {
           <span className="px-2 text-sm font-semibold">{APP_NAME}</span>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton disabled>
-                <MessageSquarePlus />
-                <span>New chat</span>
+              <SidebarMenuButton asChild>
+                <Link to="/">
+                  <MessageSquarePlus />
+                  <span>New chat</span>
+                </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
@@ -57,7 +59,7 @@ export function AppShell() {
           </div>
         </SidebarFooter>
       </Sidebar>
-      <SidebarInset>
+      <SidebarInset className="h-svh">
         <header className="flex h-12 items-center border-b px-2">
           <SidebarTrigger />
         </header>

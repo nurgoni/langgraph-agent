@@ -4,8 +4,8 @@
  */
 import { Navigate, type RouteObject } from "react-router";
 
+import { ChatPage } from "@/features/chat/ChatPage";
 import { AppShell } from "@/routes/AppShell";
-import { HomePage } from "@/routes/HomePage";
 import { LoginPage } from "@/routes/LoginPage";
 import { RequireAuth } from "@/routes/RequireAuth";
 
@@ -16,7 +16,10 @@ export const appRoutes: RouteObject[] = [
     children: [
       {
         Component: AppShell,
-        children: [{ index: true, Component: HomePage }],
+        children: [
+          { index: true, Component: ChatPage },
+          { path: "chat/:threadId", Component: ChatPage },
+        ],
       },
     ],
   },

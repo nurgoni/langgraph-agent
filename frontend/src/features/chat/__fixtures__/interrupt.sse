@@ -1,0 +1,4 @@
+data: {"type":"message","content":{"type":"ai","content":"What is your birthdate?","tool_calls":[],"tool_call_id":null,"run_id":"01a1ea2b-a003-7911-830e-7da565197488","agent":null,"reasoning":null,"truncated":false,"response_metadata":{},"custom_data":{}}}
+
+data: [DONE]
+
