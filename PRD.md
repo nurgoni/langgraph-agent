@@ -261,8 +261,9 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
   pesan lewat `artifact_ids` di input run, dan artifact ikut terhapus saat thread-nya dihapus.
 - **FR-47** Workspace (virtual filesystem) per thread di Postgres. Tool `read_file`, `write_file`,
   `edit_file`, `list_files`, dan `grep`. Path dinormalisasi dan tidak bisa keluar dari workspace.
-- **FR-48** Output tool yang melebihi `TOOL_OUTPUT_MAX_TOKENS` ditulis ke workspace. Model hanya
-  menerima cuplikan dan path-nya.
+- **FR-48** Output tool yang melebihi `TOOL_OUTPUT_MAX_TOKENS` (default 4.000) ditulis ke workspace.
+  Model hanya menerima cuplikan dan path-nya. Lampiran pesan disalin ke workspace (`uploads/`), dan
+  tool `share_file` membagikan file workspace sebagai artifact.
 - **FR-49** Sandbox. Kode (`run_python`, `run_shell`) hanya dijalankan di dalam `Sandbox`, tidak
   pernah di proses service. Sandbox berjalan tanpa jaringan, dengan batas CPU, memori, jumlah proses,
   dan waktu. File workspace disalin masuk sebelum eksekusi, dan file baru disalin keluar sebagai
@@ -435,7 +436,7 @@ Node yang LLM-nya diberi tag `skip_stream` tidak menghasilkan frame `token`.
 | `DATABASE_URL` | F23 (selesai) | Koneksi Postgres. Menggantikan `SQLITE_DB_PATH` |
 | `CONTEXT_MAX_TOKENS` | F29 | Anggaran token riwayat yang dikirim ke model |
 | `ARTIFACT_DIR`, `ARTIFACT_MAX_BYTES` | F35 (selesai) | Lokasi (default `data/artifacts`) dan batas ukuran artifact (default 25 MB) |
-| `TOOL_OUTPUT_MAX_TOKENS` | F36 | Batas output tool sebelum dipindah ke workspace |
+| `TOOL_OUTPUT_MAX_TOKENS` | F36 (selesai) | Batas output tool sebelum dipindah ke workspace (default 4.000) |
 | `SANDBOX_IMAGE`, `SANDBOX_TIMEOUT_SECONDS` | F37 | Image dan batas waktu sandbox |
 | `DATA_SOURCE_URL` | F39 | Koneksi read-only ke database yang dianalisa |
 | `JOBS_FILE` | F41 | Lokasi definisi job terjadwal |

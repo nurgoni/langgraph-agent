@@ -140,6 +140,7 @@ menunjuk ke container itu sendiri.
 | `CORS_ORIGINS` | tidak | Origin browser yang boleh memanggil API, dipisah koma. Kosong = tidak ada |
 | `FIRECRAWL_API_KEY` | tidak | Key [Firecrawl](https://firecrawl.dev) untuk tool `web_search` (research-assistant, supervisor). Kosong = tanpa pencarian web |
 | `ARTIFACT_DIR` | tidak | Folder isi file artifact, default `data/artifacts`. Compose memakai volume `artifacts` |
+| `TOOL_OUTPUT_MAX_TOKENS` | tidak | Output tool lebih besar dari ini (default `4000` token) disimpan di workspace thread, dan model menerima cuplikan + path |
 | `ARTIFACT_MAX_BYTES` | tidak | Batas ukuran upload, default `26214400` (25 MB). Upload lebih besar → 413. Di balik proxy `web`, naikkan juga `API_MAX_BODY_SIZE` (default `26m`) |
 | `AGENT_URL` | tidak | URL service untuk UI/client/eval, default `http://localhost:8080` |
 | `EVAL_USERNAME`, `EVAL_PASSWORD` | eval | Akun untuk `run_evals`, sebaiknya service account (`--role service`) |
@@ -190,6 +191,12 @@ curl -N -X POST http://localhost:8080/chatbot/stream \
 File diunggah lewat `POST /artifacts`, lalu dilampirkan ke pesan dengan `artifact_ids`. Lampiran
 tampil di `ChatMessage.artifacts` pada riwayat, dan artifact ikut terhapus saat thread-nya dihapus.
 Satu artifact hanya bisa dilampirkan di satu thread (thread lain → 409).
+
+Chatbot dan research assistant punya workspace per thread (F36): lampiran disalin ke
+`uploads/<nama>`, dan agent memakai tool `read_file`, `write_file`, `edit_file`, `list_files`,
+`grep` (teks literal), serta `share_file` untuk memberi file ke user sebagai artifact. Output tool
+yang lebih besar dari `TOOL_OUTPUT_MAX_TOKENS` disimpan di `tool-outputs/`. Workspace ikut
+terhapus bersama thread-nya.
 
 ```python
 with AgentClient(base_url="http://localhost:8080") as client:
