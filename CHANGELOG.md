@@ -6,6 +6,39 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-18
+
+M6 Frontend: aplikasi web React + TypeScript bergaya Claude di `frontend/`, dengan login, chat
+streaming (reasoning, tool call, sub-agent, interrupt), Projects, dan Recents. Streamlit menjadi
+dev console. Tidak ada perubahan API, skema database, atau dependency Python.
+
+**Catatan upgrade:**
+
+1. Docker Compose: service baru `web` (`WEB_PORT`, default 3000) menyajikan frontend dan
+   mem-proxy `/api` ke service. Jalankan `docker compose up -d --build`, lalu login di
+   `http://localhost:3000` dengan akun dari `manage create-user`. Build pertama image `web`
+   mengunduh semua paket npm dan bisa lama.
+2. Pengembangan frontend: Node 24 dan `corepack pnpm install` di `frontend/` (lihat README §
+   Frontend). Setelah `contracts/` berubah, jalankan `corepack pnpm generate:api`.
+
+### Added
+
+- Frontend React + TypeScript di `frontend/` (FR-42, ADR 0003): Vite, Tailwind, shadcn/ui, React
+  Router, TanStack Query. Halaman login, route terproteksi, dan app shell dengan sidebar. Token di
+  `sessionStorage`. Tipe API digenerate dari `contracts/openapi.json` (F32).
+- Service compose `web` (`WEB_PORT`, default 3000): nginx menyajikan build React dan mem-proxy
+  `/api/*` ke service (same-origin, SSE tanpa buffering). Job CI `frontend` dan hook pre-commit
+  `frontend-check` (F32).
+- Chat di frontend (FR-43): assistant-ui dengan runtime custom untuk SSE `POST /stream`. Token
+  streaming, blok reasoning, status tool call, langkah sub-agent bertingkat, pertanyaan interrupt,
+  peringatan jawaban terpotong, tombol Stop, dan pemilih model. Thread dibuka ulang lewat
+  `/chat/<thread_id>`. Tipe event SSE digenerate dari `contracts/stream-event.schema.json` (F33).
+- Image `web` memakai cache mount BuildKit untuk store pnpm, jadi rebuild hanya mengunduh paket
+  yang berubah (F33).
+- Projects dan Recents di frontend (FR-44): sidebar dengan chat baru, Projects, dan Recents (rename
+  dan hapus). Halaman Projects, halaman project dengan instruksi, skill, daftar chat, dan composer,
+  serta form buat/edit project dengan pemilih skill. Project built-in tampil read-only (F34).
+
 ## [0.5.0] - 2026-11-17
 
 M5 Harness Core: Project sebagai agent deklaratif, system prompt yang dirakit per giliran, skill
@@ -208,7 +241,8 @@ yang dipublikasikan.
 - `docs/ARCHITECTURE.md`: lifespan, alur request, kepemilikan thread, error, persistence, dan cara
   menambah agent (F10).
 
-[Unreleased]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/nurgoni/langgraph-boilerplate-agent/compare/v0.2.0...v0.3.0

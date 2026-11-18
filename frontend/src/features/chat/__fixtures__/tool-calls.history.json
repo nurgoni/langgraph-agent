@@ -1,0 +1,70 @@
+{
+  "messages": [
+    {
+      "type": "human",
+      "content": "Use the calculator to compute 1234 * 5678, then state the result.",
+      "tool_calls": [],
+      "tool_call_id": null,
+      "run_id": null,
+      "agent": null,
+      "reasoning": null,
+      "truncated": false,
+      "response_metadata": {},
+      "custom_data": {}
+    },
+    {
+      "type": "ai",
+      "content": "",
+      "tool_calls": [
+        {
+          "name": "calculator",
+          "args": {
+            "expression": "1234 * 5678"
+          },
+          "id": "call_wltltkf6"
+        }
+      ],
+      "tool_call_id": null,
+      "run_id": null,
+      "agent": null,
+      "reasoning": "The user wants me to use the calculator to compute 1234 * 5678 and then state the result. I need to call the calculator tool with the expression \"1234 * 5678\".",
+      "truncated": false,
+      "response_metadata": {
+        "finish_reason": "tool_calls",
+        "model_name": "qwen3.5:9b",
+        "system_fingerprint": "fp_ollama",
+        "model_provider": "openai"
+      },
+      "custom_data": {}
+    },
+    {
+      "type": "tool",
+      "content": "7006652",
+      "tool_calls": [],
+      "tool_call_id": "call_wltltkf6",
+      "run_id": null,
+      "agent": null,
+      "reasoning": null,
+      "truncated": false,
+      "response_metadata": {},
+      "custom_data": {}
+    },
+    {
+      "type": "ai",
+      "content": "The result of 1234 * 5678 is **7,006,652**.",
+      "tool_calls": [],
+      "tool_call_id": null,
+      "run_id": null,
+      "agent": null,
+      "reasoning": "The user asked me to compute 1234 * 5678 using the calculator. The result is 7,006,652. I should state this clearly in my answer.\n\nI don't need to use web_search for this simple calculation, and there's no memory to save or search for since this is a straightforward math problem.",
+      "truncated": false,
+      "response_metadata": {
+        "finish_reason": "stop",
+        "model_name": "qwen3.5:9b",
+        "system_fingerprint": "fp_ollama",
+        "model_provider": "openai"
+      },
+      "custom_data": {}
+    }
+  ]
+}

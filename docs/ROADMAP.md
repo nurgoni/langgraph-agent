@@ -46,9 +46,9 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F29 | Context policy | M5 | done |
 | F30 | Long-term memory | M5 | done |
 | F31 | Evals & tracing | M5 | done |
-| F32 | Frontend scaffold & auth | M6 | todo |
-| F33 | Chat UI | M6 | todo |
-| F34 | Projects & threads UI | M6 | todo |
+| F32 | Frontend scaffold & auth | M6 | done |
+| F33 | Chat UI | M6 | done |
+| F34 | Projects & threads UI | M6 | done |
 | F35 | Artifact storage | M7 | todo |
 | F36 | Workspace & file tools | M7 | todo |
 | F37 | Sandbox | M7 | todo |
@@ -1445,9 +1445,26 @@ Scope commit frontend: `frontend`. Aturan kode frontend ada di [ADR 0003](adr/00
   5. `build(docker): serve the frontend as a web service`
   6. `ci: lint, type check and test the frontend`
   7. `docs: document frontend commands`
+- **Langkah 1 (keputusan user):** pnpm lewat corepack (versi di-pin di `packageManager`), Node 24
+  LTS, token di `sessionStorage`, dan API lewat proxy same-origin `/api` (nginx di image `web`,
+  proxy Vite di dev), tanpa CORS.
+- **Penyesuaian saat implementasi:**
+  - Versi diresolusi pnpm dengan `minimumReleaseAge` 14 hari (pnpm 12.17, React 19.3, React
+    Router 8.5, Vite 8.3, Vitest 5.1, ESLint 10, Tailwind 4.3, shadcn CLI 4.23). TypeScript dipin
+    `~5.9.3`, karena typescript-eslint 8.72 (`<6.1`) dan openapi-typescript 7.13 (`^5`) belum
+    mendukung TypeScript 7.
+  - shadcn memakai base Radix dan paket `cn` (pengganti clsx + tailwind-merge, milik shadcn).
+    Sidebar membawa `sheet`, `tooltip`, `skeleton`, `separator`, dan `src/hooks/use-mobile.ts`.
+  - Base URL client = `<origin>/api` absolut, supaya `Request` juga valid di jsdom.
+  - Tipe API dicek drift-nya oleh `pnpm check:api` di CI dan hook pre-commit `frontend-check`.
+  - Beranda membaca `/info` untuk membuktikan request terautentikasi melewati proxy.
+  - Commit 1–4 digabung menjadi satu commit frontend, karena scaffold, vendor, client, dan login
+    saling bergantung untuk lolos `tsc` dan ESLint.
 - **Acceptance criteria:**
-  - [ ] `docker compose up` → login di browser → app shell tampil.
-  - [ ] Job CI frontend hijau (NFR-11).
+  - [x] `docker compose up` → login → app shell tampil: Vitest (route asli di jsdom, service
+        palsu) dan e2e Compose lewat proxy `web` (login, `/info`, SSE). Cek visual di browser
+        dilakukan user.
+  - [x] Job CI frontend (NFR-11): `check:api`, `tsc`, ESLint, Vitest, build hijau lokal.
 - **Squash title:** `build(frontend): scaffold react app with auth and app shell (F32)`
 
 ### F33: Chat UI
@@ -1458,6 +1475,13 @@ Scope commit frontend: `frontend`. Aturan kode frontend ada di [ADR 0003](adr/00
   status tool, grup sub-agent, interrupt, peringatan terpotong), `tests`
 - **Langkah 1 (klarifikasi):** cek ulang API assistant-ui untuk runtime custom dan part reasoning di
   versi yang di-pin.
+  - **Hasil cek (0.15.32, versi terbaru yang lolos jeda 14 hari):** `useExternalStoreRuntime`
+    (`messages`, `isRunning`, `onNew`, `onCancel`), part `reasoning`, `tool-call` dengan `result`,
+    `parentId` di setiap part, `MessagePrimitive.GroupedParts`, dan status
+    `incomplete/length|error|cancelled`. Semuanya cukup tanpa mengubah kontrak API.
+  - **Keputusan user:** pemilih **model saja** di composer (agent selalu `default_agent`; agent lain
+    lewat Project di F34). Template registry assistant-ui **boleh diedit** (hanya
+    `src/components/ui/` yang vendor). URL thread **`/chat/:threadId`**, chat baru di `/`.
 - **Catatan desain:**
   - Parser SSE TypeScript memakai tipe dari `stream-event.schema.json`.
   - Perilaku `MessageRenderer` Streamlit menjadi spesifikasi acuan (urutan reasoning → token →
@@ -1469,8 +1493,28 @@ Scope commit frontend: `frontend`. Aturan kode frontend ada di [ADR 0003](adr/00
   3. `feat(frontend): render sub-agent steps and interrupts`
   4. `feat(frontend): load thread history`
   5. `docs: record F33 chat ui decisions`
+- **Penyesuaian saat implementasi:**
+  - Registry assistant-ui saat ini meminta `@assistant-ui/react` ^0.15.36 (dirilis 2026-11-12,
+    belum lolos jeda 14 hari). Template (`thread`, `reasoning`, `tool-fallback`, `tool-group`,
+    `markdown-text`) diambil langsung dari JSON registry dan lolos type check dengan 0.15.32.
+    `elements/` disalin apa adanya; `thread.tsx` dipangkas (tanpa attachment, suara, cabang, edit,
+    saran) dan ditambah grup sub-agent, peringatan terpotong, tanda Stop, dan slot pemilih model.
+  - Tipe event SSE tidak ada di OpenAPI, jadi digenerate dari `contracts/stream-event.schema.json`
+    (`scripts/stream-events.mjs`, json-schema-to-typescript) dan dicek drift-nya di `check:api`.
+  - State percakapan di `ChatController` (di luar React, `useSyncExternalStore`), supaya run dan
+    riwayat yang terlambat bisa diabaikan saat pindah thread tanpa `setState` di effect.
+  - Satu message asisten per pesan user (seperti blok chat Streamlit), dengan status assistant-ui
+    untuk terpotong, error, dan dihentikan.
+  - Fixture: rekaman SSE dan riwayat asli dari Ollama `qwen3.5:9b` (reasoning, tool call,
+    sub-agent, interrupt, terpotong), direkam dengan template smoke di database sementara.
+  - Image `web`: cache mount BuildKit untuk store pnpm.
+  - Rencana commit 1–4 digabung menjadi satu commit frontend, karena converter yang sama menangani
+    token, reasoning, tool, sub-agent, dan riwayat.
 - **Acceptance criteria:**
-  - [ ] Setara Streamlit untuk FR-20, FR-23, FR-24, FR-29, dan FR-30 (dites dengan fixture SSE).
+  - [x] Setara Streamlit untuk FR-20, FR-23, FR-24, FR-29, dan FR-30 (dites dengan fixture SSE):
+        `conversation.test.ts` (rekaman asli, termasuk riwayat = hasil stream), `chat.test.tsx`
+        (route asli di jsdom), dan `chat-controller.test.ts` (model, Stop, pindah thread). Cek
+        visual di browser dilakukan user.
 - **Squash title:** `feat(frontend): add streaming chat with reasoning and sub-agents (F33)`
 
 ### F34: Projects & threads UI
@@ -1481,15 +1525,40 @@ Scope commit frontend: `frontend`. Aturan kode frontend ada di [ADR 0003](adr/00
 - **Catatan desain:** layout ala Claude: sidebar (chat baru, Projects, Recents), halaman Project
   (instruksi, model, pemilih skill dari `GET /skills`, daftar chat). Form memakai komponen form
   shadcn.
+- **Langkah 1 (keputusan user):**
+  - **Recents = chat umum saja** (`GET /threads`, agent default). Chat project tampil di halaman
+    project masing-masing. Tanpa perubahan API.
+  - **Composer di halaman project** (seperti Claude): `/projects/:projectId` berisi ringkasan
+    project, daftar chat, dan composer. Pesan pertama pindah ke
+    `/projects/:projectId/chat/:threadId`.
+  - **Form shadcn + react-hook-form + zod** (`@hookform/resolvers`), dengan batas yang sama dengan
+    `schema/projects.py`.
 - **Rencana commit:**
   1. `feat(frontend): list recents with rename and delete`
   2. `feat(frontend): add projects list and project page`
   3. `feat(frontend): create and edit projects with a skill picker`
   4. `docs: record F34 projects ui decisions`
+- **Penyesuaian saat implementasi:**
+  - `ChatService` menerima `projectId` dan memakai `/projects/{id}/stream` dan `/history`.
+    `ProjectChatPage` memberi `key` per project ke `ChatPage`, jadi pindah project membuat
+    controller baru, sedangkan URL chat baru → thread tetap memakai komponen yang sama.
+  - `ChatController.setThreadCreatedListener` diganti `setRunListeners` (`onThreadCreated`,
+    `onRunFinished`): daftar thread di-refresh saat thread dibuat dan setiap run berakhir, karena
+    judul dan urutan thread berubah.
+  - Agent dasar dipilih saat membuat project dan dikunci saat edit (`ProjectUpdate` tidak punya
+    `base_agent_id`). Model "Service default" dikirim sebagai `null`.
+  - Skill aktif yang tidak ada lagi di katalog tetap tampil di pemilih supaya bisa dilepas.
+  - Hapus project ikut menghapus chat-nya (perilaku service), dan dialog konfirmasi menyebutnya.
+  - Komponen shadcn baru: `form`, `dialog`, `alert-dialog`, `dropdown-menu`, `checkbox`, `badge`.
+    `FakeService` test menyimpan project, skill, dan thread per scope di memori.
+  - Rencana commit 1–3 digabung: halaman project, form, dan Recents berbagi `ThreadActions`,
+    `thread-paths`, dan `FakeService` yang sama.
 - **Acceptance criteria:**
-  - [ ] User membuat project dengan instruksi + skill, chat di dalamnya, dan thread muncul di project
-        tersebut.
-  - [ ] Project built-in tampil read-only.
+  - [x] User membuat project dengan instruksi + skill, chat di dalamnya, dan thread muncul di project
+        tersebut: `projects.test.tsx` (body `POST /projects`, run lewat
+        `/projects/{id}/stream`, chat tampil di daftar project dan tidak di Recents).
+  - [x] Project built-in tampil read-only: badge "Built-in", tanpa menu edit/hapus, halaman edit
+        menolak, tetapi chat tetap bisa (`projects.test.tsx`).
 - **Squash title:** `feat(frontend): add projects and thread sidebar (F34)`
 - **Setelah merge:** rilis **v0.6.0** (demo showcase).
 

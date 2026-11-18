@@ -18,8 +18,10 @@ kode yang sederhana, eksplisit, dan mudah dites (Zen of Python).
 - **Percakapan persisten**: riwayat thread disimpan di Postgres via LangGraph checkpointer.
 - **Human-in-the-loop**: agent bisa berhenti (`interrupt`) dan melanjutkan dengan input user.
 - **Python client**: `AgentClient` sync dan async.
-- **UI Streamlit**: chat, riwayat thread, pemilih agent dan model.
-- **Auth sederhana**: bearer token opsional.
+- **Frontend React** (`frontend/`, mulai F32): login, chat streaming, Projects, dan Recents
+  bergaya Claude.
+- **UI Streamlit**: dev console (chat, riwayat thread, pemilih agent dan model).
+- **Auth per user**: login username/password, access token JWT.
 
 ## Arsitektur
 
@@ -88,7 +90,7 @@ tanpa identitas user, jadi URL yang dibagikan hanya bisa dibuka oleh pemilik thr
 ### Docker Compose
 
 ```bash
-docker compose up --build        # Postgres, migrasi, API di :8080, UI di :8501
+docker compose up --build        # Postgres, migrasi, API :8080, web :3000, dev console :8501
 docker compose down              # hentikan (tambahkan -v untuk menghapus data Postgres)
 ```
 
@@ -96,10 +98,13 @@ docker compose down              # hentikan (tambahkan -v untuk menghapus data P
   di `.env` sengaja tidak dipakai di dalam container.
 - **Variabel yang diambil dari shell atau `.env`:** `JWT_SECRET` (default nilai dev yang tidak
   aman, ganti di luar mesin dev), `JWT_TTL_SECONDS`, `CORS_ORIGINS`, dan `LOG_LEVEL`. Port bisa
-  dipindah dengan `SERVICE_PORT` dan `UI_PORT`.
+  dipindah dengan `SERVICE_PORT`, `WEB_PORT`, dan `UI_PORT`.
+- **Web:** buka `http://localhost:3000` dan login dengan akun dari `manage create-user`. Image
+  `web` (nginx) menyajikan build React dan meneruskan `/api/*` ke service, jadi browser tidak butuh
+  CORS.
 - **Akun:** `docker compose exec agent-service python -m agent_service.manage create-user demo`.
 - **Urutan start:** `postgres` (healthy) → `migrate` (Alembic + tabel checkpointer, lalu selesai)
-  → `agent-service` → `ui`. Migrasi tidak dijalankan di lifespan, supaya beberapa replika tidak
+  → `agent-service` → `web` dan `ui`. Migrasi tidak dijalankan di lifespan, supaya beberapa replika tidak
   menjalankannya bersamaan.
 - **Data:** thread tersimpan di volume `postgres-data`. Postgres hanya dibuka di `127.0.0.1`
   (port `POSTGRES_PORT`, default 5432). Kredensial dev bisa diganti lewat `POSTGRES_USER`,
@@ -250,6 +255,45 @@ uv run python -m agent_service.run_evals evals/skills.yaml
 Cek per kasus: `contains`, `not_contains`, `tools_called`, `tools_not_called`, `skills_loaded`, dan
 `max_latency_seconds`. Exit code 1 jika ada kasus gagal. `evals/smoke.yaml` (FakeModel) ikut
 dijalankan pytest di CI.
+
+## Frontend
+
+React + TypeScript di `frontend/` ([ADR 0003](docs/adr/0003-frontend-stack.md)): Vite, Tailwind,
+shadcn/ui, React Router, dan TanStack Query. Butuh Node 24 (`frontend/.nvmrc`). pnpm dijalankan
+lewat corepack bawaan Node, dan versinya di-pin di `package.json` (`packageManager`).
+
+```bash
+cd frontend
+corepack pnpm install          # sekali; resolusi versi memakai cooldown 14 hari
+corepack pnpm dev              # http://localhost:5173, /api di-proxy ke service :8080
+corepack pnpm test             # Vitest
+corepack pnpm run check        # tipe API sinkron dengan contracts/, tsc, ESLint
+corepack pnpm generate:api     # generate ulang tipe API setelah contracts/ berubah
+corepack pnpm build            # build statis ke dist/
+```
+
+- **Tipe API** digenerate dari kontrak, tidak ditulis manual: `src/api/schema.d.ts` dari
+  `contracts/openapi.json`, dan `src/api/stream-event.d.ts` (event SSE) dari
+  `contracts/stream-event.schema.json`. Client `openapi-fetch` menambahkan `Authorization: Bearer`
+  dan logout otomatis saat service menjawab 401.
+- **Chat** (F33) memakai assistant-ui dengan runtime yang membaca SSE `POST /stream` agent default:
+  token streaming, blok reasoning, status tool call, langkah sub-agent bertingkat, pertanyaan
+  interrupt, dan peringatan jawaban terpotong. Chat baru ada di `/`, dan setelah respons pertama
+  URL berganti ke `/chat/<thread_id>` sehingga bisa dibuka ulang. Model dipilih di composer.
+- **Projects dan Recents** (F34): sidebar berisi chat baru, Projects, dan Recents (chat umum,
+  dengan rename dan hapus). `/projects` menampilkan project built-in (read-only) dan milik user.
+  Halaman project (`/projects/<id>`) berisi instruksi, skill, daftar chat, dan composer untuk chat
+  baru di project itu; chat project dibuka ulang di `/projects/<id>/chat/<thread_id>`. Form buat
+  dan edit project memakai komponen form shadcn (react-hook-form + zod) dengan pemilih skill dari
+  `GET /skills`.
+- **Token** disimpan di `sessionStorage`: bertahan saat refresh, hilang saat tab ditutup.
+- **`src/components/assistant-ui/`** berisi template registry assistant-ui. `thread.tsx` sudah
+  disesuaikan untuk service, sedangkan `elements/` disalin apa adanya supaya bisa dibandingkan saat
+  upgrade.
+- **`src/components/ui/`** adalah salinan vendor shadcn/ui dan tidak diedit. Tambah komponen dengan
+  `corepack pnpm dlx shadcn@4.23.0 add <nama>`. CLI shadcn memanggil `pnpm` langsung, jadi
+  jalankan `corepack enable` sekali (atau sediakan `pnpm` di PATH).
+- Dev server memakai service di `AGENT_URL` (default `http://127.0.0.1:8080`).
 
 ## Menggunakan AgentClient
 

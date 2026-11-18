@@ -10,6 +10,7 @@ mulai bekerja.
 - Cara kerja service (lifespan, alur request, menambah agent) → [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - Daftar fitur dan urutan pengerjaan → [docs/ROADMAP.md](docs/ROADMAP.md)
 - Branch, commit, PR, dan release → [CONTRIBUTING.md](CONTRIBUTING.md)
+- Prosedur kerja berulang untuk coding agent → [Dev-time Skill](#dev-time-skill)
 
 ## Ringkasan Project
 
@@ -45,12 +46,19 @@ uv run python -m agent_service.manage create-user demo   # buat akun login
 uv run python -m agent_service.export_contracts          # ekspor ulang contracts/ (FR-35)
 uv run python -m agent_service.run_evals evals/skills.yaml   # eval agent lewat API (FR-41)
 uv run python -m agent_service.run_service   # jalankan API di :8080
-uv run streamlit run src/agent_service/ui/app.py  # jalankan UI di :8501
+uv run streamlit run src/agent_service/ui/app.py  # jalankan dev console Streamlit di :8501
+cd frontend                                # perintah frontend dijalankan dari sini (corepack
+corepack pnpm install                      #   membaca versi pnpm dari package.json di folder kerja)
+corepack pnpm dev                          # frontend di :5173, /api di-proxy ke :8080
+corepack pnpm run check                    # tipe API vs contracts/, tsc, ESLint
+corepack pnpm test                         # Vitest
 ```
 
 Sebelum menyatakan pekerjaan selesai, jalankan: `ruff check`, `ruff format --check`,
 `pyrefly check`, dan `pytest`. Semua harus hijau. Jika API berubah, jalankan juga
-`export_contracts` dan sertakan `contracts/` di commit yang sama (CONTRIBUTING § Kontrak API).
+`export_contracts` dan `corepack pnpm generate:api` (di `frontend/`), lalu sertakan
+`contracts/` dan `frontend/src/api/` (`schema.d.ts`, `stream-event.d.ts`) di commit yang sama
+(CONTRIBUTING § Kontrak API). Jika `frontend/` berubah, jalankan juga `check` dan `test` frontend.
 
 ## Struktur Folder Target
 
@@ -282,6 +290,22 @@ Ringkasan. Detail lengkap ada di [CONTRIBUTING.md](CONTRIBUTING.md).
 - Release per milestone lewat `release/vX.Y.Z` → `main` dengan **`--no-ff`** (bukan squash), tag
   annotated, lalu back-merge ke `develop`.
 - Commit atau push hanya dilakukan jika diminta user.
+
+## Dev-time Skill
+
+Prosedur kerja berulang ditulis sebagai skill (format [Agent Skills](https://agentskills.io)) di
+`.claude/skills/`. Claude Code memicunya otomatis dari deskripsinya. Agent lain dan manusia
+membaca file `SKILL.md`-nya langsung sebelum mengerjakan tugas yang cocok.
+
+| Skill | Kapan dipakai |
+|---|---|
+| [`feature-workflow`](.claude/skills/feature-workflow/SKILL.md) | Mengerjakan satu fitur ROADMAP: Langkah 1, implementasi, verifikasi, dokumentasi |
+| [`git-handoff`](.claude/skills/git-handoff/SKILL.md) | Menyusun daftar command git untuk user. Agent tidak pernah menjalankan git |
+| [`release`](.claude/skills/release/SKILL.md) | Menyiapkan rilis milestone: versi, CHANGELOG, kontrak, command release |
+| [`memory-maintenance`](.claude/skills/memory-maintenance/SKILL.md) | Entri Decision Log, Status, dan arsip memory.md saat > ±300 baris |
+
+Skill ini untuk **mengembangkan repo**, berbeda dengan skill runtime produk di
+`src/agent_service/skills/` (F28) yang dimuat oleh agent service.
 
 ## Definition of Done
 
