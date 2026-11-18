@@ -73,6 +73,7 @@ async def test_ainvoke_returns_reply_with_ids() -> None:
         "message": "Hai",
         "thread_id": "t1",
         "agent_config": {},
+        "artifact_ids": [],
     }
     assert (reply.message.content, reply.thread_id) == ("Halo!", "t1")
 
@@ -187,3 +188,25 @@ async def test_astream_ids_require_async_with() -> None:
         run = client.astream("Hai")
         with pytest.raises(StreamNotStartedError):
             _ = run.thread_id
+
+
+async def test_async_artifacts_round_trip() -> None:
+    requests: list[httpx.Request] = []
+    artifact = {"id": "a1", "name": "a.bin", "mime_type": "application/octet-stream", "size": 1}
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            return httpx.Response(201, json=artifact)
+        if request.method == "GET":
+            return httpx.Response(200, content=b"x")
+        return httpx.Response(204)
+
+    async with make_client(respond, requests) as client:
+        uploaded = await client.aupload_artifact(b"x", "a.bin")
+        content = await client.adownload_artifact("a1")
+        await client.adelete_artifact("a1")
+
+    assert uploaded.id == "a1"
+    assert content == b"x"
+    assert [request.method for request in requests] == ["POST", "GET", "DELETE"]
+    assert b"Content-Type: application/octet-stream" in requests[0].content

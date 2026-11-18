@@ -1,6 +1,7 @@
 """`AgentClient`: akses ke agent service lewat HTTP, dengan method sync dan async (FR-17)."""
 
 import logging
+from collections.abc import Sequence
 from types import TracebackType
 from typing import Final, Self
 
@@ -17,6 +18,7 @@ from agent_service.client.requests import (
     run_thread_id,
 )
 from agent_service.client.stream import AsyncStreamRun, StreamRun
+from agent_service.schema.artifacts import ArtifactRef
 from agent_service.schema.auth import LoginRequest, TokenResponse
 from agent_service.schema.memories import MemoryList
 from agent_service.schema.projects import Project, ProjectCreate, ProjectList, ProjectUpdate
@@ -49,6 +51,9 @@ PROJECTS_PATH: Final = "/projects"
 SKILLS_PATH: Final = "/skills"
 MEMORIES_PATH: Final = "/memories"
 RUNS_PATH: Final = "/runs"
+ARTIFACTS_PATH: Final = "/artifacts"
+UPLOAD_FIELD: Final = "file"
+DEFAULT_UPLOAD_MIME_TYPE: Final = "application/octet-stream"
 
 
 class AgentClient:
@@ -191,6 +196,7 @@ class AgentClient:
         model: str | None = None,
         thread_id: str | None = None,
         agent_config: dict[str, JsonValue] | None = None,
+        artifact_ids: Sequence[str] = (),
     ) -> AgentReply:
         """Jalankan agent sampai selesai.
 
@@ -199,19 +205,21 @@ class AgentClient:
             model: Model dari allowlist service. `None` berarti model default.
             thread_id: Thread yang dilanjutkan. `None` berarti thread baru.
             agent_config: Opsi agent sesuai `config_schema`-nya di `/info`.
+            artifact_ids: Artifact dari `upload_artifact` yang dilampirkan ke pesan ini.
 
         Returns:
             Jawaban akhir beserta `thread_id` yang dipakai run.
 
         Raises:
-            AgentClientError: Request gagal, misalnya 401 (token), 404 (agent/thread), atau 422
-                (input).
+            AgentClientError: Request gagal, misalnya 401 (token), 404 (agent/thread/artifact),
+                409 (artifact sudah di thread lain), atau 422 (input).
         """
         payload = UserInput(
             message=message,
             model=model,
             thread_id=thread_id,
             agent_config=agent_config or {},
+            artifact_ids=list(artifact_ids),
         )
         response = self._send(self._invoke_spec(payload))
         return AgentReply(parse_model(response, ChatMessage), thread_id=run_thread_id(response))
@@ -224,6 +232,7 @@ class AgentClient:
         thread_id: str | None = None,
         agent_config: dict[str, JsonValue] | None = None,
         stream_tokens: bool = True,
+        artifact_ids: Sequence[str] = (),
     ) -> StreamRun:
         """Siapkan stream SSE. Request dikirim saat masuk `with`.
 
@@ -239,6 +248,7 @@ class AgentClient:
             thread_id=thread_id,
             agent_config=agent_config or {},
             stream_tokens=stream_tokens,
+            artifact_ids=list(artifact_ids),
         )
         return StreamRun(self._http_client, self._stream_spec(payload))
 
@@ -349,6 +359,41 @@ class AgentClient:
         """
         self._send(RequestSpec("DELETE", _memory_path(memory_id)))
 
+    def upload_artifact(
+        self, content: bytes, filename: str, mime_type: str | None = None
+    ) -> ArtifactRef:
+        """Unggah file sebagai artifact milik user (`POST /artifacts`, FR-46).
+
+        Args:
+            content: Isi file.
+            filename: Nama file. Service membuang path dan karakter kontrol.
+            mime_type: Tipe konten. `None` berarti ditebak service dari ekstensi.
+
+        Returns:
+            Referensi artifact untuk `artifact_ids` di `invoke`/`stream`.
+
+        Raises:
+            AgentClientError: Request gagal, misalnya 413 jika melebihi `ARTIFACT_MAX_BYTES`.
+        """
+        response = self._send(_upload_spec(content, filename, mime_type))
+        return parse_model(response, ArtifactRef)
+
+    def download_artifact(self, artifact_id: str) -> bytes:
+        """Unduh isi artifact milik user (`GET /artifacts/{id}`).
+
+        Raises:
+            AgentClientError: Request gagal, misalnya 404 untuk artifact user lain.
+        """
+        return self._send(RequestSpec("GET", _artifact_path(artifact_id))).content
+
+    def delete_artifact(self, artifact_id: str) -> None:
+        """Hapus artifact milik user (`DELETE /artifacts/{id}`).
+
+        Raises:
+            AgentClientError: Request gagal, misalnya 404 untuk artifact user lain.
+        """
+        self._send(RequestSpec("DELETE", _artifact_path(artifact_id)))
+
     def get_run_trace(self, run_id: str) -> RunTrace:
         """Trace satu run milik user yang login (FR-41). `run_id` ada di `ChatMessage.run_id`.
 
@@ -356,6 +401,22 @@ class AgentClient:
             AgentClientError: 404 jika run tidak punya trace atau milik user lain.
         """
         return parse_model(self._send(RequestSpec("GET", _trace_path(run_id))), RunTrace)
+
+    async def aupload_artifact(
+        self, content: bytes, filename: str, mime_type: str | None = None
+    ) -> ArtifactRef:
+        """Versi async `upload_artifact`."""
+        response = await self._asend(_upload_spec(content, filename, mime_type))
+        return parse_model(response, ArtifactRef)
+
+    async def adownload_artifact(self, artifact_id: str) -> bytes:
+        """Versi async `download_artifact`."""
+        response = await self._asend(RequestSpec("GET", _artifact_path(artifact_id)))
+        return response.content
+
+    async def adelete_artifact(self, artifact_id: str) -> None:
+        """Versi async `delete_artifact`."""
+        await self._asend(RequestSpec("DELETE", _artifact_path(artifact_id)))
 
     async def aget_run_trace(self, run_id: str) -> RunTrace:
         """Versi async `get_run_trace`."""
@@ -415,6 +476,7 @@ class AgentClient:
         model: str | None = None,
         thread_id: str | None = None,
         agent_config: dict[str, JsonValue] | None = None,
+        artifact_ids: Sequence[str] = (),
     ) -> AgentReply:
         """Versi async `invoke`."""
         payload = UserInput(
@@ -422,6 +484,7 @@ class AgentClient:
             model=model,
             thread_id=thread_id,
             agent_config=agent_config or {},
+            artifact_ids=list(artifact_ids),
         )
         response = await self._asend(self._invoke_spec(payload))
         return AgentReply(parse_model(response, ChatMessage), thread_id=run_thread_id(response))
@@ -434,6 +497,7 @@ class AgentClient:
         thread_id: str | None = None,
         agent_config: dict[str, JsonValue] | None = None,
         stream_tokens: bool = True,
+        artifact_ids: Sequence[str] = (),
     ) -> AsyncStreamRun:
         """Versi async `stream`. Request dikirim saat masuk `async with`."""
         payload = StreamInput(
@@ -442,6 +506,7 @@ class AgentClient:
             thread_id=thread_id,
             agent_config=agent_config or {},
             stream_tokens=stream_tokens,
+            artifact_ids=list(artifact_ids),
         )
         return AsyncStreamRun(self._async_http_client, self._stream_spec(payload))
 
@@ -473,7 +538,7 @@ class AgentClient:
         logger.debug("%s %s", spec.method, spec.path)
         try:
             response = self._http_client.request(
-                spec.method, spec.path, json=spec.json, params=spec.params
+                spec.method, spec.path, json=spec.json, params=spec.params, files=spec.files
             )
         except httpx.RequestError as error:
             raise request_error(error, f"{spec.method} {spec.path}") from error
@@ -489,7 +554,7 @@ class AgentClient:
         logger.debug("%s %s", spec.method, spec.path)
         try:
             response = await self._async_http_client.request(
-                spec.method, spec.path, json=spec.json, params=spec.params
+                spec.method, spec.path, json=spec.json, params=spec.params, files=spec.files
             )
         except httpx.RequestError as error:
             raise request_error(error, f"{spec.method} {spec.path}") from error
@@ -544,6 +609,21 @@ class AgentClient:
     def _thread_path(self, thread_id: str) -> str:
         """Path satu thread milik agent terpilih."""
         return self._agent_path(f"/threads/{path_segment(thread_id)}")
+
+
+def _artifact_path(artifact_id: str) -> str:
+    """Path satu artifact, dengan ID di-escape.
+
+    >>> _artifact_path("a/1")
+    '/artifacts/a%2F1'
+    """
+    return f"{ARTIFACTS_PATH}/{path_segment(artifact_id)}"
+
+
+def _upload_spec(content: bytes, filename: str, mime_type: str | None) -> RequestSpec:
+    """Request multipart `POST /artifacts` dengan satu field `file`."""
+    file_part = (filename, content, mime_type or DEFAULT_UPLOAD_MIME_TYPE)
+    return RequestSpec("POST", ARTIFACTS_PATH, files={UPLOAD_FIELD: file_part})
 
 
 def _project_path(project_id: str) -> str:

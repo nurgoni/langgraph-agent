@@ -4,6 +4,50 @@
  */
 
 export interface paths {
+    "/artifacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Artifact
+         * @description Unggah satu file (multipart, field `file`). Lampirkan lewat `artifact_ids` saat chat.
+         */
+        post: operations["upload_artifact_artifacts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/artifacts/{artifact_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Artifact
+         * @description Unduh isi artifact milik user. Artifact user lain → 404.
+         */
+        get: operations["download_artifact_artifacts__artifact_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Artifact
+         * @description Hapus artifact milik user beserta isinya. Pesan yang melampirkannya tetap ada.
+         */
+        delete: operations["delete_artifact_artifacts__artifact_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/login": {
         parameters: {
             query?: never;
@@ -564,6 +608,40 @@ export interface components {
             key: string;
         };
         /**
+         * ArtifactRef
+         * @description Referensi satu artifact. Isi file diunduh lewat `GET /artifacts/{id}`.
+         */
+        ArtifactRef: {
+            /**
+             * Id
+             * @example 0b9e3c1e-5f7a-4c2b-9d61-3f0a2b7c8d90
+             */
+            id: string;
+            /**
+             * Mime Type
+             * @description Tipe konten file.
+             * @example text/csv
+             */
+            mime_type: string;
+            /**
+             * Name
+             * @description Nama file yang sudah disanitasi.
+             * @example sales.csv
+             */
+            name: string;
+            /**
+             * Size
+             * @description Ukuran file dalam byte.
+             * @example 2048
+             */
+            size: number;
+        };
+        /** Body_upload_artifact_artifacts_post */
+        Body_upload_artifact_artifacts_post: {
+            /** File */
+            file: string;
+        };
+        /**
          * ChatHistory
          * @description Seluruh message dalam satu thread, urut kronologis.
          */
@@ -589,6 +667,11 @@ export interface components {
              * @description Sub-agent (expert) yang membuat message ini, atau kosong untuk agent utama.
              */
             agent?: string | null;
+            /**
+             * Artifacts
+             * @description File yang dilampirkan user atau dibuat agent di message ini.
+             */
+            artifacts?: components["schemas"]["ArtifactRef"][];
             /**
              * Content
              * @example Hasilnya 84.
@@ -961,6 +1044,11 @@ export interface components {
                 [key: string]: components["schemas"]["JsonValue"];
             };
             /**
+             * Artifact Ids
+             * @description Artifact milik user (dari `POST /artifacts`) yang dilampirkan ke pesan ini. Tidak bisa dikirim sebagai jawaban interrupt.
+             */
+            artifact_ids?: string[];
+            /**
              * Message
              * @description Pesan user, atau jawaban untuk agent yang sedang interrupt.
              * @example Berapa 12 * 7?
@@ -1133,6 +1221,11 @@ export interface components {
                 [key: string]: components["schemas"]["JsonValue"];
             };
             /**
+             * Artifact Ids
+             * @description Artifact milik user (dari `POST /artifacts`) yang dilampirkan ke pesan ini. Tidak bisa dikirim sebagai jawaban interrupt.
+             */
+            artifact_ids?: string[];
+            /**
              * Message
              * @description Pesan user, atau jawaban untuk agent yang sedang interrupt.
              * @example Berapa 12 * 7?
@@ -1180,6 +1273,106 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    upload_artifact_artifacts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_artifact_artifacts_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtifactRef"];
+                };
+            };
+            /** @description File is larger than `ARTIFACT_MAX_BYTES`. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_artifact_artifacts__artifact_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description File content, always as an attachment. `Content-Type` is the stored type. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_artifact_artifacts__artifact_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     login_auth_login_post: {
         parameters: {
             query?: never;

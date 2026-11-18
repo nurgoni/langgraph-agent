@@ -31,3 +31,6 @@ eval-reports/
 frontend/node_modules/
 frontend/dist/
 frontend/coverage/
+
+# Artifact files in local development (F35, ARTIFACT_DIR default)
+data/

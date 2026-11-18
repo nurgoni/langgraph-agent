@@ -64,7 +64,8 @@ services:
     environment:
       # Ditulis eksplisit, bukan env_file: konfigurasi LLM di .env (misalnya LLM_BASE_URL ke
       # localhost) tidak berlaku dari dalam container. Yang diambil dari .env hanya JWT_SECRET,
-      # JWT_TTL_SECONDS, CORS_ORIGINS, LOG_LEVEL, FIRECRAWL_API_KEY, dan kredensial POSTGRES_*.
+      # JWT_TTL_SECONDS, CORS_ORIGINS, LOG_LEVEL, FIRECRAWL_API_KEY, ARTIFACT_MAX_BYTES, dan
+      # kredensial POSTGRES_*.
       USE_FAKE_MODEL: "true"
       DEFAULT_MODEL: fake
       AVAILABLE_MODELS: fake
@@ -75,6 +76,11 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       # Kosong: tool web_search menjawab "not configured", agent tetap berjalan.
       FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
+      # Artifact (F35): isi file di volume `artifacts`, metadata di Postgres.
+      ARTIFACT_DIR: /app/data/artifacts
+      ARTIFACT_MAX_BYTES: ${ARTIFACT_MAX_BYTES:-}
+    volumes:
+      - artifacts:/app/data/artifacts
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -104,6 +110,8 @@ services:
       - "${WEB_PORT:-3000}:8080"
     environment:
       API_UPSTREAM: http://agent-service:8080
+      # Batas body upload di proxy; samakan dengan ARTIFACT_MAX_BYTES (+ overhead multipart).
+      API_MAX_BODY_SIZE: ${API_MAX_BODY_SIZE:-26m}
     depends_on:
       agent-service:
         condition: service_healthy
@@ -111,3 +119,4 @@ services:
 
 volumes:
   postgres-data:
+  artifacts:
