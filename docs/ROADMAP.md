@@ -52,7 +52,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F35 | Artifact storage | M7 | done |
 | F36 | Workspace & file tools | M7 | done |
 | F37 | Sandbox | M7 | done |
-| F38 | Artifact panel UI | M7 | todo |
+| F38 | Artifact panel UI | M7 | done |
 | F39 | SQL data source | M8 | todo |
 | F40 | Data analyst project | M8 | todo |
 | F41 | Worker & scheduler | M8 | todo |
@@ -1739,13 +1739,36 @@ Scope commit frontend: `frontend`. Aturan kode frontend ada di [ADR 0003](adr/00
 - **File:** `frontend/src/features/artifacts/`, upload di composer, `tests`
 - **Catatan desain:** panel kanan memakai komponen shadcn (`Sheet`/`Resizable`, `Table`). PDF
   ditampilkan dengan viewer bawaan browser, tanpa library viewer sendiri.
+- **Langkah 1 (keputusan user):**
+  - **Panel kanan Resizable** (shadcn `resizable`, `react-resizable-panels`); di layar sempit Sheet.
+  - **Upload saat file dipilih** (error 413 terlihat sebelum kirim; hapus chip → `DELETE`).
+  - **Gambar markdown dicocokkan ke artifact** jawaban yang sama (fetch bertoken); path relatif
+    lain tidak dimuat, URL absolut tetap.
+  - **papaparse** untuk preview CSV (200 baris pertama).
 - **Rencana commit:**
   1. `feat(frontend): show message attachments`
   2. `feat(frontend): preview artifacts in a side panel`
   3. `feat(frontend): upload files from the composer`
   4. `docs: record F38 artifact panel decisions`
+- **Penyesuaian saat implementasi:**
+  - Artifact jawaban asisten jadi part `data` bernama `artifacts` (dari tool message `share_file`
+    maupun message AI); artifact pesan user dibawa di `metadata.custom.artifacts` (lampiran
+    assistant-ui tidak membawa ukuran file). Keduanya dirender `ArtifactCards` yang membuka panel.
+  - Isi artifact dibaca lewat `GET /artifacts/{id}` bertoken menjadi `Blob` lalu object URL
+    (TanStack Query, `staleTime: Infinity`); unduhan lewat link sementara dengan atribut `download`.
+    Object URL tidak dicabut (StrictMode menjalankan cleanup dua kali).
+  - Chip lampiran composer disusun dari primitive assistant-ui (`ComposerPrimitive.Attachments`,
+    `AttachmentPrimitive`) dan komponen shadcn, bukan template registry `attachment` yang butuh
+    `avatar`, `use-attachment-src`, dan `zustand`. `ArtifactAttachmentAdapter` upload di `add`
+    (async generator: uploading → siap / error) dan menyerahkan ID artifact saat kirim.
+  - Grup `Resizable` selalu dirender, supaya chat tidak di-mount ulang saat panel dibuka/ditutup.
+  - Test: Vitest menukar `File`/`FormData` jsdom dengan milik Node di setup, karena lapisan
+    kompatibilitas `Request` Vitest mengubah File jsdom menjadi Blob tanpa nama.
+  - Rencana commit 1–3 digabung: kartu, panel, dan upload berbagi `ArtifactRef` dan service.
 - **Acceptance criteria:**
-  - [ ] Gambar, CSV, dan PDF dari agent bisa dipreview dan diunduh.
+  - [x] Gambar, CSV, dan PDF dari agent bisa dipreview dan diunduh: `artifacts.test.tsx` (tabel CSV
+        dengan sel berkoma, `<img>` dan `<iframe>` dari blob, unduh dengan nama file). Cek visual di
+        browser dilakukan user.
 - **Squash title:** `feat(frontend): add artifact panel and file upload (F38)`
 - **Setelah merge:** rilis **v0.7.0**.
 

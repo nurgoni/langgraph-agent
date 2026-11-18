@@ -271,6 +271,8 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
   (`never`/`always`, default `never`) menentukan apakah eksekusi perlu persetujuan user (interrupt).
   Hanya service `sandbox-runner` yang memegang akses Docker.
 - **FR-50** Panel artifact di frontend: preview gambar, tabel CSV, viewer PDF, dan tombol download.
+  File dari composer di-upload saat dipilih dan dikirim sebagai `artifact_ids`; gambar markdown
+  yang menyebut nama artifact di jawaban yang sama ditampilkan dari artifact itu.
 
 ### Fase 2: Data Analytics (M8)
 

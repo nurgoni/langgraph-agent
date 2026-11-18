@@ -31,6 +31,10 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
   `SANDBOX_TIMEOUT_SECONDS` (F37).
 - `ProjectSettings.tool_approval` (`never`/`always`, default `never`): minta persetujuan user
   sebelum setiap eksekusi kode; checkbox "Ask before running code" di form project (F37).
+- Panel artifact di frontend (FR-50): kartu untuk file yang dibagikan agent dan lampiran user,
+  panel kanan yang lebarnya bisa ditarik dengan preview gambar, tabel CSV, PDF, dan teks, serta
+  tombol unduh. Upload file dari composer (saat dipilih, dikirim sebagai `artifact_ids`), dan
+  gambar markdown yang menyebut nama artifact ditampilkan dari artifact itu (F38).
 
 ## [0.6.0] - 2026-11-18
 

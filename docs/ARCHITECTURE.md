@@ -485,6 +485,30 @@ AppShell ── RecentsList ── useThreads(null) ── ThreadsService → GE
   instruksi ≤ 8000, maksimal 20 skill, batas token ≥ 1). Error service (misalnya model tidak
   dikenal) tampil di bawah form.
 
+### Artifact panel (F38)
+
+```text
+ChatPage ── ArtifactWorkspace (ArtifactPanelContext, ResizablePanelGroup | Sheet)
+             ├─ Thread
+             │   ├─ ComposerAttachments / ComposerAddAttachment ── ArtifactAttachmentAdapter
+             │   │      add(): POST /artifacts saat dipilih · remove(): DELETE · kirim: artifact_ids
+             │   ├─ UserMessage: metadata.custom.artifacts ──┐
+             │   └─ AssistantMessage: data part "artifacts" ─┴─ ArtifactCards → panel.open()
+             │       MarkdownText img → ArtifactMarkdownImage (nama file = artifact gambar?)
+             └─ ArtifactPanel → ArtifactPreview (useArtifactContent: GET /artifacts/{id} → Blob)
+                  image <img> · csv papaparse → Table · pdf <iframe> · teks <pre> · unduh
+```
+
+- **Token, bukan cookie.** Unduhan service membutuhkan header `Authorization`, jadi isi file
+  dibaca lewat client bertipe menjadi `Blob`, lalu ditampilkan dan diunduh lewat object URL.
+  Header `Content-Disposition: attachment` dan CSP `sandbox` dari service tetap melindungi akses
+  langsung ke URL API.
+- **Gambar markdown.** Path relatif yang namanya sama dengan artifact gambar di jawaban yang sama
+  ditampilkan dari artifact itu; path relatif lain hanya menampilkan teks alt, karena path
+  workspace tidak bisa dimuat browser. URL absolut dirender seperti biasa.
+- **Upload saat dipilih.** `ArtifactAttachmentAdapter.add` adalah async generator yang melapor
+  status uploading → siap atau error, sehingga 413 terlihat di chip sebelum pesan dikirim.
+
 ## Persistence
 
 Satu database Postgres di `DATABASE_URL` ([ADR 0001](adr/0001-postgres-only.md)):
