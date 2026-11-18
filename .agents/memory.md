@@ -14,16 +14,17 @@ berulang ada di dev-time skill `.claude/skills/` (daftar di AGENTS.md § Dev-tim
 
 ## Status Saat Ini
 
-- **Fase:** M7 Files & Execution. F35 dan F36 di-merge. F37 (Sandbox) selesai di working tree
-  `develop`, menunggu user membuat `feature/F37-sandbox`, commit, dan PR.
-- **Berikutnya:** **F38** (Artifact panel UI), lalu rilis v0.7.0.
+- **Fase:** M7 Files & Execution. F35–F37 di-merge. F38 (Artifact panel UI, fitur terakhir M7)
+  selesai di working tree `develop`, menunggu user membuat `feature/F38-artifact-panel`, commit,
+  dan PR.
+- **Berikutnya:** rilis **v0.7.0**, lalu M8 (F39 SQL data source).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Arsip:** Decision Log M0–M4 ada di
   [archive/decision-log-m0-m4.md](archive/decision-log-m0-m4.md), F26–F31 di
   [archive/decision-log-m4-m5.md](archive/decision-log-m4-m5.md), dan dev-time skill + F32–F34 di
   [archive/decision-log-m6.md](archive/decision-log-m6.md).
-- **Terakhir diperbarui:** 2026-11-18 (F37)
+- **Terakhir diperbarui:** 2026-11-18 (F38)
 
 ## Aturan Kerja
 
@@ -87,6 +88,30 @@ Ringkasan pelajaran dari M0–M6 yang masih berlaku (detail di arsip dan entri f
   `\n\n` (dikecualikan), dan `check-yaml` butuh `--allow-multiple-documents` untuk lockfile pnpm.
 
 ## Decision Log
+
+### 2026-11-18: Artifact panel UI dari F38
+
+- **Keputusan user:** panel kanan Resizable (Sheet di layar sempit); upload saat file dipilih;
+  gambar markdown dicocokkan ke artifact jawaban yang sama; papaparse untuk CSV.
+- **Keputusan desain:**
+  - Artifact asisten = part `data` `artifacts`; artifact pesan user di `metadata.custom.artifacts`
+    (lampiran assistant-ui tidak membawa ukuran). `ArtifactCards` membuka panel lewat context.
+  - Isi lewat fetch bertoken → `Blob` → object URL (TanStack Query, tidak dicabut karena StrictMode).
+  - Chip composer dari primitive assistant-ui + shadcn, tanpa template registry `attachment`
+    (butuh `avatar`, `use-attachment-src`, `zustand`). Adapter upload di `add` (async generator).
+  - Grup `Resizable` selalu dirender supaya chat tidak di-mount ulang.
+  - Dependency baru: `papaparse` 5.7.0, `react-resizable-panels` 4.18.0 (shadcn `resizable`,
+    `table`). react-resizable-panels v4: angka = piksel, string `"55%"` = persen.
+- **Hasil ukur:** 86 test Vitest (+19), mutation check 11/11, e2e Compose 19/19 (image `web`
+  dengan dependency baru ter-build di percobaan pertama). Bundle 1,36 MB (415 kB gzip).
+- **Pelajaran:**
+  - Vitest membungkus `Request` agar menerima Blob/FormData jsdom, tetapi File di dalam FormData
+    menjadi Blob bernama "blob", dan undici tidak bisa membaca File jsdom. Setup test memakai
+    `File` (node:buffer) dan `FormData` Node; `Blob` tetap jsdom supaya kompatibilitas lain jalan.
+  - Membuat `new Request(request)` di wrapper test menghabiskan body request asli (probe palsu
+    gagal "unreachable"); untuk debug, panggil service palsu langsung.
+  - `ComposerPrimitive.AddAttachment` membuat `<input type=file>` dinamis lalu `click()`; di test,
+    spy `HTMLInputElement.prototype.click`, isi `files`, lalu kirim event `change`.
 
 ### 2026-11-18: Sandbox dari F37
 

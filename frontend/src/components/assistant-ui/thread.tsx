@@ -45,12 +45,19 @@ import {
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ArtifactCards } from "@/features/artifacts/ArtifactCards";
+import { ArtifactMarkdownImage } from "@/features/artifacts/ArtifactMarkdownImage";
+import { ComposerAddAttachment, ComposerAttachments } from "@/features/artifacts/ComposerAttachments";
+import { artifactsFromValue } from "@/features/artifacts/message-artifacts";
+import { ARTIFACTS_DATA_PART_NAME } from "@/features/chat/conversation";
 import { cn } from "@/lib/utils";
 
 export const TRUNCATED_WARNING =
   "The answer was cut off because the model reached its token limit (LLM_MAX_TOKENS).";
 export const CANCELLED_NOTICE = "Stopped.";
 const AGENT_GROUP_PREFIX = "group-agent:";
+// Gambar markdown dengan path workspace dicocokkan ke artifact jawaban yang sama (F38).
+const MARKDOWN_COMPONENTS = { img: ArtifactMarkdownImage };
 const MILLISECONDS_PER_SECOND = 1000;
 
 type ThreadGroupPart = MessagePrimitive.GroupedParts.GroupPart;
@@ -163,6 +170,7 @@ const ThreadScrollToBottom: FC = () => (
 const Composer: FC<{ extra: ReactNode }> = ({ extra }) => (
   <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
     <div className="border-foreground/10 focus-within:border-foreground/25 flex w-full cursor-text flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) transition-[border-color]">
+      <ComposerAttachments />
       <ComposerPrimitive.Input
         placeholder="Send a message..."
         className="aui-composer-input caret-primary placeholder:text-muted-foreground/60 max-h-48 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base leading-6 outline-none"
@@ -172,7 +180,10 @@ const Composer: FC<{ extra: ReactNode }> = ({ extra }) => (
         aria-label="Message input"
       />
       <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-1.5">{extra}</div>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <ComposerAddAttachment />
+          {extra}
+        </div>
         <AuiIf condition={(s) => !s.thread.isRunning}>
           <ComposerPrimitive.Send asChild>
             <TooltipIconButton
@@ -296,12 +307,15 @@ const AssistantMessage: FC = () => (
               );
             }
             case "text":
-              return <MarkdownText />;
+              return <MarkdownText components={MARKDOWN_COMPONENTS} />;
             case "reasoning":
               return <Reasoning {...part} />;
             case "tool-call":
               return part.toolUI ?? <ToolFallback {...part} />;
             case "data":
+              if (part.name === ARTIFACTS_DATA_PART_NAME) {
+                return <ArtifactCards artifacts={artifactsFromValue(part.data)} />;
+              }
               return (
                 <pre className="bg-muted my-2 overflow-x-auto rounded-md p-3 text-xs">
                   {JSON.stringify(part.data, null, 2)}
@@ -351,8 +365,19 @@ const UserMessage: FC = () => (
     data-role="user"
     className="fade-in slide-in-from-bottom-1 animate-in grid auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 px-2 duration-150 [&:where(>*)]:col-start-2"
   >
+    <UserMessageArtifacts />
     <div className="aui-user-message-content bg-muted text-foreground col-start-2 min-w-0 rounded-(--composer-radius) px-4 py-2 wrap-break-word">
       <MessagePrimitive.Parts />
     </div>
   </MessagePrimitive.Root>
 );
+
+/** Lampiran pesan user dari `metadata.custom` (F38), di atas isi pesan. */
+const UserMessageArtifacts: FC = () => {
+  const value = useAuiState((s) => s.message.metadata.custom[ARTIFACTS_DATA_PART_NAME]);
+  return (
+    <div className="col-start-2 flex justify-end empty:hidden">
+      <ArtifactCards artifacts={artifactsFromValue(value)} />
+    </div>
+  );
+};

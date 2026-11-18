@@ -326,6 +326,11 @@ corepack pnpm build            # build statis ke dist/
   baru di project itu; chat project dibuka ulang di `/projects/<id>/chat/<thread_id>`. Form buat
   dan edit project memakai komponen form shadcn (react-hook-form + zod) dengan pemilih skill dari
   `GET /skills`.
+- **Artifact** (F38): file yang dibagikan agent dan lampiran user tampil sebagai kartu; klik untuk
+  membuka panel kanan (lebar bisa ditarik) dengan preview gambar, tabel CSV (200 baris pertama),
+  PDF (viewer browser), atau teks, plus tombol unduh. Tombol klip di composer meng-upload file
+  saat dipilih (lebih dari `ARTIFACT_MAX_BYTES` langsung ditolak), lalu file ikut terkirim
+  bersama pesan.
 - **Token** disimpan di `sessionStorage`: bertahan saat refresh, hilang saat tab ditutup.
 - **`src/components/assistant-ui/`** berisi template registry assistant-ui. `thread.tsx` sudah
   disesuaikan untuk service, sedangkan `elements/` disalin apa adanya supaya bisa dibandingkan saat

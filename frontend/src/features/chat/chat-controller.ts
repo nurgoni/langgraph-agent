@@ -5,7 +5,8 @@
  * riwayat selesai secara asinkron dan harus dibatalkan saat user pindah thread.
  */
 import type { ChatMessage } from "@/api/stream-event";
-import { ChatService, ChatServiceError } from "@/features/chat/chat-service";
+import type { ArtifactRef } from "@/features/artifacts/artifacts-service";
+import { type ChatRequest, ChatService, ChatServiceError } from "@/features/chat/chat-service";
 import {
   appendHuman,
   appendRunEnd,
@@ -106,17 +107,23 @@ export class ChatController {
    *
    * @param text Pesan user.
    * @param model Model pilihan user, atau `null` untuk default service.
+   * @param artifacts Lampiran hasil upload composer (F38).
    */
-  async send(text: string, model: string | null): Promise<void> {
+  async send(text: string, model: string | null, artifacts: readonly ArtifactRef[] = []): Promise<void> {
     if (this.snapshot.isRunning) {
       return;
     }
     const generation = this.generation;
     const run = new AbortController();
     this.activeRun = run;
-    this.update({ conversation: appendHuman(this.snapshot.conversation, text), isRunning: true });
+    const conversation = appendHuman(this.snapshot.conversation, text, artifacts);
+    this.update({ conversation, isRunning: true });
+    const artifactIds = artifacts.map((artifact) => artifact.id);
     try {
-      await this.streamRun({ message: text, threadId: this.snapshot.threadId, model }, run);
+      await this.streamRun(
+        { message: text, threadId: this.snapshot.threadId, model, artifactIds },
+        run,
+      );
     } catch (caught) {
       if (generation === this.generation) {
         this.endRun(caught, run.signal);
@@ -141,7 +148,7 @@ export class ChatController {
   }
 
   private async streamRun(
-    request: { message: string; threadId: string | null; model: string | null },
+    request: ChatRequest,
     run: AbortController,
   ): Promise<void> {
     const generation = this.generation;
