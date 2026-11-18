@@ -31,6 +31,65 @@
         "title": "AgentInfo",
         "type": "object"
       },
+      "ArtifactRef": {
+        "description": "Referensi satu artifact. Isi file diunduh lewat `GET /artifacts/{id}`.",
+        "properties": {
+          "id": {
+            "examples": [
+              "0b9e3c1e-5f7a-4c2b-9d61-3f0a2b7c8d90"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "mime_type": {
+            "description": "Tipe konten file.",
+            "examples": [
+              "text/csv"
+            ],
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "name": {
+            "description": "Nama file yang sudah disanitasi.",
+            "examples": [
+              "sales.csv"
+            ],
+            "title": "Name",
+            "type": "string"
+          },
+          "size": {
+            "description": "Ukuran file dalam byte.",
+            "examples": [
+              2048
+            ],
+            "minimum": 0.0,
+            "title": "Size",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "mime_type",
+          "size"
+        ],
+        "title": "ArtifactRef",
+        "type": "object"
+      },
+      "Body_upload_artifact_artifacts_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_artifact_artifacts_post",
+        "type": "object"
+      },
       "ChatHistory": {
         "description": "Seluruh message dalam satu thread, urut kronologis.",
         "properties": {
@@ -77,6 +136,14 @@
             ],
             "description": "Sub-agent (expert) yang membuat message ini, atau kosong untuk agent utama.",
             "title": "Agent"
+          },
+          "artifacts": {
+            "description": "File yang dilampirkan user atau dibuat agent di message ini.",
+            "items": {
+              "$ref": "#/components/schemas/ArtifactRef"
+            },
+            "title": "Artifacts",
+            "type": "array"
           },
           "content": {
             "examples": [
@@ -835,6 +902,15 @@
             "title": "Agent Config",
             "type": "object"
           },
+          "artifact_ids": {
+            "description": "Artifact milik user (dari `POST /artifacts`) yang dilampirkan ke pesan ini. Tidak bisa dikirim sebagai jawaban interrupt.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Artifact Ids",
+            "type": "array"
+          },
           "message": {
             "description": "Pesan user, atau jawaban untuk agent yang sedang interrupt.",
             "examples": [
@@ -1149,6 +1225,15 @@
             "title": "Agent Config",
             "type": "object"
           },
+          "artifact_ids": {
+            "description": "Artifact milik user (dari `POST /artifacts`) yang dilampirkan ke pesan ini. Tidak bisa dikirim sebagai jawaban interrupt.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Artifact Ids",
+            "type": "array"
+          },
           "message": {
             "description": "Pesan user, atau jawaban untuk agent yang sedang interrupt.",
             "examples": [
@@ -1264,6 +1349,144 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/artifacts": {
+      "post": {
+        "description": "Unggah satu file (multipart, field `file`). Lampirkan lewat `artifact_ids` saat chat.",
+        "operationId": "upload_artifact_artifacts_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_artifact_artifacts_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactRef"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "413": {
+            "description": "File is larger than `ARTIFACT_MAX_BYTES`."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upload Artifact",
+        "tags": [
+          "artifacts"
+        ]
+      }
+    },
+    "/artifacts/{artifact_id}": {
+      "delete": {
+        "description": "Hapus artifact milik user beserta isinya. Pesan yang melampirkannya tetap ada.",
+        "operationId": "delete_artifact_artifacts__artifact_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Artifact",
+        "tags": [
+          "artifacts"
+        ]
+      },
+      "get": {
+        "description": "Unduh isi artifact milik user. Artifact user lain → 404.",
+        "operationId": "download_artifact_artifacts__artifact_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "File content, always as an attachment. `Content-Type` is the stored type."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download Artifact",
+        "tags": [
+          "artifacts"
+        ]
+      }
+    },
     "/auth/login": {
       "post": {
         "description": "Terbitkan access token JWT. Username atau password salah → 401 dengan pesan yang sama.\n\nAkun dibuat lewat CLI: `uv run python -m agent_service.manage create-user <username>`.",

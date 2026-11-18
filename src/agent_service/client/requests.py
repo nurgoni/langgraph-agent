@@ -25,6 +25,8 @@ class RequestSpec:
     path: str
     json: dict[str, JsonValue] | None = None
     params: dict[str, str | int] = field(default_factory=dict)
+    # Multipart: nama field → (nama file, isi, tipe konten). Dipakai upload artifact (F35).
+    files: dict[str, tuple[str, bytes, str]] | None = None
 
 
 @dataclass(frozen=True)

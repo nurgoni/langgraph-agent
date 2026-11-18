@@ -6,6 +6,7 @@ import os
 import socket
 import uuid
 from collections.abc import Iterator, Mapping
+from pathlib import Path
 from typing import LiteralString
 
 import psycopg
@@ -91,6 +92,14 @@ def pytest_asyncio_loop_factories(config: pytest.Config, item: pytest.Item) -> M
 def isolate_database_url(monkeypatch: pytest.MonkeyPatch) -> None:
     """Arahkan `DATABASE_URL` ke host yang tidak ada, supaya test tidak pernah menyentuh DB dev."""
     monkeypatch.setenv("DATABASE_URL", UNCONFIGURED_DATABASE_URL)
+
+
+@pytest.fixture(autouse=True)
+def artifact_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """Arahkan `ARTIFACT_DIR` ke folder sementara per test, supaya file tidak ditulis ke repo."""
+    directory = tmp_path / "artifacts"
+    monkeypatch.setenv("ARTIFACT_DIR", str(directory))
+    return directory
 
 
 @pytest.fixture(autouse=True)

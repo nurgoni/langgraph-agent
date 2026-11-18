@@ -67,3 +67,13 @@ MIN_CONTEXT_MAX_TOKENS: Final = 1000
 
 # Tag run model yang token/reasoning-nya tidak dialirkan ke chat (ekstraksi, peringkasan).
 SKIP_STREAM_TAG: Final = "skip_stream"
+
+# Artifact (FR-46, keputusan user F35). Direktori relatif terhadap folder kerja service; image
+# service me-mount volume di `/app/data/artifacts`.
+DEFAULT_ARTIFACT_DIR: Final = Path("data/artifacts")
+BYTES_PER_MEGABYTE: Final = 1024 * 1024
+DEFAULT_ARTIFACT_MAX_MEGABYTES: Final = 25
+DEFAULT_ARTIFACT_MAX_BYTES: Final = DEFAULT_ARTIFACT_MAX_MEGABYTES * BYTES_PER_MEGABYTE
+MIN_ARTIFACT_MAX_BYTES: Final = 1
+# Kunci `additional_kwargs` message LangChain yang berisi referensi artifact (pola penanda F17).
+ARTIFACTS_KWARG: Final = "artifacts"

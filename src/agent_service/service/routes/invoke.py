@@ -9,14 +9,20 @@ from agent_service.agents.registry import AgentRegistry
 from agent_service.memory.traces import RunTraceRepository
 from agent_service.schema.requests import UserInput
 from agent_service.schema.responses import ChatMessage
+from agent_service.service.artifacts import ArtifactService
 from agent_service.service.converters import INTERRUPT_KEY, final_chat_message
 from agent_service.service.dependencies import (
+    ArtifactServiceDep,
     DefaultAgentIdDep,
     PrincipalDep,
     RegistryDep,
     TraceRepositoryDep,
 )
-from agent_service.service.run_input import RUN_RESPONSE_HEADERS, RunTarget, build_run_input
+from agent_service.service.run_input import (
+    RUN_RESPONSE_HEADERS,
+    RunTarget,
+    build_attached_run_input,
+)
 from agent_service.service.tracing import RunTraceCollector
 
 logger = logging.getLogger(__name__)
@@ -34,11 +40,14 @@ async def invoke_default_agent(
     principal: PrincipalDep,
     registry: RegistryDep,
     traces: TraceRepositoryDep,
+    artifacts: ArtifactServiceDep,
     default_agent_id: DefaultAgentIdDep,
 ) -> ChatMessage:
     """Sama dengan `POST /{agent_id}/invoke` untuk agent default."""
     target = RunTarget(default_agent_id, user_input.model)
-    return await invoke(target, user_input, principal.user_id, response, registry, traces)
+    return await invoke(
+        target, user_input, principal.user_id, response, registry, traces, artifacts
+    )
 
 
 @router.post("/{agent_id}/invoke", responses=INVOKE_RESPONSES)
@@ -49,13 +58,16 @@ async def invoke_agent(
     principal: PrincipalDep,
     registry: RegistryDep,
     traces: TraceRepositoryDep,
+    artifacts: ArtifactServiceDep,
 ) -> ChatMessage:
     """Jalankan agent dan kembalikan message terakhirnya, atau pertanyaan interrupt.
 
     Header `X-Thread-Id` berisi ID thread yang dipakai run, untuk melanjutkan thread.
     """
     target = RunTarget(agent_id, user_input.model)
-    return await invoke(target, user_input, principal.user_id, response, registry, traces)
+    return await invoke(
+        target, user_input, principal.user_id, response, registry, traces, artifacts
+    )
 
 
 async def invoke(
@@ -65,6 +77,7 @@ async def invoke(
     response: Response,
     registry: AgentRegistry,
     traces: RunTraceRepository,
+    artifacts: ArtifactService,
 ) -> ChatMessage:
     """Jalankan satu run agent sampai selesai, dan simpan trace-nya (FR-41).
 
@@ -74,6 +87,7 @@ async def invoke(
         user_id: Pemilik run, dari access token.
         response: Response FastAPI, untuk header ID thread.
         registry: Registry agent milik app.
+        artifacts: Lampiran pesan (F35).
         traces: Tempat trace run disimpan.
 
     Returns:
@@ -85,10 +99,14 @@ async def invoke(
         UnknownModelError: Model di luar allowlist (422).
         RequestValidationError: `agent_config` tidak valid (422).
         ThreadNotFoundError: Thread milik user, agent, atau project lain (404).
+        ArtifactNotFoundError: Lampiran tidak ada atau milik user lain (404).
+        ArtifactThreadConflictError: Lampiran sudah tertaut ke thread lain (409).
     """
     agent = registry.get_agent(target.agent_id)
     graph = registry.get_graph(target.agent_id, target.model, target.max_tokens)
-    run = await build_run_input(user_input, user_id, agent, graph, target.project)
+    run = await build_attached_run_input(
+        user_input, user_id, agent, graph, target.project, artifacts
+    )
     logger.info(
         "Invoke agent=%s project=%s run_id=%s thread_id=%s",
         target.agent_id,

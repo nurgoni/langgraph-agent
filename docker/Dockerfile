@@ -25,6 +25,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-editable --extra service
+# Titik mount volume artifact (F35). Volume baru mewarisi pemilik folder ini dari image.
+RUN mkdir -p /app/data/artifacts && chown app:app /app/data/artifacts
 USER app
 # DATABASE_URL diberikan compose. Migrasi: `python -m agent_service.run_migrate` (service migrate).
 ENV HOST=0.0.0.0 \

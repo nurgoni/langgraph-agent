@@ -292,3 +292,29 @@ def test_browser_path_through_the_web_proxy(stack: ComposeStack) -> None:
     assert info.default_agent == "chatbot"
     assert any(isinstance(event, TokenEvent) for event in events)
     assert isinstance(events[-1], MessageEvent)
+
+
+# Lebih besar dari default `client_max_body_size` nginx (1 MB), jadi membuktikan batas proxy F35.
+LARGE_ARTIFACT_BYTES = 2 * 1024 * 1024
+
+
+def test_artifacts_go_through_the_web_proxy_and_survive_restart(stack: ComposeStack) -> None:
+    """Upload lewat proxy `/api`, volume `artifacts`, lampiran pesan, dan isolasi user (F35)."""
+    content = os.urandom(LARGE_ARTIFACT_BYTES)
+    with stack.client(base_url=f"{stack.web_url}/api") as client:
+        artifact = client.upload_artifact(content, "report.bin")
+        reply = client.invoke("Lihat lampiran", artifact_ids=[artifact.id])
+        human = client.get_history(reply.thread_id).messages[0]
+
+    stack.compose("restart", "agent-service")
+    stack.compose("up", "-d", "--wait", "agent-service")
+
+    with stack.client() as client:
+        downloaded = client.download_artifact(artifact.id)
+    with stack.client(OTHER_USERNAME) as other, pytest.raises(AgentClientError) as error:
+        other.download_artifact(artifact.id)
+
+    assert artifact.size == LARGE_ARTIFACT_BYTES
+    assert human.artifacts == [artifact]
+    assert downloaded == content
+    assert error.value.status_code == 404

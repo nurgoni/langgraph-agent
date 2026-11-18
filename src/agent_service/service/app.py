@@ -18,11 +18,13 @@ from agent_service.agents.catalog import (
 from agent_service.agents.registry import AgentRegistry
 from agent_service.agents.tools.web_search import SearchBackend, create_search_backend
 from agent_service.core.settings import Settings
+from agent_service.files.artifacts import LocalArtifactStore
 from agent_service.harness.context_policy import ContextPolicy
 from agent_service.harness.skills.registry import SkillRegistry
 from agent_service.harness.skills.sources import BUILTIN_SKILLS_DIR, FilesystemSkillSource
 from agent_service.harness.skills.toolkit import SkillToolkit
 from agent_service.llm.factory import ModelFactory
+from agent_service.memory.artifacts import ArtifactRepository
 from agent_service.memory.checkpointer import CheckpointerProvider
 from agent_service.memory.database import DatabaseEngineProvider
 from agent_service.memory.migrator import ensure_database_migrated
@@ -33,11 +35,13 @@ from agent_service.memory.traces import RunTraceRepository
 from agent_service.memory.user_memories import UserMemoryRepository
 from agent_service.memory.users import UserRepository
 from agent_service.schema.headers import THREAD_ID_HEADER
+from agent_service.service.artifacts import ArtifactService
 from agent_service.service.auth import Authenticator
 from agent_service.service.dependencies import current_principal
 from agent_service.service.errors import register_exception_handlers
 from agent_service.service.projects import ProjectService
 from agent_service.service.routes import (
+    artifacts,
     auth,
     health,
     history,
@@ -139,6 +143,7 @@ def create_app(
     app.include_router(skills.router, dependencies=protected)
     app.include_router(memories.router, dependencies=protected)
     app.include_router(runs.router, dependencies=protected)
+    app.include_router(artifacts.router, dependencies=protected)
     app.state.settings = resolved_settings
     app.state.default_agent_id = default_agent_id
     return app
@@ -168,17 +173,20 @@ def _build_lifespan(
 ) -> Lifespan:
     """Buat lifespan yang membuka database, mendaftarkan, dan memuat semua agent.
 
-    Urutan: muat skill → `ModelFactory` → engine + `CheckpointerProvider` + `StoreProvider` → cek
-    migrasi → `AgentRegistry.load_all()` → seed project built-in. Factory, registry,
-    `ThreadRepository`, `ProjectService`, `UserMemoryRepository`, `RunTraceRepository`, dan
-    `Authenticator` disimpan di `app.state`. Engine dan pool checkpointer/store ditutup saat
-    shutdown. Startup gagal jika Postgres tidak terjangkau atau migrasi belum dijalankan.
+    Urutan: muat skill → siapkan direktori artifact → `ModelFactory` → engine +
+    `CheckpointerProvider` + `StoreProvider` → cek migrasi → `AgentRegistry.load_all()` → seed
+    project built-in. Factory, registry, `ThreadRepository`, `ProjectService`, `ArtifactService`,
+    `UserMemoryRepository`, `RunTraceRepository`, dan `Authenticator` disimpan di `app.state`.
+    Engine dan pool checkpointer/store ditutup saat shutdown. Startup gagal jika Postgres tidak
+    terjangkau atau migrasi belum dijalankan.
     """
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         await skill_registry.load()
         app.state.skill_registry = skill_registry
+        artifact_store = LocalArtifactStore(settings.artifact_dir)
+        await artifact_store.prepare()
         model_factory = ModelFactory(settings)
         database_url = settings.database_url.get_secret_value()
         async with (
@@ -199,7 +207,10 @@ def _build_lifespan(
             await registry.load_all()
             app.state.model_factory = model_factory
             app.state.registry = registry
-            thread_repository = ThreadRepository(checkpointer, titles)
+            artifact_service = ArtifactService(
+                ArtifactRepository(engine), artifact_store, settings.artifact_max_bytes
+            )
+            thread_repository = ThreadRepository(checkpointer, titles, cleanups=[artifact_service])
             project_service = ProjectService(
                 ProjectRepository(engine),
                 thread_repository,
@@ -212,6 +223,7 @@ def _build_lifespan(
             app.state.memory_repository = UserMemoryRepository(store)
             app.state.trace_repository = RunTraceRepository(engine)
             app.state.project_service = project_service
+            app.state.artifact_service = artifact_service
             yield
         logger.info("Service shut down")
 

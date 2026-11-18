@@ -49,7 +49,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F32 | Frontend scaffold & auth | M6 | done |
 | F33 | Chat UI | M6 | done |
 | F34 | Projects & threads UI | M6 | done |
-| F35 | Artifact storage | M7 | todo |
+| F35 | Artifact storage | M7 | done |
 | F36 | Workspace & file tools | M7 | todo |
 | F37 | Sandbox | M7 | todo |
 | F38 | Artifact panel UI | M7 | todo |
@@ -1579,14 +1579,41 @@ Scope commit frontend: `frontend`. Aturan kode frontend ada di [ADR 0003](adr/00
   - Download memakai streaming response dengan `Content-Disposition`. Tipe file disimpan saat upload,
     dan nama file disanitasi.
   - `ArtifactStore` berupa protocol, supaya penyimpanan S3-compatible (backlog B7) bisa ditambah.
+- **Langkah 1 (keputusan user):**
+  - **Lampiran lewat `artifact_ids`** di `UserInput`/`StreamInput`: kepemilikan diperiksa (404),
+    referensi disimpan di message human, dan `ChatMessage.artifacts` terisi di riwayat. Agent belum
+    membaca isi file (F36).
+  - **Hapus ikut thread + `DELETE /artifacts/{id}`**: hapus thread atau project ikut menghapus
+    artifact-nya (metadata dan file). Upload yang belum dikirim tetap ada sampai dihapus.
+  - **`ARTIFACT_MAX_BYTES` default 25 MB.**
+  - **Semua tipe file diterima, unduhan selalu `attachment`** dengan `nosniff` (dan CSP `sandbox`).
+    MIME dari client dipakai jika formatnya valid, selain itu ditebak dari ekstensi.
 - **Rencana commit:**
   1. `feat(schema): add artifact references to chat messages`
   2. `feat(files): add local artifact store with metadata in postgres`
   3. `feat(service): add artifact upload and download routes`
   4. `feat(client): upload and download artifacts`
   5. `docs: record F35 artifact decisions`
+- **Penyesuaian saat implementasi:**
+  - Artifact tertaut ke satu thread (`artifacts.thread_id`), ditautkan saat pertama kali dikirim.
+    Mengirimnya ke thread lain → 409. Lampiran untuk jawaban interrupt → 422 (`Command(resume=...)`
+    tidak membawa message human).
+  - Lampiran diperiksa sebelum run disusun dan baru ditautkan setelah kepemilikan thread lolos
+    (`build_attached_run_input`), jadi request yang ditolak tidak mengubah artifact.
+  - `ThreadRepository` menerima `cleanups` (`ThreadDataCleanup`); `ArtifactService` menghapus
+    artifact thread di jalur yang sama dengan hapus thread dan hapus project.
+  - `LocalArtifactStore` memakai I/O async (anyio), menulis ke `.part` lalu rename, dan menolak
+    kunci yang bisa keluar dari direktori. Batas ukuran ditegakkan saat menyalin isi upload.
+  - Proxy nginx image `web`: `client_max_body_size` lewat `API_MAX_BODY_SIZE` (default 26m), karena
+    default nginx 1m menolak upload lebih dulu.
+  - `python-multipart` dideklarasikan eksplisit di extra `service` (sebelumnya transitif).
+  - Client: `upload_artifact`, `download_artifact`, `delete_artifact` (+ versi async) dan
+    `artifact_ids` di `invoke`/`stream`. Rencana commit 1–4 digabung karena schema, service, dan
+    client berbagi `ArtifactRef`.
 - **Acceptance criteria:**
-  - [ ] Artifact user lain → 404. File lebih besar dari `ARTIFACT_MAX_BYTES` → 413.
+  - [x] Artifact user lain → 404. File lebih besar dari `ARTIFACT_MAX_BYTES` → 413:
+        `tests/service/routes/test_artifacts.py` (GET/DELETE/lampiran user lain, 413 tanpa file
+        tersisa) dan e2e Compose (unduh user lain → 404).
 - **Squash title:** `feat(files): add artifact storage and download api (F35)`
 
 ### F36: Workspace & file tools

@@ -6,6 +6,18 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 
 ## [Unreleased]
 
+### Added
+
+- Artifact (FR-46): `POST /artifacts` (upload multipart), `GET /artifacts/{id}` (unduh, selalu
+  `attachment`), dan `DELETE /artifacts/{id}`, hanya untuk pemiliknya. Pesan bisa melampirkan
+  upload lewat `artifact_ids` di input run, dan lampiran tampil di `ChatMessage.artifacts`.
+  Artifact ikut terhapus saat thread atau project-nya dihapus. `AgentClient` mendapat
+  `upload_artifact`, `download_artifact`, dan `delete_artifact` (+ versi async). Langkah upgrade:
+  `uv sync`, lalu `run_migrate` (revisi `0006`, tabel `artifacts`) (F35).
+- Env `ARTIFACT_DIR` (default `data/artifacts`) dan `ARTIFACT_MAX_BYTES` (default 25 MB), volume
+  compose `artifacts`, dan `API_MAX_BODY_SIZE` untuk proxy nginx image `web` (default `26m`).
+  Rebuild image `agent-service` dan `web` (F35).
+
 ## [0.6.0] - 2026-11-18
 
 M6 Frontend: aplikasi web React + TypeScript bergaya Claude di `frontend/`, dengan login, chat

@@ -17,6 +17,7 @@ from agent_service.harness.skills.registry import SkillRegistry
 from agent_service.llm.factory import ModelFactory
 from agent_service.memory.traces import RunTraceRepository
 from agent_service.memory.user_memories import UserMemoryRepository
+from agent_service.service.artifacts import ArtifactService
 from agent_service.service.auth import Authenticator, InvalidTokenError, Principal
 from agent_service.service.projects import ProjectService
 from agent_service.service.threads import ThreadRepository
@@ -66,6 +67,11 @@ def get_trace_repository(request: Request) -> RunTraceRepository:
     return request.app.state.trace_repository
 
 
+def get_artifact_service(request: Request) -> ArtifactService:
+    """Ambil `ArtifactService` yang dibuat di lifespan."""
+    return request.app.state.artifact_service
+
+
 def get_default_agent_id(request: Request) -> str:
     """Ambil ID agent default milik app."""
     return request.app.state.default_agent_id
@@ -103,4 +109,5 @@ ProjectServiceDep = Annotated[ProjectService, Depends(get_project_service)]
 SkillRegistryDep = Annotated[SkillRegistry, Depends(get_skill_registry)]
 MemoryRepositoryDep = Annotated[UserMemoryRepository, Depends(get_memory_repository)]
 TraceRepositoryDep = Annotated[RunTraceRepository, Depends(get_trace_repository)]
+ArtifactServiceDep = Annotated[ArtifactService, Depends(get_artifact_service)]
 PrincipalDep = Annotated[Principal, Depends(current_principal)]

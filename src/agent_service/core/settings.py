@@ -1,5 +1,6 @@
 """Konfigurasi service yang dibaca dari environment variable dan file `.env`."""
 
+from pathlib import Path
 from typing import Annotated, Final, Self
 from urllib.parse import urlsplit
 
@@ -7,6 +8,8 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from agent_service.core.constants import (
+    DEFAULT_ARTIFACT_DIR,
+    DEFAULT_ARTIFACT_MAX_BYTES,
     DEFAULT_CONTEXT_MAX_TOKENS,
     DEFAULT_DATABASE_URL,
     DEFAULT_HOST,
@@ -20,6 +23,7 @@ from agent_service.core.constants import (
     FAKE_MODEL_NAME,
     LIST_SEPARATOR,
     MAX_PORT,
+    MIN_ARTIFACT_MAX_BYTES,
     MIN_CONTEXT_MAX_TOKENS,
     MIN_JWT_SECRET_LENGTH,
     MIN_JWT_TTL_SECONDS,
@@ -68,6 +72,10 @@ class Settings(BaseSettings):
 
     # Secret karena berisi password. Default = Postgres dari compose.yaml untuk dev lokal.
     database_url: SecretStr = SecretStr(DEFAULT_DATABASE_URL)
+
+    # File artifact (FR-46). Metadata di Postgres, isi file di direktori ini (volume di compose).
+    artifact_dir: Path = DEFAULT_ARTIFACT_DIR
+    artifact_max_bytes: int = Field(default=DEFAULT_ARTIFACT_MAX_BYTES, ge=MIN_ARTIFACT_MAX_BYTES)
 
     # Kosong berarti tool web search menjawab "not configured", tanpa menggagalkan startup.
     firecrawl_api_key: SecretStr | None = None

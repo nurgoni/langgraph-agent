@@ -20,7 +20,8 @@ RUN pnpm build
 FROM nginxinc/nginx-unprivileged:1.27-alpine AS web
 COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html
-ENV API_UPSTREAM=http://agent-service:8080
+ENV API_UPSTREAM=http://agent-service:8080 \
+    API_MAX_BODY_SIZE=26m
 EXPOSE 8080
 HEALTHCHECK --interval=5s --timeout=3s --start-period=5s --retries=10 \
     CMD ["wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]

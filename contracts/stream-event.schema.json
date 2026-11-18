@@ -1,5 +1,50 @@
 {
   "$defs": {
+    "ArtifactRef": {
+      "description": "Referensi satu artifact. Isi file diunduh lewat `GET /artifacts/{id}`.",
+      "properties": {
+        "id": {
+          "examples": [
+            "0b9e3c1e-5f7a-4c2b-9d61-3f0a2b7c8d90"
+          ],
+          "title": "Id",
+          "type": "string"
+        },
+        "mime_type": {
+          "description": "Tipe konten file.",
+          "examples": [
+            "text/csv"
+          ],
+          "title": "Mime Type",
+          "type": "string"
+        },
+        "name": {
+          "description": "Nama file yang sudah disanitasi.",
+          "examples": [
+            "sales.csv"
+          ],
+          "title": "Name",
+          "type": "string"
+        },
+        "size": {
+          "description": "Ukuran file dalam byte.",
+          "examples": [
+            2048
+          ],
+          "minimum": 0,
+          "title": "Size",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "mime_type",
+        "size"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    },
     "ChatMessage": {
       "description": "Satu message dalam percakapan, dalam bentuk netral (bukan objek LangChain).",
       "properties": {
@@ -15,6 +60,14 @@
           "default": null,
           "description": "Sub-agent (expert) yang membuat message ini, atau kosong untuk agent utama.",
           "title": "Agent"
+        },
+        "artifacts": {
+          "description": "File yang dilampirkan user atau dibuat agent di message ini.",
+          "items": {
+            "$ref": "#/$defs/ArtifactRef"
+          },
+          "title": "Artifacts",
+          "type": "array"
         },
         "content": {
           "examples": [

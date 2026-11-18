@@ -4,12 +4,13 @@ Tabel checkpointer LangGraph tidak didefinisikan di sini, karena dibuat dan dimi
 `AsyncPostgresSaver.setup()`.
 
 >>> sorted(METADATA.tables)
-['projects', 'run_traces', 'thread_metadata', 'users']
+['artifacts', 'projects', 'run_traces', 'thread_metadata', 'users']
 """
 
 from typing import Final
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     Column,
     DateTime,
@@ -95,4 +96,23 @@ run_traces_table: Final = Table(
     CheckConstraint("kind IN ('run', 'model', 'tool')", name="run_traces_kind_valid"),
     CheckConstraint("status IN ('ok', 'error', 'interrupted')", name="run_traces_status_valid"),
     Index("run_traces_run_id_idx", "run_id"),
+)
+
+# Metadata artifact (FR-46, F35). Isi file ada di `ArtifactStore` dengan kunci `storage_key`.
+# `thread_id` kosong untuk upload yang belum dilampirkan; artifact ber-thread ikut terhapus saat
+# thread dihapus (keputusan user F35). `owner_id` = `sub` token, seperti `projects.owner_id`.
+artifacts_table: Final = Table(
+    "artifacts",
+    METADATA,
+    Column("artifact_id", Uuid(as_uuid=False), primary_key=True),
+    Column("owner_id", Text, nullable=False),
+    Column("thread_id", Text, nullable=True),
+    Column("name", Text, nullable=False),
+    Column("mime_type", Text, nullable=False),
+    Column("size_bytes", BigInteger, nullable=False),
+    Column("storage_key", Text, nullable=False, unique=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    CheckConstraint("size_bytes >= 0", name="artifacts_size_not_negative"),
+    Index("artifacts_owner_id_idx", "owner_id"),
+    Index("artifacts_thread_id_idx", "thread_id"),
 )
