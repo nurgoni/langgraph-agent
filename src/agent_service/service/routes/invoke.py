@@ -117,7 +117,7 @@ async def invoke(
     tracer = RunTraceCollector(traces, run, target.agent_id, target.project_id)
     traced = run.with_callbacks(tracer)
     try:
-        state = await graph.ainvoke(traced.graph_input, traced.config)
+        state = await graph.ainvoke(traced.graph_input, traced.config, context=traced.context)
     # Bukan penanganan error: trace run yang gagal disimpan, lalu error diteruskan ke handler.
     except Exception as error:
         await tracer.save("error", error)

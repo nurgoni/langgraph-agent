@@ -17,6 +17,7 @@ from agent_service.harness.context import ContextBuilder
 from agent_service.harness.context_policy import ContextPolicy, ContextWindow
 from agent_service.harness.memory import MemoryToolkit
 from agent_service.harness.skills.toolkit import SkillToolkit
+from agent_service.harness.workspace import WorkspaceToolkit, with_attachment_notes
 
 AGENT_NODE: Final = "agent"
 TOOLS_NODE: Final = "tools"
@@ -67,8 +68,10 @@ class ToolCallingAgent(BaseAgent):
 
     Dengan `skills`, tool `load_skill` dan indeks skill hanya muncul pada giliran yang project-nya
     punya skill aktif (FR-38). Dengan `use_memory` dan store dari `build`, memory terbaru user masuk
-    prompt dan tool `search_memory`/`save_memory` selalu di-bind (FR-40). Tanpa tool sama sekali,
-    graph-nya `agent → END`.
+    prompt dan tool `search_memory`/`save_memory` selalu di-bind (FR-40). Dengan `files`, tool file
+    workspace selalu di-bind, output tool besar dipindah ke workspace, dan path lampiran ditambahkan
+    ke pesan human yang dikirim ke model (FR-47, FR-48). Workspace datang dari `HarnessContext` yang
+    dikirim service sebagai runtime context. Tanpa tool sama sekali, graph-nya `agent → END`.
     """
 
     def __init__(
@@ -80,6 +83,7 @@ class ToolCallingAgent(BaseAgent):
         skills: SkillToolkit | None = None,
         context_policy: ContextPolicy | None = None,
         use_memory: bool = False,
+        files: WorkspaceToolkit | None = None,
     ) -> None:
         """Inisialisasi agent.
 
@@ -91,6 +95,7 @@ class ToolCallingAgent(BaseAgent):
             skills: Toolkit skill. `None` berarti agent tidak bisa memakai skill.
             context_policy: Anggaran token riwayat. Default: `ContextPolicy()` (16.000 token).
             use_memory: Pakai long-term memory user jika `build` menerima store.
+            files: Tool file workspace dan offloader output. `None` berarti tanpa workspace.
         """
         super().__init__(agent_id=agent_id, description=description)
         self._policy = ContextPolicy() if context_policy is None else context_policy
@@ -98,6 +103,7 @@ class ToolCallingAgent(BaseAgent):
         self._skills = skills
         self._context = context if skills is None else context.with_skills(skills)
         self._use_memory = use_memory
+        self._files = files
 
     def build(
         self, model: BaseChatModel, checkpointer: Checkpointer, store: BaseStore | None = None
@@ -132,7 +138,8 @@ class ToolCallingAgent(BaseAgent):
 
     def _graph_builder(self, model: BaseChatModel, memory: MemoryToolkit | None) -> StateGraph:
         """Susun graph `agent → tools → agent` untuk `model`, belum di-compile."""
-        agent_tools = [*self._tools, *([] if memory is None else memory.tools)]
+        file_tools = [] if self._files is None else self._files.tools
+        agent_tools = [*self._tools, *file_tools, *([] if memory is None else memory.tools)]
         all_tools = self._all_tools(agent_tools)
         base_model = model.bind_tools(agent_tools) if agent_tools else model
         skill_model = model.bind_tools(all_tools) if self._skills is not None else base_model
@@ -149,7 +156,10 @@ class ToolCallingAgent(BaseAgent):
             prompt = self._context.system_message(config, window.summary, memories)
             uses_skills = self._skills is not None and bool(self._skills.tools_for(config))
             bound_model = skill_model if uses_skills else base_model
-            response = await bound_model.ainvoke([prompt, *window.messages])
+            messages = (
+                window.messages if self._files is None else with_attachment_notes(window.messages)
+            )
+            response = await bound_model.ainvoke([prompt, *messages])
             if response.tool_calls and state["remaining_steps"] < MIN_REMAINING_STEPS:
                 response = AIMessage(id=response.id, content=STEP_LIMIT_MESSAGE)
             return model_turn_update(response, window)
@@ -163,7 +173,11 @@ class ToolCallingAgent(BaseAgent):
             return builder
         # Hanya ToolException (input salah, pencarian gagal) yang dikembalikan ke model sebagai
         # pesan error. Bug lain tetap menggagalkan run supaya terlihat.
-        builder.add_node(TOOLS_NODE, ToolNode(all_tools, handle_tool_errors=(ToolException,)))
+        offloader = None if self._files is None else self._files.offloader
+        tool_node = ToolNode(
+            all_tools, handle_tool_errors=(ToolException,), awrap_tool_call=offloader
+        )
+        builder.add_node(TOOLS_NODE, tool_node)
         builder.add_conditional_edges(AGENT_NODE, tools_condition)
         builder.add_edge(TOOLS_NODE, AGENT_NODE)
         return builder

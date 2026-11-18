@@ -122,7 +122,10 @@ class StreamService:
     async def _events(self) -> AsyncGenerator[StreamEvent]:
         """Teruskan setiap item `astream` ke handler sesuai stream mode."""
         async for mode, payload in self._graph.astream(
-            self._run.graph_input, self._run.config, stream_mode=STREAM_MODES
+            self._run.graph_input,
+            self._run.config,
+            context=self._run.context,
+            stream_mode=STREAM_MODES,
         ):
             if mode == UPDATES_MODE:
                 events = self._handle_updates(payload)

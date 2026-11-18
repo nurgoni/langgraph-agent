@@ -4,7 +4,7 @@ Tabel checkpointer LangGraph tidak didefinisikan di sini, karena dibuat dan dimi
 `AsyncPostgresSaver.setup()`.
 
 >>> sorted(METADATA.tables)
-['artifacts', 'projects', 'run_traces', 'thread_metadata', 'users']
+['artifacts', 'projects', 'run_traces', 'thread_metadata', 'users', 'workspace_files']
 """
 
 from typing import Final
@@ -16,7 +16,9 @@ from sqlalchemy import (
     DateTime,
     Index,
     Integer,
+    LargeBinary,
     MetaData,
+    PrimaryKeyConstraint,
     Table,
     Text,
     Uuid,
@@ -115,4 +117,17 @@ artifacts_table: Final = Table(
     CheckConstraint("size_bytes >= 0", name="artifacts_size_not_negative"),
     Index("artifacts_owner_id_idx", "owner_id"),
     Index("artifacts_thread_id_idx", "thread_id"),
+)
+
+# Workspace per thread (FR-47, F36): satu baris per file, isi sebagai bytes. Kepemilikan ikut
+# thread (diperiksa service sebelum run), dan semua file ikut terhapus saat thread dihapus.
+workspace_files_table: Final = Table(
+    "workspace_files",
+    METADATA,
+    Column("thread_id", Text, nullable=False),
+    Column("path", Text, nullable=False),
+    Column("content", LargeBinary, nullable=False),
+    Column("size_bytes", BigInteger, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("thread_id", "path", name="workspace_files_pkey"),
 )

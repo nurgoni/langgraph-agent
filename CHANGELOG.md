@@ -17,6 +17,12 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 - Env `ARTIFACT_DIR` (default `data/artifacts`) dan `ARTIFACT_MAX_BYTES` (default 25 MB), volume
   compose `artifacts`, dan `API_MAX_BODY_SIZE` untuk proxy nginx image `web` (default `26m`).
   Rebuild image `agent-service` dan `web` (F35).
+- Workspace per thread (FR-47, FR-48): chatbot dan research assistant mendapat tool `read_file`,
+  `write_file`, `edit_file`, `list_files`, `grep` (teks literal), dan `share_file` (file workspace →
+  artifact). Lampiran disalin ke `uploads/<nama>` supaya agent bisa membacanya. Output tool yang
+  melebihi `TOOL_OUTPUT_MAX_TOKENS` (default 4.000) disimpan di `tool-outputs/` dan model menerima
+  cuplikan + path. Workspace ikut terhapus bersama thread. Langkah upgrade: `run_migrate` (revisi
+  `0007`, tabel `workspace_files`) (F36).
 
 ## [0.6.0] - 2026-11-18
 

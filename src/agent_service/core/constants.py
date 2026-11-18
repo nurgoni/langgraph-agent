@@ -77,3 +77,10 @@ DEFAULT_ARTIFACT_MAX_BYTES: Final = DEFAULT_ARTIFACT_MAX_MEGABYTES * BYTES_PER_M
 MIN_ARTIFACT_MAX_BYTES: Final = 1
 # Kunci `additional_kwargs` message LangChain yang berisi referensi artifact (pola penanda F17).
 ARTIFACTS_KWARG: Final = "artifacts"
+
+# Batas output tool sebelum dipindah ke workspace (FR-48, keputusan user F36): ±25% anggaran riwayat
+# default, jadi hasil web search biasa tetap utuh.
+DEFAULT_TOOL_OUTPUT_MAX_TOKENS: Final = 4000
+MIN_TOOL_OUTPUT_MAX_TOKENS: Final = 100
+# Kunci `additional_kwargs` message human berisi path lampiran di workspace thread (F36).
+WORKSPACE_FILES_KWARG: Final = "workspace_files"

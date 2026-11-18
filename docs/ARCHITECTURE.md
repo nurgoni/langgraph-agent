@@ -497,6 +497,7 @@ Satu database Postgres di `DATABASE_URL` ([ADR 0001](adr/0001-postgres-only.md))
 | `projects` | `ProjectRepository` (SQLAlchemy Core) | Project built-in dan milik user |
 | `store`, `store_migrations` | `AsyncPostgresStore` (via `StoreProvider`) | Long-term memory user (F30) |
 | `run_traces` | `RunTraceRepository` (SQLAlchemy Core) | Trace run: satu baris per span run/model/tool (F31) |
+| `workspace_files` | `PostgresWorkspace` (SQLAlchemy Core) | File workspace per thread: path, isi (bytes), ukuran (F36) |
 | `artifacts` | `ArtifactRepository` (SQLAlchemy Core) | Metadata artifact: pemilik, thread, nama, tipe, ukuran (F35). Isi file di `ArtifactStore` |
 | `alembic_version` | Alembic | Revisi skema tabel aplikasi |
 
@@ -518,7 +519,7 @@ Satu database Postgres di `DATABASE_URL` ([ADR 0001](adr/0001-postgres-only.md))
   `pytest_asyncio_loop_factories`.
 
 Penghapusan thread memanggil `adelete_thread`, menghapus judulnya, lalu menjalankan setiap
-`ThreadDataCleanup` (artifact thread, F35).
+`ThreadDataCleanup` (artifact thread F35, workspace thread F36).
 
 ### Artifact (F35)
 
@@ -546,6 +547,38 @@ DELETE thread/project ── ThreadRepository._remove → ArtifactService.delete
   interrupt (422), karena `Command(resume=...)` tidak membawa message human.
 - **Isolasi.** Semua pembacaan disaring `owner_id`; artifact user lain dan ID yang bukan UUID
   dijawab 404 dengan pesan yang sama.
+
+### Workspace dan tool file (F36)
+
+```text
+service: build_attached_run_input
+    ├─ lampiran → ArtifactService.copy_to_workspace → uploads/<nama>
+    │            HumanMessage.additional_kwargs["workspace_files"]
+    └─ RunInput.context = HarnessContext(workspace, artifacts=ArtifactService)
+graph.ainvoke / astream (..., context=run.context)
+ToolCallingAgent(files=WorkspaceToolkit)
+    ├─ call_model: with_attachment_notes(messages) → model melihat path lampiran
+    └─ ToolNode(awrap_tool_call=ToolOutputOffloader)
+          read_file · write_file · edit_file · list_files · grep · share_file
+          ToolRuntime[HarnessContext] → workspace + thread_id/user_id dari config
+          output > TOOL_OUTPUT_MAX_TOKENS → tool-outputs/<id>.txt + cuplikan
+```
+
+- **Runtime context, bukan konstruktor.** Agent dibuat di `create_app` sebelum database ada, jadi
+  workspace dan penerbit artifact datang per run lewat `context=` (`harness/runtime.py`). Run tanpa
+  context (sub-agent, test unit) membuat tool file menjawab "workspace not available".
+- **Isolasi.** Tool tidak menerima thread dari model: `thread_id` dan `user_id` dibaca dari config
+  yang ditetapkan service setelah kepemilikan thread diperiksa. Path dinormalisasi
+  (`normalize_workspace_path`): path absolut, huruf drive, `..`, dan karakter kontrol ditolak.
+- **Isi bytes.** File biner (lampiran PDF, gambar dari sandbox F37) disimpan apa adanya; `read_file`
+  dan `grep` hanya membaca teks UTF-8. `share_file` menerbitkan file apa pun sebagai artifact yang
+  tertaut ke thread, lewat `ToolMessage.additional_kwargs["artifacts"]`.
+- **Offload.** `ToolOutputOffloader` memotong output tool lain yang melebihi
+  `TOOL_OUTPUT_MAX_TOKENS`, menyimpan isi utuh di `tool-outputs/<tool_call_id>.txt`, dan memberi
+  model seperempat batas sebagai cuplikan. `read_file`, `list_files`, dan `grep` membatasi
+  outputnya sendiri (paging per baris), jadi tidak di-offload.
+- **`grep` literal.** Pola dari model dicocokkan sebagai substring, bukan regex, karena `re` tidak
+  punya timeout dan berjalan di event loop service.
 
 ## Agent dengan Tool
 

@@ -50,7 +50,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F33 | Chat UI | M6 | done |
 | F34 | Projects & threads UI | M6 | done |
 | F35 | Artifact storage | M7 | done |
-| F36 | Workspace & file tools | M7 | todo |
+| F36 | Workspace & file tools | M7 | done |
 | F37 | Sandbox | M7 | todo |
 | F38 | Artifact panel UI | M7 | todo |
 | F39 | SQL data source | M8 | todo |
@@ -1628,15 +1628,51 @@ Scope commit frontend: `frontend`. Aturan kode frontend ada di [ADR 0003](adr/00
   - Tool `share_file(path)` menjadikan file workspace sebagai artifact di message jawaban.
   - Output tool yang terlalu besar ditulis ke `tool-outputs/<id>.txt`, dan model menerima cuplikan
     + path.
+- **Langkah 1 (keputusan user):**
+  - **Chatbot dan research assistant selalu** mendapat tool file (seperti tool memory), di dalam
+    maupun di luar project. Supervisor dan interrupt-agent tidak.
+  - **Lampiran disalin ke workspace** di `uploads/<nama>` saat pesan dikirim; model melihat path-nya
+    di pesan human.
+  - **`TOOL_OUTPUT_MAX_TOKENS` default 4.000.**
+  - **`grep` teks literal** (opsi abaikan huruf besar/kecil), tanpa regex, supaya aman dari ReDoS
+    di proses service.
 - **Rencana commit:**
   1. `feat(files): add per-thread workspace with path validation`
   2. `feat(harness): add read, write, edit, list and grep file tools`
   3. `feat(harness): offload large tool outputs to the workspace`
   4. `feat(harness): share workspace files as artifacts`
   5. `docs: record F36 workspace decisions`
+- **Penyesuaian saat implementasi:**
+  - Workspace dan penerbit artifact disalurkan sebagai **runtime context LangGraph**
+    (`HarnessContext`, `ainvoke(..., context=...)`), bukan lewat `BaseAgent.build`, jadi signature
+    agent custom tidak berubah. Tool membacanya dari `ToolRuntime`; `thread_id`/`user_id` dari
+    config yang ditetapkan service. Probe: context sampai ke tool (juga setelah resume interrupt)
+    tanpa `context_schema`, dan `ToolRuntime[HarnessContext]` menghindari peringatan Pydantic.
+  - `PostgresWorkspace` ada di `memory/workspace.py` (bukan `files/`), karena `files/` tidak boleh
+    meng-import tabel `memory/`. `files/workspace.py` berisi protocol, validasi path, dan
+    `InMemoryWorkspace`. Protocol `Workspace` dan `ArtifactPublisher` `@runtime_checkable` karena
+    Pydantic memvalidasi context di `ToolRuntime`.
+  - Isi file disimpan sebagai bytes (`BYTEA`), batas per file = `ARTIFACT_MAX_BYTES`, supaya file
+    workspace selalu bisa dibagikan. File biner tidak dibaca sebagai teks; model diarahkan ke
+    `share_file`.
+  - `share_file` mengembalikan `ToolMessage` dengan `additional_kwargs["artifacts"]`, jadi lampiran
+    ada di tool message (bukan message jawaban AI). `ArtifactService.publish` membuat artifact yang
+    langsung tertaut ke thread.
+  - Offloader dipasang lewat `ToolNode(awrap_tool_call=...)`. `read_file`, `list_files`, dan `grep`
+    membatasi outputnya sendiri (paging per baris), jadi tidak di-offload. Tanpa workspace, output
+    besar hanya dipotong.
+  - Path lampiran untuk model disimpan di `additional_kwargs["workspace_files"]` dan ditambahkan ke
+    salinan pesan yang dikirim ke model; riwayat yang dilihat user tidak berubah. Nama upload yang
+    sudah dipakai diberi penanda dari ID artifact.
+  - `sanitize_filename` dan `resolve_mime_type` dipindah ke `files/artifacts.py` (dipakai harness).
+  - Rencana commit 1–4 digabung: tool, offloader, dan `share_file` berbagi `HarnessContext` dan
+    `WorkspaceToolkit`.
 - **Acceptance criteria:**
-  - [ ] Path traversal ditolak. Workspace thread lain tidak terbaca.
-  - [ ] Output tool besar diganti cuplikan + path.
+  - [x] Path traversal ditolak. Workspace thread lain tidak terbaca: `tests/files/test_workspace.py`,
+        `tests/memory/test_workspace.py`, dan `tests/harness/tools/test_files.py` (tool di thread
+        lain → file tidak ada).
+  - [x] Output tool besar diganti cuplikan + path: `tests/harness/tools/test_files.py` (isi utuh di
+        `tool-outputs/<id>.txt`).
 - **Squash title:** `feat(harness): add workspace file tools and output offloading (F36)`
 
 ### F37: Sandbox
