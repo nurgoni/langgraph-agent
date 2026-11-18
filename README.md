@@ -139,6 +139,8 @@ menunjuk ke container itu sendiri.
 | `JWT_TTL_SECONDS` | tidak | Umur access token, default `43200` (12 jam). Tidak ada refresh token |
 | `CORS_ORIGINS` | tidak | Origin browser yang boleh memanggil API, dipisah koma. Kosong = tidak ada |
 | `FIRECRAWL_API_KEY` | tidak | Key [Firecrawl](https://firecrawl.dev) untuk tool `web_search` (research-assistant, supervisor). Kosong = tanpa pencarian web |
+| `ARTIFACT_DIR` | tidak | Folder isi file artifact, default `data/artifacts`. Compose memakai volume `artifacts` |
+| `ARTIFACT_MAX_BYTES` | tidak | Batas ukuran upload, default `26214400` (25 MB). Upload lebih besar → 413. Di balik proxy `web`, naikkan juga `API_MAX_BODY_SIZE` (default `26m`) |
 | `AGENT_URL` | tidak | URL service untuk UI/client/eval, default `http://localhost:8080` |
 | `EVAL_USERNAME`, `EVAL_PASSWORD` | eval | Akun untuk `run_evals`, sebaiknya service account (`--role service`) |
 | `EVAL_TIMEOUT_SECONDS` | tidak | Batas waktu per request eval, default `300` |
@@ -165,6 +167,8 @@ menunjuk ke container itu sendiri.
 | GET | `/memories` | Long-term memory milik user, yang terakhir diubah lebih dulu |
 | DELETE | `/memories/{memory_id}` | Hapus satu memory. Memory user lain menjawab 404 |
 | GET | `/runs/{run_id}/trace` | Trace satu run: durasi, token, panggilan model dan tool. Run user lain menjawab 404 |
+| POST | `/artifacts` | Upload satu file (multipart, field `file`). Lebih besar dari `ARTIFACT_MAX_BYTES` → 413 |
+| GET, DELETE | `/artifacts/{artifact_id}` | Unduh (selalu `attachment`) atau hapus artifact. Artifact user lain menjawab 404 |
 | GET | `/health` | Health check, selalu tanpa auth |
 
 Semua endpoint selain `/health` dan `/auth/login` butuh `Authorization: Bearer <access_token>`.
@@ -179,6 +183,22 @@ TOKEN=$(curl -s -X POST http://localhost:8080/auth/login \
 curl -N -X POST http://localhost:8080/chatbot/stream \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"message": "Halo!", "stream_tokens": true}'
+```
+
+### Artifact
+
+File diunggah lewat `POST /artifacts`, lalu dilampirkan ke pesan dengan `artifact_ids`. Lampiran
+tampil di `ChatMessage.artifacts` pada riwayat, dan artifact ikut terhapus saat thread-nya dihapus.
+Satu artifact hanya bisa dilampirkan di satu thread (thread lain → 409).
+
+```python
+with AgentClient(base_url="http://localhost:8080") as client:
+    client.login("demo", "rahasia-demo")
+    artifact = client.upload_artifact(b"region,total
+north,10
+", "sales.csv", "text/csv")
+    reply = client.invoke("Ringkas file ini", artifact_ids=[artifact.id])
+    content = client.download_artifact(artifact.id)
 ```
 
 Kontrak lengkap ada di [`contracts/openapi.json`](contracts/openapi.json) dan

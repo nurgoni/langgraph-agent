@@ -14,16 +14,15 @@ berulang ada di dev-time skill `.claude/skills/` (daftar di AGENTS.md § Dev-tim
 
 ## Status Saat Ini
 
-- **Fase:** M6 Frontend selesai (F32–F34 di-merge). Rilis **v0.6.0** disiapkan di working tree
-  `develop` (versi, CHANGELOG, `uv.lock`, kontrak, `frontend/package.json`), menunggu user membuat
-  `release/v0.6.0`, PR ke `main`, tag, dan back-merge.
-- **Berikutnya:** M7 Files & Execution, mulai **F35** (Artifact storage).
+- **Fase:** M7 Files & Execution. v0.6.0 dirilis (2026-11-18). F35 (Artifact storage) selesai di
+  working tree `develop`, menunggu user membuat `feature/F35-artifact-storage`, commit, dan PR.
+- **Berikutnya:** **F36** (Workspace & file tools).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Arsip:** Decision Log M0–M4 ada di
   [archive/decision-log-m0-m4.md](archive/decision-log-m0-m4.md), dan F26–F31 di
   [archive/decision-log-m4-m5.md](archive/decision-log-m4-m5.md).
-- **Terakhir diperbarui:** 2026-11-18 (F34)
+- **Terakhir diperbarui:** 2026-11-18 (F35)
 
 ## Aturan Kerja
 
@@ -77,6 +76,35 @@ Ringkasan pelajaran dari M0–M5 yang masih berlaku (detail di arsip dan entri f
   jalankan `generate:api`. Kode aplikasi tidak mengedit vendor shadcn.
 
 ## Decision Log
+
+### 2026-11-18: Artifact storage dari F35
+
+- **Keputusan user:** lampiran lewat `artifact_ids` di input run; artifact ikut terhapus bersama
+  thread, ditambah `DELETE /artifacts/{id}`; `ARTIFACT_MAX_BYTES` 25 MB; semua tipe diterima,
+  unduhan selalu `attachment` + `nosniff` (+ CSP `sandbox`).
+- **Keputusan desain:**
+  - Satu artifact satu thread (`artifacts.thread_id`), ditautkan saat pertama dikirim; thread lain
+    → 409, lampiran untuk jawaban interrupt → 422. Ditautkan setelah kepemilikan thread lolos
+    (`build_attached_run_input`).
+  - `ThreadRepository(cleanups=[...])` (`ThreadDataCleanup`) menghapus artifact di jalur hapus
+    thread dan hapus project.
+  - `LocalArtifactStore`: anyio, tulis ke `.part` lalu rename, kunci divalidasi pola.
+  - nginx `client_max_body_size ${API_MAX_BODY_SIZE}`; `python-multipart` eksplisit di extra.
+  - Fixture autouse `artifact_dir` di `tests/conftest.py` (env `ARTIFACT_DIR` → tmp_path).
+- **Hasil ukur:** 1011 pytest (+37), mutation check 12/12, e2e Compose 16/16 dalam 82 detik
+  (upload 2 MB lewat proxy `web`, bertahan setelah restart, user lain 404).
+- **Pelajaran:**
+  - Tanpa fixture `artifact_dir`, lifespan test membuat `data/artifacts` di repo (ditemukan dari
+    folder kosong setelah pytest). `data/` sekarang di `.gitignore`.
+  - FastAPI membaca body multipart sebelum handler, jadi batas ukuran baru ditegakkan saat
+    menyalin; proxy nginx adalah penahan pertama.
+  - E2E fitur sebelumnya dijalankan dari salinan repo di scratchpad (`uv run` di folder salinan),
+    supaya pengerjaan fitur berikutnya di working tree tidak ikut ter-build.
+  - Insiden rilis v0.6.0 (diperiksa dengan git read-only atas izin user): PR release → `main` tidak
+    di-merge, tag dibuat di `main` lama (menunjuk commit v0.5.0), dan `git branch -d` tetap
+    menghapus branch release karena sudah ter-push. Commit rilis diselamatkan dari reflog. Daftar
+    command rilis kini meminta user memastikan PR **Merged** dan memeriksa `git log` sebelum tag.
+  - Squash PR #40 (F34) memakai judul F33; tidak diperbaiki karena butuh force-push ke `develop`.
 
 ### 2026-11-18: Projects & threads UI dari F34
 

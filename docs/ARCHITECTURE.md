@@ -497,6 +497,7 @@ Satu database Postgres di `DATABASE_URL` ([ADR 0001](adr/0001-postgres-only.md))
 | `projects` | `ProjectRepository` (SQLAlchemy Core) | Project built-in dan milik user |
 | `store`, `store_migrations` | `AsyncPostgresStore` (via `StoreProvider`) | Long-term memory user (F30) |
 | `run_traces` | `RunTraceRepository` (SQLAlchemy Core) | Trace run: satu baris per span run/model/tool (F31) |
+| `artifacts` | `ArtifactRepository` (SQLAlchemy Core) | Metadata artifact: pemilik, thread, nama, tipe, ukuran (F35). Isi file di `ArtifactStore` |
 | `alembic_version` | Alembic | Revisi skema tabel aplikasi |
 
 - **Satu driver.** Checkpointer dan SQLAlchemy sama-sama memakai psycopg 3. `DATABASE_URL` ditulis
@@ -516,7 +517,35 @@ Satu database Postgres di `DATABASE_URL` ([ADR 0001](adr/0001-postgres-only.md))
   `asyncio.run(..., loop_factory=asyncio.SelectorEventLoop)`, dan test memakai hook
   `pytest_asyncio_loop_factories`.
 
-Penghapusan thread memanggil `adelete_thread` lalu menghapus judulnya.
+Penghapusan thread memanggil `adelete_thread`, menghapus judulnya, lalu menjalankan setiap
+`ThreadDataCleanup` (artifact thread, F35).
+
+### Artifact (F35)
+
+```text
+POST /artifacts ── ArtifactService.upload ── LocalArtifactStore.write (.part → rename)
+                                         └─ ArtifactRepository.add (metadata, thread_id kosong)
+POST /invoke|/stream {artifact_ids} ── build_attached_run_input
+    ├─ ArtifactService.resolve_attachments  (milik user? 404; thread lain? 409)
+    ├─ build_run_input → HumanMessage(additional_kwargs["artifacts"] = [ArtifactRef])
+    └─ ArtifactService.link(thread_id)      (setelah kepemilikan thread lolos)
+GET /history ── langchain_to_chat_message → ChatMessage.artifacts
+DELETE thread/project ── ThreadRepository._remove → ArtifactService.delete_thread_data
+```
+
+- **Isi dan metadata terpisah.** `files/artifacts.py` berisi protocol `ArtifactStore` dan
+  `LocalArtifactStore` (folder `ARTIFACT_DIR`, volume `artifacts` di compose). Metadata ada di
+  tabel `artifacts`. Store S3-compatible (backlog B7) cukup mengimplementasikan protocol.
+- **Batas ukuran** ditegakkan saat isi upload disalin ke store; file `.part` dihapus jika melebihi
+  `ARTIFACT_MAX_BYTES` (413). Proxy nginx image `web` punya batas sendiri (`API_MAX_BODY_SIZE`).
+- **Keamanan unduhan.** Selalu `Content-Disposition: attachment` (nama ASCII + `filename*` UTF-8),
+  `X-Content-Type-Options: nosniff`, dan `Content-Security-Policy: sandbox`, jadi HTML/SVG tidak
+  pernah dirender di origin aplikasi. Nama file disanitasi (tanpa path dan karakter kontrol).
+- **Satu artifact, satu thread.** Artifact ditautkan ke thread saat pertama kali dikirim, supaya
+  penghapusan thread tahu file mana yang ikut dihapus. Lampiran tidak bisa menjadi jawaban
+  interrupt (422), karena `Command(resume=...)` tidak membawa message human.
+- **Isolasi.** Semua pembacaan disaring `owner_id`; artifact user lain dan ID yang bukan UUID
+  dijawab 404 dengan pesan yang sama.
 
 ## Agent dengan Tool
 
