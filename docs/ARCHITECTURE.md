@@ -441,8 +441,8 @@ ChatPage ── useChatRuntime ── useExternalStoreRuntime (assistant-ui) ─
   yang sudah di-stream tetap tampil saat run dihentikan.
 - **Pindah thread** menaikkan `generation` controller dan membatalkan run aktif (`AbortController`),
   sehingga event atau riwayat yang terlambat dari thread sebelumnya diabaikan.
-- **Agent** selalu `default_agent` lewat `POST /stream`. Model dipilih di composer dari `/info`
-  (keputusan user F33). Agent lain dipakai lewat Project di F34.
+- **Agent** selalu `default_agent` lewat `POST /stream` untuk chat umum. Model dipilih di composer
+  dari `/info` (keputusan user F33). Agent lain dipakai lewat Project (F34).
 - **Template.** `src/components/assistant-ui/elements/` disalin dari registry assistant-ui tanpa
   diubah; ESLint mematikan aturan yang dilanggar upstream hanya di folder itu. `thread.tsx`
   dipangkas dan disesuaikan (keputusan user: template boleh diedit). Registry saat ini meminta
@@ -457,6 +457,33 @@ ChatPage ── useChatRuntime ── useExternalStoreRuntime (assistant-ui) ─
 - **Tooling.** Node 24, pnpm 12 via corepack, `minimumReleaseAge` 14 hari (setara
   `exclude-newer` uv). TypeScript dipin `~5.9`, karena typescript-eslint dan openapi-typescript
   belum mendukung TypeScript 7.
+
+### Projects dan threads (F34)
+
+```text
+AppShell ── RecentsList ── useThreads(null) ── ThreadsService → GET/PATCH/DELETE /threads
+/projects ─────────────── ProjectsPage ── useProjects → GET /projects
+/projects/new, /:id/edit ─ ProjectForm (react-hook-form + zod) → POST/PATCH /projects, GET /skills
+/projects/:id[/chat/:t] ── ProjectChatPage ── ChatPage key=projectId, projectId
+                              ├─ ChatService(api, projectId) → /projects/{id}/stream, /history
+                              └─ ProjectOverview (welcome) ── useThreads(projectId)
+```
+
+- **Scope thread.** Chat umum dan chat project memakai komponen yang sama dengan `projectId`
+  `null` atau id project. URL dan query key (`["threads", projectId ?? "general"]`) ada di
+  `features/threads/thread-paths.ts`. Recents hanya berisi chat umum, karena `GET /threads` hanya
+  mengembalikan thread tanpa project (keputusan user F34).
+- **Refresh daftar thread.** `ChatController` memanggil `onThreadCreated` dan `onRunFinished`;
+  `ChatPage` meng-invalidate query thread scope-nya, sehingga judul dan urutan di sidebar atau
+  halaman project ikut berubah. Rename dan hapus meng-invalidate lewat mutation.
+- **Halaman project** adalah `ChatPage` dengan `welcome` = ringkasan project, jadi composer ada di
+  halaman project (keputusan user F34). `key={projectId}` membuat controller baru saat pindah
+  project; URL chat baru → thread tetap memakai komponen yang sama.
+- **Read-only.** Project built-in (`read_only`) tidak punya menu edit/hapus, dan halaman edit-nya
+  hanya menampilkan pemberitahuan. Service tetap menjadi penjaga (403).
+- **Form** memvalidasi batas yang sama dengan `schema/projects.py` (nama 1–80, deskripsi ≤ 500,
+  instruksi ≤ 8000, maksimal 20 skill, batas token ≥ 1). Error service (misalnya model tidak
+  dikenal) tampil di bawah form.
 
 ## Persistence
 

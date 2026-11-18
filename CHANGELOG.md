@@ -20,6 +20,9 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
   `/chat/<thread_id>`. Tipe event SSE digenerate dari `contracts/stream-event.schema.json` (F33).
 - Image `web` memakai cache mount BuildKit untuk store pnpm, jadi rebuild hanya mengunduh paket
   yang berubah (F33).
+- Projects dan Recents di frontend (FR-44): sidebar dengan chat baru, Projects, dan Recents (rename
+  dan hapus). Halaman Projects, halaman project dengan instruksi, skill, daftar chat, dan composer,
+  serta form buat/edit project dengan pemilih skill. Project built-in tampil read-only (F34).
 
 ## [0.5.0] - 2026-11-17
 
