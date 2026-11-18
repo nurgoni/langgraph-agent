@@ -255,6 +255,21 @@ git branch -d release/v0.1.0 && git push origin --delete release/v0.1.0
 `develop`. Akibatnya rilis berikutnya akan konflik dan histori kedua branch terputus. Merge
 `--no-ff` menjaga keduanya tetap terhubung.
 
+**Jika release terlanjur di-squash** (terjadi di v0.7.0): isi `main` tetap benar, hanya
+riwayatnya terputus. Jangan force-push. Tag tetap dibuat di `main`, lalu back-merge (langkah 5)
+akan konflik di file yang diubah commit rilis (biasanya `CHANGELOG.md` dan `.agents/memory.md`).
+Ambil versi `main`, karena isinya = `develop` + bump versi:
+
+```bash
+git diff --stat release/vX.Y.Z main      # harus kosong: main = isi branch release
+git checkout --theirs -- CHANGELOG.md .agents/memory.md
+git add CHANGELOG.md .agents/memory.md
+git diff --cached --stat main            # harus kosong sebelum commit
+git commit -m "chore(release): merge vX.Y.Z back into develop"
+```
+
+Setelah merge ini, `main` menjadi leluhur `develop` lagi, jadi rilis berikutnya bersih.
+
 Di branch release hanya boleh ada bump versi, changelog, dan perbaikan bug kecil. Tidak boleh ada
 fitur baru.
 
@@ -293,9 +308,16 @@ git push -u origin main develop
 Lalu di GitHub:
 
 - Set `develop` sebagai default branch.
-- Proteksi `main` dan `develop`: wajib PR dan status check CI, blokir force-push.
-- Di `develop` aktifkan hanya "Allow squash merging". Untuk merge release ke `main` dipakai
-  "Create a merge commit".
+- **Settings → General → Pull Requests:** aktifkan "Allow merge commits" dan "Allow squash
+  merging", matikan "Allow rebase merging". Untuk squash, pilih default commit message
+  **"Pull request title"**, supaya judul commit squash = judul PR (squash title ROADMAP), bukan nama
+  branch.
+- **Settings → Rules → Rulesets**, satu ruleset per branch permanen. Pengaturan merge di atas
+  berlaku untuk seluruh repo, jadi hanya ruleset yang bisa mencegah tombol merge yang salah:
+  - `main`: "Require a pull request before merging" dengan **Allowed merge methods = Merge**
+    saja, "Require status checks to pass" (CI), dan "Block force pushes".
+  - `develop`: "Require a pull request before merging" dengan **Allowed merge methods = Squash**
+    saja, "Require status checks to pass", dan "Block force pushes".
 
 Root commit di atas adalah **satu-satunya** commit langsung ke `main`.
 

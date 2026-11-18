@@ -14,9 +14,9 @@ berulang ada di dev-time skill `.claude/skills/` (daftar di AGENTS.md § Dev-tim
 
 ## Status Saat Ini
 
-- **Fase:** M7 Files & Execution selesai (F35–F38 di-merge). Rilis **v0.7.0** disiapkan di working
-  tree `develop` (versi, CHANGELOG, `uv.lock`, kontrak, `frontend/package.json`), menunggu user
-  membuat `release/v0.7.0`, PR ke `main` (pastikan **Merged**), tag, dan back-merge.
+- **Fase:** v0.7.0 (M7 Files & Execution) dirilis 2026-11-18. PR release #46 ter-squash ke `main`;
+  back-merge ke `develop` diselesaikan agent 2026-11-19 (`efe7364`, menunggu user push `develop`
+  dan menghapus `release/v0.7.0` remote).
 - **Berikutnya:** M8 Data Analytics, mulai **F39** (SQL data source).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
@@ -24,7 +24,7 @@ berulang ada di dev-time skill `.claude/skills/` (daftar di AGENTS.md § Dev-tim
   [archive/decision-log-m0-m4.md](archive/decision-log-m0-m4.md), F26–F31 di
   [archive/decision-log-m4-m5.md](archive/decision-log-m4-m5.md), dan dev-time skill + F32–F34 di
   [archive/decision-log-m6.md](archive/decision-log-m6.md).
-- **Terakhir diperbarui:** 2026-11-18 (rilis v0.7.0)
+- **Terakhir diperbarui:** 2026-11-19 (back-merge v0.7.0)
 
 ## Aturan Kerja
 
@@ -88,6 +88,21 @@ Ringkasan pelajaran dari M0–M6 yang masih berlaku (detail di arsip dan entri f
   `\n\n` (dikecualikan), dan `check-yaml` butuh `--allow-multiple-documents` untuk lockfile pnpm.
 
 ## Decision Log
+
+### 2026-11-19: Rilis v0.7.0 ter-squash, perbaikan workflow merge
+
+- **Kejadian:** PR release #46 (`release/v0.7.0` → `main`) di-squash, bukan merge commit. Isi `main`
+  (`9bafd36`) dan tag `v0.7.0` benar (`git diff release/v0.7.0 main` kosong), tetapi `main` tidak
+  memuat commit `develop`, jadi back-merge konflik di `CHANGELOG.md` dan `.agents/memory.md`.
+- **Perbaikan (git dijalankan agent atas izin user, khusus tugas ini):** konflik diambil dari versi
+  `main` (`git checkout --theirs`), index diverifikasi identik dengan `main`, lalu back-merge
+  di-commit (`efe7364`). `main` kembali menjadi leluhur `develop`. Push gagal dari terminal agent
+  (kredensial HTTPS tidak tersedia), jadi push tetap oleh user. Aturan "git dijalankan user"
+  tetap berlaku untuk pekerjaan lain.
+- **Pencegahan:** CONTRIBUTING § Setup Awal Repo kini memakai ruleset per branch (`main` hanya
+  Merge, `develop` hanya Squash, default commit squash = judul PR). § Release dan skill `release`
+  mendapat langkah pemulihan "jika release terlanjur di-squash". Skill `git-handoff` mengingatkan
+  pemeriksaan judul commit squash (#40 memakai judul F33, #45 memakai nama branch).
 
 ### 2026-11-18: Artifact panel UI dari F38
 
@@ -244,7 +259,8 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Dijawab di Langkah 1 
 
 - [ ] User: isi `FIRECRAWL_API_KEY` di `.env`, lalu minta agent menjalankan smoke test Firecrawl
       asli.
-- [ ] User: set `develop` sebagai default branch dan aktifkan branch protection, jika belum
-      (CONTRIBUTING.md § Setup Awal Repo).
+- [ ] User: pasang ruleset GitHub (CONTRIBUTING.md § Setup Awal Repo): `main` hanya "Merge",
+      `develop` hanya "Squash", default commit squash = judul PR, blokir force-push. Mencegah
+      ulang insiden squash rilis v0.7.0 dan judul squash yang salah (#40, #45).
 - [ ] Setelah F32: pertimbangkan skill `api-contract-change` (ubah schema → export kontrak →
       generate tipe TS), pemicu dev-time skill berikutnya.

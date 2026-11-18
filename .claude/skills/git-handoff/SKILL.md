@@ -48,7 +48,9 @@ Tulis untuk PowerShell (shell user), dalam satu blok berurutan:
 6. `git status`, lalu `git push -u origin <branch>`. Hook pre-push menjalankan pytest, jadi
    ingatkan bahwa Docker Postgres harus menyala.
 7. **PR lewat web** (CLI `gh` tidak terpasang). Branch fitur: PR ke `develop`, judul = squash title
-   dari ROADMAP, **squash merge**. Release: lihat skill `release`.
+   dari ROADMAP, **squash merge**. Ingatkan user memeriksa judul commit di dialog squash sebelum
+   konfirmasi: tanpa default "Pull request title", GitHub memakai nama branch (#45) atau judul PR
+   lama (#40). Release: lihat skill `release` (merge commit, bukan squash).
 8. **Setelah merge**, hapus branch lokal dan remote:
 
    ```powershell
