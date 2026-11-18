@@ -6,18 +6,19 @@ from agent_service.agents.tool_calling import ToolCallingAgent
 from agent_service.harness.context import ContextBuilder
 from agent_service.harness.context_policy import ContextPolicy
 from agent_service.harness.skills.toolkit import SkillToolkit
+from agent_service.harness.workspace import WorkspaceToolkit
 
 CHATBOT_AGENT_ID: Final = "chatbot"
 CHATBOT_DESCRIPTION: Final = "A simple chatbot that answers using the conversation history."
 
 
 class ChatbotAgent(ToolCallingAgent):
-    """Agent referensi tanpa tool bawaan: `START → agent → END`, riwayat lewat checkpointer.
+    """Agent percakapan referensi tanpa tool domain, riwayat lewat checkpointer.
 
-    Ditulis di atas `ToolCallingAgent` supaya chatbot bisa memakai skill (F28): jika project punya
-    skill aktif, `load_skill` di-bind dan graph bisa memanggilnya. Tanpa skill aktif, model
-    dipanggil sekali tanpa tool, sama seperti v1. Node-nya async, jadi graph dijalankan lewat API
-    async (`ainvoke`, `astream`).
+    Ditulis di atas `ToolCallingAgent` supaya chatbot bisa memakai skill (F28), memory (F30), dan
+    tool file workspace (F36, dengan `files`). Tanpa skill, memory, maupun `files`, graph-nya
+    `START → agent → END` dan model dipanggil sekali tanpa tool, sama seperti v1. Node-nya async,
+    jadi graph dijalankan lewat API async (`ainvoke`, `astream`).
 
     >>> import asyncio
     >>> from langgraph.checkpoint.memory import InMemorySaver
@@ -37,6 +38,7 @@ class ChatbotAgent(ToolCallingAgent):
         skills: SkillToolkit | None = None,
         context_policy: ContextPolicy | None = None,
         use_memory: bool = False,
+        files: WorkspaceToolkit | None = None,
     ) -> None:
         """Inisialisasi chatbot.
 
@@ -47,6 +49,7 @@ class ChatbotAgent(ToolCallingAgent):
             skills: Toolkit skill. `None` berarti chatbot tidak bisa memakai skill.
             context_policy: Anggaran token riwayat. Default: `ContextPolicy()`.
             use_memory: Pakai long-term memory user (FR-40) jika registry punya store.
+            files: Tool file workspace (FR-47). `None` berarti tanpa workspace.
         """
         super().__init__(
             agent_id=agent_id,
@@ -56,6 +59,7 @@ class ChatbotAgent(ToolCallingAgent):
             skills=skills,
             context_policy=context_policy,
             use_memory=use_memory,
+            files=files,
         )
 
 

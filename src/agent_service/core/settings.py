@@ -18,6 +18,7 @@ from agent_service.core.constants import (
     DEFAULT_LLM_MAX_TOKENS_PARAM,
     DEFAULT_LOG_LEVEL,
     DEFAULT_PORT,
+    DEFAULT_TOOL_OUTPUT_MAX_TOKENS,
     ENV_FILE,
     ENV_FILE_ENCODING,
     FAKE_MODEL_NAME,
@@ -29,6 +30,7 @@ from agent_service.core.constants import (
     MIN_JWT_TTL_SECONDS,
     MIN_LLM_MAX_TOKENS,
     MIN_PORT,
+    MIN_TOOL_OUTPUT_MAX_TOKENS,
     POSTGRES_URL_SCHEMES,
     LogLevel,
     MaxTokensParam,
@@ -76,6 +78,10 @@ class Settings(BaseSettings):
     # File artifact (FR-46). Metadata di Postgres, isi file di direktori ini (volume di compose).
     artifact_dir: Path = DEFAULT_ARTIFACT_DIR
     artifact_max_bytes: int = Field(default=DEFAULT_ARTIFACT_MAX_BYTES, ge=MIN_ARTIFACT_MAX_BYTES)
+    # Output tool yang lebih besar ditulis ke workspace thread, model menerima cuplikan (FR-48).
+    tool_output_max_tokens: int = Field(
+        default=DEFAULT_TOOL_OUTPUT_MAX_TOKENS, ge=MIN_TOOL_OUTPUT_MAX_TOKENS
+    )
 
     # Kosong berarti tool web search menjawab "not configured", tanpa menggagalkan startup.
     firecrawl_api_key: SecretStr | None = None

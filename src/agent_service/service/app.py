@@ -23,6 +23,7 @@ from agent_service.harness.context_policy import ContextPolicy
 from agent_service.harness.skills.registry import SkillRegistry
 from agent_service.harness.skills.sources import BUILTIN_SKILLS_DIR, FilesystemSkillSource
 from agent_service.harness.skills.toolkit import SkillToolkit
+from agent_service.harness.workspace import WorkspaceToolkit
 from agent_service.llm.factory import ModelFactory
 from agent_service.memory.artifacts import ArtifactRepository
 from agent_service.memory.checkpointer import CheckpointerProvider
@@ -34,6 +35,7 @@ from agent_service.memory.thread_metadata import ThreadMetadataRepository
 from agent_service.memory.traces import RunTraceRepository
 from agent_service.memory.user_memories import UserMemoryRepository
 from agent_service.memory.users import UserRepository
+from agent_service.memory.workspace import PostgresWorkspace
 from agent_service.schema.headers import THREAD_ID_HEADER
 from agent_service.service.artifacts import ArtifactService
 from agent_service.service.auth import Authenticator
@@ -85,7 +87,8 @@ def create_app(
     Args:
         settings: Konfigurasi service. Default: dibaca dari env dan `.env`.
         agents: Agent yang didaftarkan. Default: `create_default_agents()` dengan web search
-            dari `FIRECRAWL_API_KEY` dan anggaran riwayat dari `CONTEXT_MAX_TOKENS`.
+            dari `FIRECRAWL_API_KEY`, anggaran riwayat dari `CONTEXT_MAX_TOKENS`, dan tool file
+            workspace dengan batas output `TOOL_OUTPUT_MAX_TOKENS`.
         default_agent_id: Agent untuk `/info` dan route tanpa `{agent_id}`.
         builtin_projects: Project built-in yang di-seed saat startup, jika agent dasarnya
             terdaftar.
@@ -110,6 +113,7 @@ def create_app(
             build_search_backend(resolved_settings),
             SkillToolkit(resolved_skills),
             ContextPolicy(max_tokens=resolved_settings.context_max_tokens),
+            WorkspaceToolkit(resolved_settings.tool_output_max_tokens),
         )
     else:
         resolved_agents = list(agents)
@@ -207,10 +211,13 @@ def _build_lifespan(
             await registry.load_all()
             app.state.model_factory = model_factory
             app.state.registry = registry
+            workspace = PostgresWorkspace(engine, settings.artifact_max_bytes)
             artifact_service = ArtifactService(
-                ArtifactRepository(engine), artifact_store, settings.artifact_max_bytes
+                ArtifactRepository(engine), artifact_store, settings.artifact_max_bytes, workspace
             )
-            thread_repository = ThreadRepository(checkpointer, titles, cleanups=[artifact_service])
+            thread_repository = ThreadRepository(
+                checkpointer, titles, cleanups=[artifact_service, workspace]
+            )
             project_service = ProjectService(
                 ProjectRepository(engine),
                 thread_repository,

@@ -7,9 +7,11 @@ Postgres (`memory/artifacts.py`).
 """
 
 import logging
+import mimetypes
 import re
+import unicodedata
 from collections.abc import AsyncIterable, AsyncIterator
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Final, Protocol
 
 import anyio
@@ -20,6 +22,15 @@ CHUNK_SIZE_BYTES: Final = 64 * 1024
 PARTIAL_SUFFIX: Final = ".part"
 # Kunci dibuat service (UUID), tetapi tetap divalidasi supaya tidak bisa keluar dari direktori.
 STORAGE_KEY_PATTERN: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,127}$")
+
+
+DEFAULT_FILENAME: Final = "file"
+FILENAME_MAX_LENGTH: Final = 255
+DEFAULT_MIME_TYPE: Final = "application/octet-stream"
+# `type/subtype` tanpa parameter (RFC 6838, karakter yang diizinkan untuk nama tipe).
+MIME_TYPE_PATTERN: Final = re.compile(r"^[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*$")
+# Kategori Unicode "Other" (kontrol, format, dan seterusnya) dibuang dari nama file.
+UNICODE_OTHER_CATEGORY_PREFIX: Final = "C"
 
 
 class ArtifactTooLargeError(ValueError):
@@ -137,6 +148,62 @@ class LocalArtifactStore:
         if STORAGE_KEY_PATTERN.fullmatch(key) is None:
             raise InvalidStorageKeyError(f"Invalid artifact storage key: {key!r}")
         return self._root / key
+
+
+def sanitize_filename(filename: str | None) -> str:
+    """Nama file yang aman disimpan dan dikirim di header `Content-Disposition`.
+
+    Path direktori dan karakter kontrol dibuang, dan nama dipotong ke `FILENAME_MAX_LENGTH` dengan
+    ekstensi tetap dipertahankan.
+
+    >>> sanitize_filename("../../etc/pass\\nwd.txt")
+    'passwd.txt'
+    >>> sanitize_filename("C:\\\\Users\\\\demo\\\\laporan Q3.pdf")
+    'laporan Q3.pdf'
+    >>> sanitize_filename("  ..  "), sanitize_filename(None)
+    ('file', 'file')
+    """
+    if filename is None:
+        return DEFAULT_FILENAME
+    base = PurePosixPath(filename.replace("\\", "/")).name
+    printable = "".join(
+        char
+        for char in unicodedata.normalize("NFC", base)
+        if not unicodedata.category(char).startswith(UNICODE_OTHER_CATEGORY_PREFIX)
+    )
+    name = printable.strip().strip(".").strip()
+    if not name:
+        return DEFAULT_FILENAME
+    return _truncate_keeping_suffix(name)
+
+
+def resolve_mime_type(content_type: str | None, filename: str) -> str:
+    """Tipe konten artifact: dari client jika valid, selain itu dari ekstensi nama file.
+
+    >>> resolve_mime_type("Text/CSV; charset=utf-8", "a.csv")
+    'text/csv'
+    >>> resolve_mime_type(None, "chart.png")
+    'image/png'
+    >>> resolve_mime_type("application/octet-stream", "data.json")
+    'application/json'
+    >>> resolve_mime_type("bukan tipe", "tanpa-ekstensi")
+    'application/octet-stream'
+    """
+    declared = "" if content_type is None else content_type.split(";")[0].strip().lower()
+    if MIME_TYPE_PATTERN.fullmatch(declared) and declared != DEFAULT_MIME_TYPE:
+        return declared
+    guessed, _ = mimetypes.guess_type(filename, strict=False)
+    return guessed or DEFAULT_MIME_TYPE
+
+
+def _truncate_keeping_suffix(name: str) -> str:
+    """Potong nama yang terlalu panjang, dengan ekstensi tetap di akhir."""
+    if len(name) <= FILENAME_MAX_LENGTH:
+        return name
+    suffix = PurePosixPath(name).suffix
+    if len(suffix) >= FILENAME_MAX_LENGTH:
+        return name[:FILENAME_MAX_LENGTH]
+    return name[: FILENAME_MAX_LENGTH - len(suffix)] + suffix
 
 
 async def _read_chunks(file: anyio.AsyncFile[bytes]) -> AsyncIterator[bytes]:

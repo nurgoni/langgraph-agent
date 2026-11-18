@@ -318,3 +318,19 @@ def test_artifacts_go_through_the_web_proxy_and_survive_restart(stack: ComposeSt
     assert human.artifacts == [artifact]
     assert downloaded == content
     assert error.value.status_code == 404
+
+
+def test_attachments_land_in_the_thread_workspace(stack: ComposeStack) -> None:
+    """Migrasi `0007` dan salinan lampiran ke workspace thread (F36)."""
+    with stack.client() as client:
+        artifact = client.upload_artifact(b"region,total\nnorth,10\n", "sales.csv", "text/csv")
+        reply = client.invoke("Baca lampiran", artifact_ids=[artifact.id])
+
+    query = f"SELECT path FROM workspace_files WHERE thread_id = '{reply.thread_id}'"
+    user = stack.env.get("POSTGRES_USER") or "agent"
+    database = stack.env.get("POSTGRES_DB") or "agent_service"
+    output = stack.compose(
+        "exec", "-T", "postgres", "psql", "-U", user, "-d", database, "-tAc", query
+    )
+
+    assert output.split() == ["uploads/sales.csv"]

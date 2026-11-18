@@ -1,31 +1,29 @@
 """Aturan artifact (FR-46, keputusan user F35): kepemilikan, lampiran pesan, dan penghapusan.
 
+Sejak F36, lampiran juga disalin ke workspace thread (`uploads/<nama>`) supaya agent bisa
+membacanya, dan file workspace bisa diterbitkan kembali sebagai artifact (`share_file`).
+
 Artifact milik user lain diperlakukan sama dengan artifact yang tidak ada (404, NFR-9). Artifact
 yang dilampirkan ke pesan tertaut ke thread itu, dan ikut terhapus saat thread dihapus.
 """
 
 import logging
-import mimetypes
-import re
-import unicodedata
 from collections.abc import AsyncIterable, AsyncIterator, Sequence
 from pathlib import PurePosixPath
 from typing import Final
 from uuid import uuid4
 
-from agent_service.files.artifacts import ArtifactStore
+from agent_service.files.artifacts import ArtifactStore, resolve_mime_type, sanitize_filename
+from agent_service.files.workspace import Workspace, unique_path
+from agent_service.harness.runtime import HarnessContext
 from agent_service.memory.artifacts import ArtifactRecord, ArtifactRepository, NewArtifact
 from agent_service.schema.artifacts import ArtifactRef
 
-logger = logging.getLogger(__name__)
+UPLOADS_FOLDER: Final = "uploads"
+# Penanda nama saat path upload sudah dipakai: awal ID artifact cukup untuk membedakan file.
+UPLOAD_MARKER_LENGTH: Final = 8
 
-DEFAULT_FILENAME: Final = "file"
-FILENAME_MAX_LENGTH: Final = 255
-DEFAULT_MIME_TYPE: Final = "application/octet-stream"
-# `type/subtype` tanpa parameter (RFC 6838, karakter yang diizinkan untuk nama tipe).
-MIME_TYPE_PATTERN: Final = re.compile(r"^[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*$")
-# Kategori Unicode "Other" (kontrol, format, dan seterusnya) dibuang dari nama file.
-UNICODE_OTHER_CATEGORY_PREFIX: Final = "C"
+logger = logging.getLogger(__name__)
 
 
 class ArtifactNotFoundError(LookupError):
@@ -48,12 +46,16 @@ class ArtifactService:
     """Upload, unduh, lampirkan, dan hapus artifact milik user.
 
     Class karena memegang dependency yang sama untuk semua operasi (repository, store, batas
-    ukuran). Dibuat sekali di lifespan, dan juga dipakai `ThreadRepository` untuk membersihkan
-    artifact thread yang dihapus.
+    ukuran, workspace). Dibuat sekali di lifespan, dipakai `ThreadRepository` untuk membersihkan
+    artifact thread yang dihapus, dan menjadi `ArtifactPublisher` untuk tool `share_file`.
     """
 
     def __init__(
-        self, repository: ArtifactRepository, store: ArtifactStore, max_bytes: int
+        self,
+        repository: ArtifactRepository,
+        store: ArtifactStore,
+        max_bytes: int,
+        workspace: Workspace,
     ) -> None:
         """Inisialisasi service.
 
@@ -61,10 +63,16 @@ class ArtifactService:
             repository: Metadata artifact di Postgres.
             store: Tempat isi file disimpan.
             max_bytes: Batas ukuran satu artifact (`ARTIFACT_MAX_BYTES`).
+            workspace: Workspace thread, tujuan salinan lampiran (F36).
         """
         self._repository = repository
         self._store = store
         self._max_bytes = max_bytes
+        self._workspace = workspace
+
+    def run_context(self) -> HarnessContext:
+        """Runtime context tool harness untuk run agent (workspace + penerbit artifact)."""
+        return HarnessContext(workspace=self._workspace, artifacts=self)
 
     @property
     def max_bytes(self) -> int:
@@ -92,6 +100,27 @@ class ArtifactService:
         Raises:
             ArtifactTooLargeError: Jika isi melebihi `max_bytes` (413).
         """
+        return await self._store_new(owner_id, filename, content_type, chunks, thread_id=None)
+
+    async def publish(
+        self, owner_id: str, thread_id: str, filename: str, content: bytes
+    ) -> ArtifactRecord:
+        """Terbitkan isi file workspace sebagai artifact thread (tool `share_file`, F36).
+
+        Raises:
+            ArtifactTooLargeError: Jika isi melebihi `max_bytes`.
+        """
+        return await self._store_new(owner_id, filename, None, _single_chunk(content), thread_id)
+
+    async def _store_new(
+        self,
+        owner_id: str,
+        filename: str | None,
+        content_type: str | None,
+        chunks: AsyncIterable[bytes],
+        thread_id: str | None,
+    ) -> ArtifactRecord:
+        """Simpan isi lalu metadata artifact baru. Isi dihapus lagi jika metadata gagal disimpan."""
         artifact_id = str(uuid4())
         name = sanitize_filename(filename)
         size = await self._store.write(artifact_id, chunks, self._max_bytes)
@@ -102,6 +131,7 @@ class ArtifactService:
             mime_type=resolve_mime_type(content_type, name),
             size_bytes=size,
             storage_key=artifact_id,
+            thread_id=thread_id,
         )
         try:
             record = await self._repository.add(artifact)
@@ -177,6 +207,39 @@ class ArtifactService:
             [record.artifact_id for record in attachments], thread_id
         )
 
+    async def workspace_paths(
+        self, attachments: Sequence[ArtifactRecord], thread_id: str
+    ) -> list[str]:
+        """Path tujuan salinan lampiran di workspace thread, `uploads/<nama>` tanpa bentrok.
+
+        Nama yang sudah dipakai file lain di `uploads/` diberi penanda dari ID artifact, jadi file
+        lama tidak pernah tertimpa.
+        """
+        existing = [
+            file.path for file in await self._workspace.list_files(thread_id, UPLOADS_FOLDER)
+        ]
+        paths: list[str] = []
+        for record in attachments:
+            path = str(PurePosixPath(UPLOADS_FOLDER, record.name))
+            marker = record.artifact_id[:UPLOAD_MARKER_LENGTH]
+            chosen = unique_path(path, [*existing, *paths], marker)
+            paths.append(chosen)
+        return paths
+
+    async def copy_to_workspace(
+        self, attachments: Sequence[ArtifactRecord], paths: Sequence[str], thread_id: str
+    ) -> None:
+        """Salin isi lampiran ke workspace thread, supaya agent bisa membacanya (F36).
+
+        Raises:
+            ArtifactContentMissingError: Jika isi lampiran hilang dari store.
+        """
+        for record, path in zip(attachments, paths, strict=True):
+            chunks: list[bytes] = []
+            async for chunk in await self._store.open(record.storage_key):
+                chunks.append(chunk)
+            await self._workspace.write(thread_id, path, b"".join(chunks))
+
     async def delete_thread_data(self, thread_id: str) -> None:
         """Hapus semua artifact satu thread. Dipanggil `ThreadRepository` saat thread dihapus."""
         records = await self._repository.delete_thread(thread_id)
@@ -186,67 +249,16 @@ class ArtifactService:
             logger.info("Deleted %d artifacts of thread %s", len(records), thread_id)
 
 
+async def _single_chunk(content: bytes) -> AsyncIterator[bytes]:
+    """Isi file yang sudah ada di memori, sebagai iterator potongan untuk `ArtifactStore`."""
+    yield content
+
+
 def artifact_ref(record: ArtifactRecord) -> ArtifactRef:
     """Referensi API untuk satu baris metadata artifact."""
     return ArtifactRef(
         id=record.artifact_id, name=record.name, mime_type=record.mime_type, size=record.size_bytes
     )
-
-
-def sanitize_filename(filename: str | None) -> str:
-    """Nama file yang aman disimpan dan dikirim di header `Content-Disposition`.
-
-    Path direktori dan karakter kontrol dibuang, dan nama dipotong ke `FILENAME_MAX_LENGTH` dengan
-    ekstensi tetap dipertahankan.
-
-    >>> sanitize_filename("../../etc/pass\\nwd.txt")
-    'passwd.txt'
-    >>> sanitize_filename("C:\\\\Users\\\\demo\\\\laporan Q3.pdf")
-    'laporan Q3.pdf'
-    >>> sanitize_filename("  ..  "), sanitize_filename(None)
-    ('file', 'file')
-    """
-    if filename is None:
-        return DEFAULT_FILENAME
-    base = PurePosixPath(filename.replace("\\", "/")).name
-    printable = "".join(
-        char
-        for char in unicodedata.normalize("NFC", base)
-        if not unicodedata.category(char).startswith(UNICODE_OTHER_CATEGORY_PREFIX)
-    )
-    name = printable.strip().strip(".").strip()
-    if not name:
-        return DEFAULT_FILENAME
-    return _truncate_keeping_suffix(name)
-
-
-def resolve_mime_type(content_type: str | None, filename: str) -> str:
-    """Tipe konten artifact: dari client jika valid, selain itu dari ekstensi nama file.
-
-    >>> resolve_mime_type("Text/CSV; charset=utf-8", "a.csv")
-    'text/csv'
-    >>> resolve_mime_type(None, "chart.png")
-    'image/png'
-    >>> resolve_mime_type("application/octet-stream", "data.json")
-    'application/json'
-    >>> resolve_mime_type("bukan tipe", "tanpa-ekstensi")
-    'application/octet-stream'
-    """
-    declared = "" if content_type is None else content_type.split(";")[0].strip().lower()
-    if MIME_TYPE_PATTERN.fullmatch(declared) and declared != DEFAULT_MIME_TYPE:
-        return declared
-    guessed, _ = mimetypes.guess_type(filename, strict=False)
-    return guessed or DEFAULT_MIME_TYPE
-
-
-def _truncate_keeping_suffix(name: str) -> str:
-    """Potong nama yang terlalu panjang, dengan ekstensi tetap di akhir."""
-    if len(name) <= FILENAME_MAX_LENGTH:
-        return name
-    suffix = PurePosixPath(name).suffix
-    if len(suffix) >= FILENAME_MAX_LENGTH:
-        return name[:FILENAME_MAX_LENGTH]
-    return name[: FILENAME_MAX_LENGTH - len(suffix)] + suffix
 
 
 if __name__ == "__main__":
