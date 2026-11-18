@@ -29,6 +29,19 @@ export interface ChatSnapshot {
   historyError: string | null;
 }
 
+/** Callback untuk tampilan di luar percakapan, misalnya URL dan daftar thread di sidebar. */
+export interface ChatRunListeners {
+  /** Service membuat thread untuk chat baru, misalnya untuk mengganti URL ke `/chat/<id>`. */
+  onThreadCreated: (threadId: string) => void;
+  /** Run berakhir (selesai, gagal, atau dihentikan); judul dan urutan thread bisa berubah. */
+  onRunFinished: () => void;
+}
+
+const NO_LISTENERS: ChatRunListeners = {
+  onThreadCreated: () => undefined,
+  onRunFinished: () => undefined,
+};
+
 const NEW_CHAT: ChatSnapshot = {
   threadId: null,
   conversation: EMPTY_CONVERSATION,
@@ -46,7 +59,7 @@ const NEW_CHAT: ChatSnapshot = {
  */
 export class ChatController {
   private readonly service: ChatService;
-  private threadCreatedListener: (threadId: string) => void = () => undefined;
+  private runListeners: ChatRunListeners = NO_LISTENERS;
   private readonly listeners = new Set<() => void>();
   private snapshot: ChatSnapshot = NEW_CHAT;
   private generation = 0;
@@ -57,12 +70,9 @@ export class ChatController {
     this.service = service;
   }
 
-  /**
-   * Pasang callback yang dipanggil saat service membuat thread untuk chat baru, misalnya untuk
-   * mengganti URL ke `/chat/<id>`.
-   */
-  setThreadCreatedListener(listener: (threadId: string) => void): void {
-    this.threadCreatedListener = listener;
+  /** Pasang callback untuk thread baru dan akhir run. */
+  setRunListeners(listeners: ChatRunListeners): void {
+    this.runListeners = listeners;
   }
 
   readonly subscribe = (listener: () => void): (() => void) => {
@@ -116,6 +126,7 @@ export class ChatController {
         this.activeRun = null;
         this.update({ isRunning: false });
       }
+      this.runListeners.onRunFinished();
     }
   }
 
@@ -137,7 +148,7 @@ export class ChatController {
     const { threadId, events } = await this.service.startRun(request, run.signal);
     if (threadId !== this.snapshot.threadId) {
       this.update({ threadId });
-      this.threadCreatedListener(threadId);
+      this.runListeners.onThreadCreated(threadId);
     }
     for await (const event of events) {
       if (generation !== this.generation) {

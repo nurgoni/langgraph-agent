@@ -12,6 +12,18 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { appRoutes } from "@/routes/routes";
 import type { FakeService } from "@/test/fake-service";
 
+/** Simpan sesi login di `sessionStorage`, supaya test langsung masuk ke app shell. */
+export function saveSession(username = "demo"): void {
+  new SessionStore(window.sessionStorage).save({
+    access_token: "jwt",
+    token_type: "bearer",
+    expires_in: 3600,
+    user_id: "u1",
+    username,
+    role: "user",
+  });
+}
+
 export function renderApp(service: FakeService, path = "/", store?: SessionStore) {
   const router = createMemoryRouter(appRoutes, { initialEntries: [path] });
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });

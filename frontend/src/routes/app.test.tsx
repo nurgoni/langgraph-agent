@@ -36,10 +36,15 @@ describe("app", () => {
     expect(await screen.findByRole("combobox", { name: "Model" })).toHaveTextContent("fake");
     expect(screen.getByLabelText("Message input")).toBeInTheDocument();
     expect(router.state.location.pathname).toBe("/");
-    expect(service.requests.map((request) => [request.path, request.authorization])).toEqual([
-      ["/api/auth/login", null],
-      ["/api/info", "Bearer token-for-demo"],
-    ]);
+    const sent = service.requests.map((request) => [request.path, request.authorization]);
+    expect(sent[0]).toEqual(["/api/auth/login", null]);
+    expect(sent.slice(1)).toEqual(
+      expect.arrayContaining([
+        ["/api/info", "Bearer token-for-demo"],
+        ["/api/threads", "Bearer token-for-demo"],
+      ]),
+    );
+    expect(sent).toHaveLength(3);
     expect(window.sessionStorage.getItem(SESSION_STORAGE_KEY)).toContain("token-for-demo");
   });
 

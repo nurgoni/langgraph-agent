@@ -21,8 +21,9 @@ function controllerFor(fetch: typeof globalThis.fetch) {
   });
   const controller = new ChatController(new ChatService(api));
   const created = vi.fn();
-  controller.setThreadCreatedListener(created);
-  return { controller, created };
+  const finished = vi.fn();
+  controller.setRunListeners({ onThreadCreated: created, onRunFinished: finished });
+  return { controller, created, finished };
 }
 
 /** `fetch` yang menjawab `/stream` dengan body yang tidak pernah selesai sampai dibatalkan. */
@@ -68,7 +69,7 @@ describe("ChatController", () => {
 
   it("continues the same thread on the next message", async () => {
     const service = new FakeService({ streams: [SSE_FIXTURES.interrupt] });
-    const { controller, created } = controllerFor(service.fetch);
+    const { controller, created, finished } = controllerFor(service.fetch);
 
     await controller.send("Hi", null);
     await controller.send("My name is Rani", null);
@@ -76,11 +77,36 @@ describe("ChatController", () => {
     const bodies = service.requestsTo("/api/stream").map((request) => request.body);
     expect(bodies[1]).toMatchObject({ thread_id: NEW_THREAD_ID, model: null });
     expect(created).toHaveBeenCalledOnce();
+    expect(finished).toHaveBeenCalledTimes(2);
     expect(toThreadMessages(controller.getSnapshot().conversation, false)).toHaveLength(4);
   });
 
+  it("runs in a project through the project routes (F34)", async () => {
+    const service = new FakeService({ streams: [SSE_FIXTURES.interrupt] });
+    const api = createApiClient({
+      getAccessToken: () => "jwt",
+      onUnauthorized: vi.fn(),
+      fetch: service.fetch,
+      baseUrl: BASE_URL,
+    });
+    const controller = new ChatController(new ChatService(api, "project-1"));
+
+    await controller.send("Hi", null);
+    controller.openThread("thread-other");
+
+    expect(service.requestsTo("/api/projects/project-1/stream")[0]?.body).toMatchObject({
+      message: "Hi",
+    });
+    await vi.waitFor(() =>
+      expect(service.requestsTo("/api/projects/project-1/history")[0]?.body).toEqual({
+        thread_id: "thread-other",
+      }),
+    );
+    expect(service.requestsTo("/api/stream")).toEqual([]);
+  });
+
   it("stops a run on cancel and keeps the streamed text", async () => {
-    const { controller } = controllerFor(hangingStreamFetch());
+    const { controller, finished } = controllerFor(hangingStreamFetch());
 
     const sending = controller.send("Write an essay", null);
     await vi.waitFor(() => expect(controller.getSnapshot().conversation.live.text).toBe("Partial"));
@@ -92,6 +118,7 @@ describe("ChatController", () => {
     expect(snapshot.isRunning).toBe(false);
     expect(reply?.status).toEqual({ type: "incomplete", reason: "cancelled" });
     expect(reply?.content).toEqual([{ type: "text", text: "Partial" }]);
+    expect(finished).toHaveBeenCalledOnce();
   });
 
   it("drops a running reply when the user opens another thread", async () => {

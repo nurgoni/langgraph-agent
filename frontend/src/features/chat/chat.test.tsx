@@ -47,7 +47,12 @@ describe("chat", () => {
     await send("Is 221 a prime number?");
 
     expect(await screen.findByText(/221 is not a prime number/)).toBeInTheDocument();
-    expect(screen.getByText("Is 221 a prime number?")).toBeInTheDocument();
+    expect(within(screen.getByRole("main")).getByText("Is 221 a prime number?")).toBeInTheDocument();
+    const recents = await screen.findByRole("list", { name: "Recent chats" });
+    expect(within(recents).getByRole("link", { name: "Is 221 a prime number?" })).toHaveAttribute(
+      "href",
+      `/chat/${NEW_THREAD_ID}`,
+    );
     expect(screen.getByRole("button", { name: /Reasoning|Thought/ })).toBeInTheDocument();
     await waitFor(() => expect(router.state.location.pathname).toBe(`/chat/${NEW_THREAD_ID}`));
     expect(service.requestsTo("/api/history")).toEqual([]);

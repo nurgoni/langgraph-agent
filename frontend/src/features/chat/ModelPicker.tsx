@@ -1,38 +1,25 @@
 /**
- * Pemilih model di composer (keputusan user F33: model saja, agent selalu `default_agent`).
- * Daftar model dan default dibaca dari `GET /info`.
+ * Pemilih model di composer (keputusan user F33: model saja, agent ditentukan oleh chat umum atau
+ * project). Daftar model dan default service dibaca dari `GET /info`.
  */
-import { useQuery } from "@tanstack/react-query";
-
-import { errorDetail } from "@/api/client";
-import { useAuth } from "@/auth/auth-context";
+import { useServiceInfo } from "@/api/service-info";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-const INFO_QUERY_KEY = ["info"] as const;
-
 export interface ModelPickerProps {
-  /** Model pilihan user, atau `null` untuk default service. */
+  /** Model pilihan user, atau `null` untuk default. */
   value: string | null;
+  /** Model default chat ini (model project), atau `null` untuk default service. */
+  defaultModel?: string | null;
   onChange: (model: string) => void;
 }
 
-export function ModelPicker({ value, onChange }: ModelPickerProps) {
-  const { api } = useAuth();
-  const info = useQuery({
-    queryKey: INFO_QUERY_KEY,
-    queryFn: async () => {
-      const { data, error } = await api.GET("/info");
-      if (data === undefined) {
-        throw new Error(errorDetail(error, "Cannot load service info"));
-      }
-      return data;
-    },
-  });
+export function ModelPicker({ value, defaultModel = null, onChange }: ModelPickerProps) {
+  const info = useServiceInfo();
   if (!info.isSuccess) {
     return null;
   }
   return (
-    <Select value={value ?? info.data.default_model} onValueChange={onChange}>
+    <Select value={value ?? defaultModel ?? info.data.default_model} onValueChange={onChange}>
       <SelectTrigger size="sm" aria-label="Model" className="border-none bg-transparent shadow-none">
         <SelectValue />
       </SelectTrigger>
