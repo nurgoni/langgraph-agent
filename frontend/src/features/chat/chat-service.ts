@@ -1,12 +1,14 @@
 /**
- * Request chat ke agent default lewat client bertipe: run streaming dan riwayat thread.
+ * Request chat lewat client bertipe: run streaming dan riwayat thread, untuk chat umum (agent
+ * default) atau chat di dalam project (`/projects/{project_id}/...`, F34).
  */
 import { type ApiClient, errorDetail } from "@/api/client";
+import { UNREACHABLE_MESSAGE } from "@/api/service-error";
 import type { ChatMessage, StreamEvent } from "@/api/stream-event";
 import { readStreamEvents } from "@/features/chat/sse";
 
+export { UNREACHABLE_MESSAGE };
 export const THREAD_ID_HEADER = "X-Thread-Id";
-export const UNREACHABLE_MESSAGE = "Cannot reach the agent service. Try again later.";
 const RUN_FAILED_MESSAGE = "The agent service could not start the run.";
 const HISTORY_FAILED_MESSAGE = "Cannot load this conversation.";
 
@@ -37,29 +39,40 @@ export interface ChatRun {
 
 export class ChatService {
   private readonly api: ApiClient;
+  private readonly projectId: string | null;
 
-  constructor(api: ApiClient) {
+  /**
+   * @param api Client bertipe ke agent service.
+   * @param projectId Project tempat chat berjalan, atau `null` untuk chat umum.
+   */
+  constructor(api: ApiClient, projectId: string | null = null) {
     this.api = api;
+    this.projectId = projectId;
   }
 
   /**
-   * Mulai run dengan token streaming (`POST /stream`).
+   * Mulai run dengan token streaming (`POST /stream` atau `POST /projects/{id}/stream`).
    *
    * @throws ChatServiceError Jika service menolak request atau tidak terjangkau.
    * @throws DOMException `AbortError` jika `signal` dibatalkan.
    */
   async startRun(request: ChatRequest, signal: AbortSignal): Promise<ChatRun> {
+    const body = {
+      message: request.message,
+      thread_id: request.threadId,
+      model: request.model,
+      stream_tokens: true,
+    };
+    const projectId = this.projectId;
     const { data, error, response } = await this.send(() =>
-      this.api.POST("/stream", {
-        body: {
-          message: request.message,
-          thread_id: request.threadId,
-          model: request.model,
-          stream_tokens: true,
-        },
-        parseAs: "stream",
-        signal,
-      }),
+      projectId === null
+        ? this.api.POST("/stream", { body, parseAs: "stream", signal })
+        : this.api.POST("/projects/{project_id}/stream", {
+            params: { path: { project_id: projectId } },
+            body,
+            parseAs: "stream",
+            signal,
+          }),
     );
     const threadId = response.headers.get(THREAD_ID_HEADER);
     if (data === null || data === undefined || threadId === null) {
@@ -69,13 +82,20 @@ export class ChatService {
   }
 
   /**
-   * Riwayat thread milik user (`POST /history`).
+   * Riwayat thread milik user (`POST /history` atau `POST /projects/{id}/history`).
    *
    * @throws ChatServiceError Jika thread tidak ditemukan (404) atau service tidak terjangkau.
    */
   async loadHistory(threadId: string): Promise<ChatMessage[]> {
+    const body = { thread_id: threadId };
+    const projectId = this.projectId;
     const { data, error, response } = await this.send(() =>
-      this.api.POST("/history", { body: { thread_id: threadId } }),
+      projectId === null
+        ? this.api.POST("/history", { body })
+        : this.api.POST("/projects/{project_id}/history", {
+            params: { path: { project_id: projectId } },
+            body,
+          }),
     );
     if (data === undefined) {
       throw new ChatServiceError(errorDetail(error, HISTORY_FAILED_MESSAGE), response.status);

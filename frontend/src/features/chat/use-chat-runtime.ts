@@ -16,12 +16,19 @@ import { toThreadMessages } from "@/features/chat/conversation";
 
 export interface ChatRuntimeOptions {
   api: ApiClient;
+  /**
+   * Project tempat chat berjalan, atau `null` untuk chat umum. Dibaca sekali saat mount; halaman
+   * memberi `key` per project supaya pindah project membuat controller baru.
+   */
+  projectId: string | null;
   /** Thread dari URL, atau `null` untuk chat baru. */
   threadId: string | null;
-  /** Model pilihan user, atau `null` untuk default service. */
+  /** Model pilihan user, atau `null` untuk default project atau service. */
   model: string | null;
   /** Dipanggil saat run pertama chat baru membuat thread. */
   onThreadCreated: (threadId: string) => void;
+  /** Dipanggil setiap run berakhir. */
+  onRunFinished: () => void;
 }
 
 export interface ChatRuntime {
@@ -33,11 +40,11 @@ export interface ChatRuntime {
 const identity = (message: ThreadMessageLike): ThreadMessageLike => message;
 
 export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntime {
-  const { api, threadId, model, onThreadCreated } = options;
-  const [controller] = useState(() => new ChatController(new ChatService(api)));
+  const { api, projectId, threadId, model, onThreadCreated, onRunFinished } = options;
+  const [controller] = useState(() => new ChatController(new ChatService(api, projectId)));
   useEffect(() => {
-    controller.setThreadCreatedListener(onThreadCreated);
-  }, [controller, onThreadCreated]);
+    controller.setRunListeners({ onThreadCreated, onRunFinished });
+  }, [controller, onThreadCreated, onRunFinished]);
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
 
   useEffect(() => {

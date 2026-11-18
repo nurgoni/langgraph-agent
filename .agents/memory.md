@@ -14,15 +14,17 @@ berulang ada di dev-time skill `.claude/skills/` (daftar di AGENTS.md § Dev-tim
 
 ## Status Saat Ini
 
-- **Fase:** M6 Frontend. F33 (Chat UI) selesai dan menunggu user commit, push, dan PR di branch
-  `feature/F33-chat-ui`. E2E Compose F33 belum dijalankan (build image `web` terputus).
-- **Berikutnya:** **F34** (Projects & threads UI), lalu rilis v0.6.0.
+- **Fase:** M6 Frontend. F33 sudah di-commit user di `feature/F33-chat-ui`, dan e2e Compose
+  lulus (15 test, 2026-11-18); menunggu push dan PR. F34 (Projects & threads UI) selesai di
+  working tree, dikerjakan di atas F33 sebelum F33 di-merge; branch `feature/F34-projects-ui`
+  dibuat user setelah F33 masuk `develop` (stash → pull → branch → stash pop).
+- **Berikutnya:** PR F33 → commit F34 → e2e F34 → rilis v0.6.0.
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Arsip:** Decision Log M0–M4 ada di
   [archive/decision-log-m0-m4.md](archive/decision-log-m0-m4.md), dan F26–F31 di
   [archive/decision-log-m4-m5.md](archive/decision-log-m4-m5.md).
-- **Terakhir diperbarui:** 2026-11-17 (F33)
+- **Terakhir diperbarui:** 2026-11-18 (F34)
 
 ## Aturan Kerja
 
@@ -76,6 +78,35 @@ Ringkasan pelajaran dari M0–M5 yang masih berlaku (detail di arsip dan entri f
   jalankan `generate:api`. Kode aplikasi tidak mengedit vendor shadcn.
 
 ## Decision Log
+
+### 2026-11-18: Projects & threads UI dari F34
+
+- **Keputusan user:** Recents = chat umum saja (`GET /threads`), chat project di halaman project.
+  Composer di halaman project (`/projects/:id`, chat di `/projects/:id/chat/:threadId`). Form
+  shadcn + react-hook-form + zod.
+- **Keputusan desain:**
+  - `ChatService(api, projectId)` memilih route `/projects/{id}/...`. `ProjectChatPage` memberi
+    `key={projectId}` ke `ChatPage`; halaman project = `ChatPage` dengan `welcome` = ringkasan
+    project, daftar chat, dan aksi.
+  - `ChatController.setRunListeners` (`onThreadCreated`, `onRunFinished`) menggantikan
+    `setThreadCreatedListener`. Query thread di-invalidate saat thread dibuat dan setiap run selesai.
+  - Helper `requireData`/`requireOk` + `ServiceError` (`src/api/service-error.ts`) untuk query dan
+    mutation. `useServiceInfo` dipakai bersama pemilih model dan form.
+  - Agent dasar dikunci saat edit, model "Service default" = `null`, skill di luar katalog tetap
+    tampil supaya bisa dilepas.
+  - `FakeService` test menyimpan project, skill, dan thread per scope di memori.
+- **Hasil ukur:** 67 test frontend, mutation check 10/10 tertangkap. Bundle 1,28 MB (388 kB gzip).
+- **Pelajaran:**
+  - CLI shadcn berhenti diam-diam di prompt overwrite (`label.tsx`) dengan exit 0, sehingga
+    `form` dan `alert-dialog` tidak ditulis. Jalankan dengan jawaban `n` di stdin, lalu cek file.
+  - Daftar yang di-mount ulang selalu fetch ulang (`staleTime` 0), jadi invalidasi hanya teruji lewat
+    daftar yang tetap ter-mount (Recents). Mutation check menemukannya.
+  - E2E F33 gagal di setup: `pnpm install` di build image `web` putus (`tls handshake eof`) setelah
+    10 menit pemeriksaan `minimumReleaseAge` untuk 667 paket, sedangkan `BUILD_TIMEOUT_SECONDS`
+    = 900. Build image `web` terpisah tanpa timeout, dari salinan `frontend/` fitur yang diuji,
+    supaya pekerjaan fitur berikutnya di working tree tidak ikut masuk image. Lalu e2e dengan
+    `COMPOSE_FILE="compose.yaml;<override>"` yang mengarahkan `web.build.context` ke salinan itu
+    (test meneruskan `os.environ`); cache build terpakai dan 15 test lulus dalam 56 detik.
 
 ### 2026-11-17: Chat UI dari F33
 

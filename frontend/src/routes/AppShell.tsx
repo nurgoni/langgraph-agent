@@ -1,9 +1,9 @@
 /**
- * Layout utama setelah login (FR-42): sidebar ala Claude (chat baru, Recents) dan area konten.
- * Daftar thread dan Projects di sidebar diisi F34.
+ * Layout utama setelah login (FR-42, FR-44): sidebar ala Claude (chat baru, Projects, Recents) dan
+ * area konten.
  */
-import { LogOut, MessageSquarePlus } from "lucide-react";
-import { Link, Outlet } from "react-router";
+import { FolderOpen, LogOut, MessageSquarePlus } from "lucide-react";
+import { Link, Outlet, useLocation } from "react-router";
 
 import { useAuth } from "@/auth/auth-context";
 import { Button } from "@/components/ui/button";
@@ -11,8 +11,6 @@ import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
@@ -21,11 +19,14 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { RecentsList } from "@/features/threads/RecentsList";
+import { PROJECTS_PATH } from "@/features/threads/thread-paths";
 
 export const APP_NAME = "Agent Service";
 
 export function AppShell() {
   const { session, logout } = useAuth();
+  const { pathname } = useLocation();
   return (
     <SidebarProvider>
       <Sidebar>
@@ -40,13 +41,18 @@ export function AppShell() {
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={pathname.startsWith(PROJECTS_PATH)}>
+                <Link to={PROJECTS_PATH}>
+                  <FolderOpen />
+                  <span>Projects</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
           </SidebarMenu>
         </SidebarHeader>
         <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupLabel>Recents</SidebarGroupLabel>
-            <p className="px-2 text-sm text-muted-foreground">No chats yet.</p>
-          </SidebarGroup>
+          <RecentsList />
         </SidebarContent>
         <SidebarFooter>
           <div className="flex items-center justify-between gap-2 px-2">

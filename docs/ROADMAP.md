@@ -48,7 +48,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F31 | Evals & tracing | M5 | done |
 | F32 | Frontend scaffold & auth | M6 | done |
 | F33 | Chat UI | M6 | done |
-| F34 | Projects & threads UI | M6 | todo |
+| F34 | Projects & threads UI | M6 | done |
 | F35 | Artifact storage | M7 | todo |
 | F36 | Workspace & file tools | M7 | todo |
 | F37 | Sandbox | M7 | todo |
@@ -1525,15 +1525,40 @@ Scope commit frontend: `frontend`. Aturan kode frontend ada di [ADR 0003](adr/00
 - **Catatan desain:** layout ala Claude: sidebar (chat baru, Projects, Recents), halaman Project
   (instruksi, model, pemilih skill dari `GET /skills`, daftar chat). Form memakai komponen form
   shadcn.
+- **Langkah 1 (keputusan user):**
+  - **Recents = chat umum saja** (`GET /threads`, agent default). Chat project tampil di halaman
+    project masing-masing. Tanpa perubahan API.
+  - **Composer di halaman project** (seperti Claude): `/projects/:projectId` berisi ringkasan
+    project, daftar chat, dan composer. Pesan pertama pindah ke
+    `/projects/:projectId/chat/:threadId`.
+  - **Form shadcn + react-hook-form + zod** (`@hookform/resolvers`), dengan batas yang sama dengan
+    `schema/projects.py`.
 - **Rencana commit:**
   1. `feat(frontend): list recents with rename and delete`
   2. `feat(frontend): add projects list and project page`
   3. `feat(frontend): create and edit projects with a skill picker`
   4. `docs: record F34 projects ui decisions`
+- **Penyesuaian saat implementasi:**
+  - `ChatService` menerima `projectId` dan memakai `/projects/{id}/stream` dan `/history`.
+    `ProjectChatPage` memberi `key` per project ke `ChatPage`, jadi pindah project membuat
+    controller baru, sedangkan URL chat baru → thread tetap memakai komponen yang sama.
+  - `ChatController.setThreadCreatedListener` diganti `setRunListeners` (`onThreadCreated`,
+    `onRunFinished`): daftar thread di-refresh saat thread dibuat dan setiap run berakhir, karena
+    judul dan urutan thread berubah.
+  - Agent dasar dipilih saat membuat project dan dikunci saat edit (`ProjectUpdate` tidak punya
+    `base_agent_id`). Model "Service default" dikirim sebagai `null`.
+  - Skill aktif yang tidak ada lagi di katalog tetap tampil di pemilih supaya bisa dilepas.
+  - Hapus project ikut menghapus chat-nya (perilaku service), dan dialog konfirmasi menyebutnya.
+  - Komponen shadcn baru: `form`, `dialog`, `alert-dialog`, `dropdown-menu`, `checkbox`, `badge`.
+    `FakeService` test menyimpan project, skill, dan thread per scope di memori.
+  - Rencana commit 1–3 digabung: halaman project, form, dan Recents berbagi `ThreadActions`,
+    `thread-paths`, dan `FakeService` yang sama.
 - **Acceptance criteria:**
-  - [ ] User membuat project dengan instruksi + skill, chat di dalamnya, dan thread muncul di project
-        tersebut.
-  - [ ] Project built-in tampil read-only.
+  - [x] User membuat project dengan instruksi + skill, chat di dalamnya, dan thread muncul di project
+        tersebut: `projects.test.tsx` (body `POST /projects`, run lewat
+        `/projects/{id}/stream`, chat tampil di daftar project dan tidak di Recents).
+  - [x] Project built-in tampil read-only: badge "Built-in", tanpa menu edit/hapus, halaman edit
+        menolak, tetapi chat tetap bisa (`projects.test.tsx`).
 - **Squash title:** `feat(frontend): add projects and thread sidebar (F34)`
 - **Setelah merge:** rilis **v0.6.0** (demo showcase).
 

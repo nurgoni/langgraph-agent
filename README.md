@@ -18,8 +18,8 @@ kode yang sederhana, eksplisit, dan mudah dites (Zen of Python).
 - **Percakapan persisten**: riwayat thread disimpan di Postgres via LangGraph checkpointer.
 - **Human-in-the-loop**: agent bisa berhenti (`interrupt`) dan melanjutkan dengan input user.
 - **Python client**: `AgentClient` sync dan async.
-- **Frontend React** (`frontend/`, mulai F32): login dan app shell bergaya Claude. Chat menyusul
-  di F33.
+- **Frontend React** (`frontend/`, mulai F32): login, chat streaming, Projects, dan Recents
+  bergaya Claude.
 - **UI Streamlit**: dev console (chat, riwayat thread, pemilih agent dan model).
 - **Auth per user**: login username/password, access token JWT.
 
@@ -280,6 +280,12 @@ corepack pnpm build            # build statis ke dist/
   token streaming, blok reasoning, status tool call, langkah sub-agent bertingkat, pertanyaan
   interrupt, dan peringatan jawaban terpotong. Chat baru ada di `/`, dan setelah respons pertama
   URL berganti ke `/chat/<thread_id>` sehingga bisa dibuka ulang. Model dipilih di composer.
+- **Projects dan Recents** (F34): sidebar berisi chat baru, Projects, dan Recents (chat umum,
+  dengan rename dan hapus). `/projects` menampilkan project built-in (read-only) dan milik user.
+  Halaman project (`/projects/<id>`) berisi instruksi, skill, daftar chat, dan composer untuk chat
+  baru di project itu; chat project dibuka ulang di `/projects/<id>/chat/<thread_id>`. Form buat
+  dan edit project memakai komponen form shadcn (react-hook-form + zod) dengan pemilih skill dari
+  `GET /skills`.
 - **Token** disimpan di `sessionStorage`: bertahan saat refresh, hilang saat tab ditutup.
 - **`src/components/assistant-ui/`** berisi template registry assistant-ui. `thread.tsx` sudah
   disesuaikan untuk service, sedangkan `elements/` disalin apa adanya supaya bisa dibandingkan saat
