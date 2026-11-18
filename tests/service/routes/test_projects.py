@@ -100,6 +100,7 @@ async def test_unknown_agent_or_model_is_422(
         {"skill_ids": ["meeting-notes"]},
         {"settings": {"max_tokens": 0}},
         {"settings": {"unknown": True}},
+        {"settings": {"tool_approval": "sometimes"}},
         {"owner_id": "someone-else"},
     ],
 )
@@ -302,7 +303,10 @@ class RecordingAgent(BaseAgent):
 
         async def reply(state: MessagesState, config: RunnableConfig) -> dict[str, list[AIMessage]]:
             configurable = config["configurable"]
-            content = f"{configurable.get('project_id')}|{configurable.get('project_instructions')}"
+            content = "|".join(
+                str(configurable.get(key))
+                for key in ("project_id", "project_instructions", "project_tool_approval")
+            )
             return {"messages": [AIMessage(content=content)]}
 
         # pyrefly tidak mengenali TypedDict sebagai TypedDictLike milik LangGraph.
@@ -396,8 +400,20 @@ async def test_project_instructions_reach_the_agent_and_changes_apply_next_turn(
     await client.patch(f"/projects/{project.id}", json={"instructions": "Versi 2"})
     second = await invoke(client, project.id, thread_id="t1")
 
-    assert first.content == f"{project.id}|Versi 1"
-    assert second.content == f"{project.id}|Versi 2"
+    assert first.content == f"{project.id}|Versi 1|never"
+    assert second.content == f"{project.id}|Versi 2|never"
+
+
+async def test_project_tool_approval_reaches_the_run_config(
+    model_client: tuple[AsyncClient, FastAPI],
+) -> None:
+    client, _ = model_client
+    project = await create(client, base_agent_id="recorder", settings={"tool_approval": "always"})
+
+    reply = await invoke(client, project.id)
+
+    assert project.settings.tool_approval == "always"
+    assert reply.content.endswith("|always")
 
 
 async def test_agent_routes_carry_no_project_config(
@@ -407,7 +423,7 @@ async def test_agent_routes_carry_no_project_config(
 
     response = await client.post("/recorder/invoke", json={"message": "Halo"})
 
-    assert response.json()["content"] == "None|None"
+    assert response.json()["content"] == "None|None|None"
 
 
 async def test_custom_builtin_list_is_seeded(model_client: tuple[AsyncClient, FastAPI]) -> None:

@@ -15,13 +15,23 @@ from pydantic import BaseModel, Field, JsonValue, StringConstraints, field_valid
 # Diisi service di `configurable`, jadi tidak boleh ditimpa `agent_config`. Kunci project sama
 # dengan `PROJECT_*_CONFIG_KEY` di `core/constants.py` (schema tidak boleh import core).
 RESERVED_AGENT_CONFIG_KEYS: Final = frozenset(
-    {"thread_id", "user_id", "model", "project_id", "project_instructions", "project_skill_ids"}
+    {
+        "thread_id",
+        "user_id",
+        "model",
+        "project_id",
+        "project_instructions",
+        "project_skill_ids",
+        "project_tool_approval",
+    }
 )
 
 THREADS_LIMIT_DEFAULT: Final = 20
 THREADS_LIMIT_MIN: Final = 1
 THREADS_LIMIT_MAX: Final = 100
 TITLE_MAX_LENGTH: Final = 60
+# Lampiran per pesan (F35). Batas ini menjaga satu message tetap kecil di checkpoint.
+MAX_MESSAGE_ARTIFACTS: Final = 10
 
 ThreadTitle = Annotated[
     str,
@@ -50,6 +60,14 @@ class UserInput(BaseModel):
         default_factory=dict,
         description="Konfigurasi khusus agent, divalidasi dengan config_schema milik agent.",
         examples=[{"temperature": 0.2}],
+    )
+    artifact_ids: list[str] = Field(
+        default_factory=list,
+        max_length=MAX_MESSAGE_ARTIFACTS,
+        description=(
+            "Artifact milik user (dari `POST /artifacts`) yang dilampirkan ke pesan ini. "
+            "Tidak bisa dikirim sebagai jawaban interrupt."
+        ),
     )
 
     @field_validator("agent_config")

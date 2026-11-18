@@ -67,3 +67,28 @@ MIN_CONTEXT_MAX_TOKENS: Final = 1000
 
 # Tag run model yang token/reasoning-nya tidak dialirkan ke chat (ekstraksi, peringkasan).
 SKIP_STREAM_TAG: Final = "skip_stream"
+
+# Artifact (FR-46, keputusan user F35). Direktori relatif terhadap folder kerja service; image
+# service me-mount volume di `/app/data/artifacts`.
+DEFAULT_ARTIFACT_DIR: Final = Path("data/artifacts")
+BYTES_PER_MEGABYTE: Final = 1024 * 1024
+DEFAULT_ARTIFACT_MAX_MEGABYTES: Final = 25
+DEFAULT_ARTIFACT_MAX_BYTES: Final = DEFAULT_ARTIFACT_MAX_MEGABYTES * BYTES_PER_MEGABYTE
+MIN_ARTIFACT_MAX_BYTES: Final = 1
+# Kunci `additional_kwargs` message LangChain yang berisi referensi artifact (pola penanda F17).
+ARTIFACTS_KWARG: Final = "artifacts"
+
+# Batas output tool sebelum dipindah ke workspace (FR-48, keputusan user F36): ±25% anggaran riwayat
+# default, jadi hasil web search biasa tetap utuh.
+DEFAULT_TOOL_OUTPUT_MAX_TOKENS: Final = 4000
+MIN_TOOL_OUTPUT_MAX_TOKENS: Final = 100
+# Kunci `additional_kwargs` message human berisi path lampiran di workspace thread (F36).
+WORKSPACE_FILES_KWARG: Final = "workspace_files"
+
+# Sandbox eksekusi kode (FR-49, keputusan user F37). Batas waktu per eksekusi; batas lain
+# (memori, CPU, jumlah proses) ditetapkan runner.
+DEFAULT_SANDBOX_TIMEOUT_SECONDS: Final = 60
+MIN_SANDBOX_TIMEOUT_SECONDS: Final = 1
+MAX_SANDBOX_TIMEOUT_SECONDS: Final = 600
+# Kunci `configurable`: persetujuan sebelum eksekusi kode di project (`ProjectSettings`).
+PROJECT_TOOL_APPROVAL_CONFIG_KEY: Final = "project_tool_approval"

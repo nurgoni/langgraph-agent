@@ -6,8 +6,8 @@ filter metadata tersebut. Invariant yang dipakai dijelaskan di konstanta berikut
 """
 
 import logging
-from collections.abc import Iterable
-from typing import Final
+from collections.abc import Iterable, Sequence
+from typing import Final, Protocol
 
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
@@ -46,6 +46,14 @@ MAX_HEAD_ROWS: Final = 1000
 DEFAULT_THREAD_TITLE: Final = "Untitled thread"
 
 
+class ThreadDataCleanup(Protocol):
+    """Data lain milik thread yang ikut dihapus bersama thread, misalnya artifact (F35)."""
+
+    async def delete_thread_data(self, thread_id: str) -> None:
+        """Hapus data milik `thread_id`. Thread tanpa data diabaikan."""
+        ...
+
+
 class ThreadRepository:
     """Operasi thread milik user: daftar, rename, dan hapus.
 
@@ -60,6 +68,7 @@ class ThreadRepository:
         page_size: int = HEAD_PAGE_SIZE,
         max_threads: int = MAX_THREAD_HEADS,
         max_rows: int = MAX_HEAD_ROWS,
+        cleanups: Sequence[ThreadDataCleanup] = (),
     ) -> None:
         """Inisialisasi repository.
 
@@ -69,12 +78,14 @@ class ThreadRepository:
             page_size: Jumlah head per query ke checkpointer.
             max_threads: Batas thread unik yang dipertimbangkan sebelum diurutkan.
             max_rows: Batas total baris head yang dibaca.
+            cleanups: Data lain yang dihapus bersama thread (artifact).
         """
         self._checkpointer = checkpointer
         self._titles = titles
         self._page_size = page_size
         self._max_threads = max_threads
         self._max_rows = max_rows
+        self._cleanups = tuple(cleanups)
 
     async def list_threads(
         self, user_id: str, agent_id: str, limit: int, project_id: str | None = None
@@ -172,9 +183,11 @@ class ThreadRepository:
         return len(thread_ids)
 
     async def _remove(self, thread_id: str) -> None:
-        """Hapus checkpoint dan judul custom satu thread, tanpa cek pemilik."""
+        """Hapus checkpoint, judul custom, dan data lain satu thread, tanpa cek pemilik."""
         await self._checkpointer.adelete_thread(thread_id)
         await self._titles.delete(thread_id)
+        for cleanup in self._cleanups:
+            await cleanup.delete_thread_data(thread_id)
 
     async def _get_owned_tip(
         self, thread_id: str, user_id: str, agent_id: str, project_id: str | None

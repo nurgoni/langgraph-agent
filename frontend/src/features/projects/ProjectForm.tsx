@@ -166,6 +166,26 @@ export function ProjectForm(props: ProjectFormProps) {
             </FormItem>
           )}
         />
+        <FormField
+          control={form.control}
+          name="askBeforeRunningCode"
+          render={({ field }) => (
+            <FormItem className="flex items-start gap-3">
+              <FormControl>
+                <Checkbox
+                  checked={field.value}
+                  onCheckedChange={(checked) => field.onChange(checked === true)}
+                />
+              </FormControl>
+              <div className="grid gap-1">
+                <FormLabel>Ask before running code</FormLabel>
+                <FormDescription>
+                  The agent asks for approval before each run_python or run_shell call.
+                </FormDescription>
+              </div>
+            </FormItem>
+          )}
+        />
         {submitError !== null && (
           <p role="alert" className="text-sm text-destructive">
             {submitError}

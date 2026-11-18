@@ -21,6 +21,7 @@ async function createProject(user: ReturnType<typeof userEvent.setup>) {
     "Answer in bullet points.",
   );
   await user.click(await screen.findByRole("checkbox", { name: "meeting-notes" }));
+  await user.click(screen.getByRole("checkbox", { name: "Ask before running code" }));
   await user.click(screen.getByRole("button", { name: "Create project" }));
 }
 
@@ -53,7 +54,7 @@ describe("projects", () => {
       model: null,
       instructions: "Answer in bullet points.",
       skill_ids: ["builtin/meeting-notes"],
-      settings: { max_tokens: null },
+      settings: { max_tokens: null, tool_approval: "always" },
     });
     expect(await screen.findByRole("heading", { name: "Weekly notes" })).toBeInTheDocument();
     expect(screen.getByText("Answer in bullet points.")).toBeInTheDocument();

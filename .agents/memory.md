@@ -14,16 +14,17 @@ berulang ada di dev-time skill `.claude/skills/` (daftar di AGENTS.md § Dev-tim
 
 ## Status Saat Ini
 
-- **Fase:** M6 Frontend selesai (F32–F34 di-merge). Rilis **v0.6.0** disiapkan di working tree
-  `develop` (versi, CHANGELOG, `uv.lock`, kontrak, `frontend/package.json`), menunggu user membuat
-  `release/v0.6.0`, PR ke `main`, tag, dan back-merge.
-- **Berikutnya:** M7 Files & Execution, mulai **F35** (Artifact storage).
+- **Fase:** M7 Files & Execution selesai (F35–F38 di-merge). Rilis **v0.7.0** disiapkan di working
+  tree `develop` (versi, CHANGELOG, `uv.lock`, kontrak, `frontend/package.json`), menunggu user
+  membuat `release/v0.7.0`, PR ke `main` (pastikan **Merged**), tag, dan back-merge.
+- **Berikutnya:** M8 Data Analytics, mulai **F39** (SQL data source).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Arsip:** Decision Log M0–M4 ada di
-  [archive/decision-log-m0-m4.md](archive/decision-log-m0-m4.md), dan F26–F31 di
-  [archive/decision-log-m4-m5.md](archive/decision-log-m4-m5.md).
-- **Terakhir diperbarui:** 2026-11-18 (F34)
+  [archive/decision-log-m0-m4.md](archive/decision-log-m0-m4.md), F26–F31 di
+  [archive/decision-log-m4-m5.md](archive/decision-log-m4-m5.md), dan dev-time skill + F32–F34 di
+  [archive/decision-log-m6.md](archive/decision-log-m6.md).
+- **Terakhir diperbarui:** 2026-11-18 (rilis v0.7.0)
 
 ## Aturan Kerja
 
@@ -43,7 +44,7 @@ Keputusan user yang berlaku untuk semua pekerjaan. Detail asalnya ada di arsip.
 
 ## Pelajaran Lintas Fitur
 
-Ringkasan pelajaran dari M0–M5 yang masih berlaku (detail di arsip dan entri fitur terkait).
+Ringkasan pelajaran dari M0–M6 yang masih berlaku (detail di arsip dan entri fitur terkait).
 
 - **Windows + psycopg:** async psycopg butuh `SelectorEventLoop` (uvicorn:
   `loop="asyncio:SelectorEventLoop"`). Pakai `127.0.0.1`, bukan `localhost`, untuk port compose.
@@ -75,124 +76,130 @@ Ringkasan pelajaran dari M0–M5 yang masih berlaku (detail di arsip dan entri f
   seperti hook `frontend-check`). Tanpa `corepack enable` global. Registry npm
   lambat: install dan build image `web` dijalankan di background. Setelah `contracts/` berubah,
   jalankan `generate:api`. Kode aplikasi tidak mengedit vendor shadcn.
+- **shadcn CLI:** butuh `pnpm` di PATH (shim `pnpm.cmd` → `corepack pnpm` di scratchpad), dan
+  berhenti diam-diam (exit 0) di prompt overwrite; jawab `n` lewat stdin lalu cek file yang ditulis.
+- **jsdom:** butuh polyfill `matchMedia`, `ResizeObserver`, `scrollTo`, `scrollIntoView`
+  (`src/test/setup.ts`). openapi-fetch butuh base URL absolut. Daftar yang di-mount ulang selalu
+  fetch ulang, jadi invalidasi query diuji lewat daftar yang tetap ter-mount.
+- **E2E Docker:** build image `web` bisa melewati `BUILD_TIMEOUT_SECONDS` (900) atau putus karena
+  registry. Build image terpisah tanpa timeout (dengan retry), lalu jalankan e2e. Untuk menguji fitur
+  sebelumnya sambil mengerjakan fitur baru, jalankan e2e dari salinan repo di scratchpad.
+- **Hook pre-commit pada file data:** `end-of-file-fixer` mengubah fixture yang sengaja diakhiri
+  `\n\n` (dikecualikan), dan `check-yaml` butuh `--allow-multiple-documents` untuk lockfile pnpm.
 
 ## Decision Log
 
-### 2026-11-18: Projects & threads UI dari F34
+### 2026-11-18: Artifact panel UI dari F38
 
-- **Keputusan user:** Recents = chat umum saja (`GET /threads`), chat project di halaman project.
-  Composer di halaman project (`/projects/:id`, chat di `/projects/:id/chat/:threadId`). Form
-  shadcn + react-hook-form + zod.
+- **Keputusan user:** panel kanan Resizable (Sheet di layar sempit); upload saat file dipilih;
+  gambar markdown dicocokkan ke artifact jawaban yang sama; papaparse untuk CSV.
 - **Keputusan desain:**
-  - `ChatService(api, projectId)` memilih route `/projects/{id}/...`. `ProjectChatPage` memberi
-    `key={projectId}` ke `ChatPage`; halaman project = `ChatPage` dengan `welcome` = ringkasan
-    project, daftar chat, dan aksi.
-  - `ChatController.setRunListeners` (`onThreadCreated`, `onRunFinished`) menggantikan
-    `setThreadCreatedListener`. Query thread di-invalidate saat thread dibuat dan setiap run selesai.
-  - Helper `requireData`/`requireOk` + `ServiceError` (`src/api/service-error.ts`) untuk query dan
-    mutation. `useServiceInfo` dipakai bersama pemilih model dan form.
-  - Agent dasar dikunci saat edit, model "Service default" = `null`, skill di luar katalog tetap
-    tampil supaya bisa dilepas.
-  - `FakeService` test menyimpan project, skill, dan thread per scope di memori.
-- **Hasil ukur:** 67 test frontend, mutation check 10/10 tertangkap. Bundle 1,28 MB (388 kB gzip).
+  - Artifact asisten = part `data` `artifacts`; artifact pesan user di `metadata.custom.artifacts`
+    (lampiran assistant-ui tidak membawa ukuran). `ArtifactCards` membuka panel lewat context.
+  - Isi lewat fetch bertoken → `Blob` → object URL (TanStack Query, tidak dicabut karena StrictMode).
+  - Chip composer dari primitive assistant-ui + shadcn, tanpa template registry `attachment`
+    (butuh `avatar`, `use-attachment-src`, `zustand`). Adapter upload di `add` (async generator).
+  - Grup `Resizable` selalu dirender supaya chat tidak di-mount ulang.
+  - Dependency baru: `papaparse` 5.7.0, `react-resizable-panels` 4.18.0 (shadcn `resizable`,
+    `table`). react-resizable-panels v4: angka = piksel, string `"55%"` = persen.
+- **Hasil ukur:** 86 test Vitest (+19), mutation check 11/11, e2e Compose 19/19 (image `web`
+  dengan dependency baru ter-build di percobaan pertama). Bundle 1,36 MB (415 kB gzip).
 - **Pelajaran:**
-  - CLI shadcn berhenti diam-diam di prompt overwrite (`label.tsx`) dengan exit 0, sehingga
-    `form` dan `alert-dialog` tidak ditulis. Jalankan dengan jawaban `n` di stdin, lalu cek file.
-  - Daftar yang di-mount ulang selalu fetch ulang (`staleTime` 0), jadi invalidasi hanya teruji lewat
-    daftar yang tetap ter-mount (Recents). Mutation check menemukannya.
-  - E2E F33 gagal di setup: `pnpm install` di build image `web` putus (`tls handshake eof`) setelah
-    10 menit pemeriksaan `minimumReleaseAge` untuk 667 paket, sedangkan `BUILD_TIMEOUT_SECONDS`
-    = 900. Build image `web` terpisah tanpa timeout, dari salinan `frontend/` fitur yang diuji,
-    supaya pekerjaan fitur berikutnya di working tree tidak ikut masuk image. Lalu e2e dengan
-    `COMPOSE_FILE="compose.yaml;<override>"` yang mengarahkan `web.build.context` ke salinan itu
-    (test meneruskan `os.environ`); cache build terpakai dan 15 test lulus dalam 56 detik.
+  - Vitest membungkus `Request` agar menerima Blob/FormData jsdom, tetapi File di dalam FormData
+    menjadi Blob bernama "blob", dan undici tidak bisa membaca File jsdom. Setup test memakai
+    `File` (node:buffer) dan `FormData` Node; `Blob` tetap jsdom supaya kompatibilitas lain jalan.
+  - Membuat `new Request(request)` di wrapper test menghabiskan body request asli (probe palsu
+    gagal "unreachable"); untuk debug, panggil service palsu langsung.
+  - `ComposerPrimitive.AddAttachment` membuat `<input type=file>` dinamis lalu `click()`; di test,
+    spy `HTMLInputElement.prototype.click`, isi `files`, lalu kirim event `change`.
 
-### 2026-11-17: Chat UI dari F33
+### 2026-11-18: Sandbox dari F37
 
-- **Keputusan user:** pemilih model saja di composer (agent selalu `default_agent`, agent lain lewat
-  Project F34). Template registry assistant-ui boleh diedit (hanya `src/components/ui/` vendor).
-  URL thread `/chat/:threadId`, chat baru di `/`.
+- **Keputusan user:** service `sandbox-runner` (satu-satunya dengan `docker.sock`, HTTP internal +
+  `SANDBOX_TOKEN`); `ProjectSettings.tool_approval` default `never`; `run_python`/`run_shell` untuk
+  chatbot + research jika `SANDBOX_URL` diisi; timeout 60 detik.
 - **Keputusan desain:**
-  - assistant-ui 0.15.32 + react-markdown 0.14.24 (dipin persis). Registry meminta ^0.15.36 yang
-    belum lolos jeda 14 hari; template diambil dari JSON registry (`r.assistant-ui.com/<nama>.json`,
-    butuh curl karena User-Agent Python ditolak 403) dan lolos tsc dengan 0.15.32.
-    `elements/` disalin apa adanya (override ESLint per folder), `thread.tsx` dipangkas.
-  - Tipe SSE dari `contracts/stream-event.schema.json` lewat `scripts/stream-events.mjs`
-    (json-schema-to-typescript, mode `--check`), bagian dari `generate:api`/`check:api`.
-  - `ChatController` di luar React (`useSyncExternalStore`) dengan `generation` untuk membuang hasil
-    terlambat saat pindah thread. `conversation.ts` murni: satu message asisten per pesan user,
-    `parentId` = nama expert, status `incomplete/length|error|cancelled`.
-  - Kedua route chat memakai `ChatPage` yang sama, jadi state tidak hilang saat URL chat baru
-    diganti ke `/chat/<id>` (tidak ada request `/history`).
-  - Dockerfile `web`: cache mount BuildKit untuk store pnpm.
-- **Hasil ukur:** rekaman Ollama `qwen3.5:9b`: reasoning 18 dtk (224 frame reasoning), tool call
-  4 dtk, supervisor 10 dtk, terpotong (600 token) 12 dtk. Bundle 1,1 MB (337 kB gzip), belum
-  code-split.
+  - `DockerSandbox` lewat Docker Engine API (httpx UDS), satu container per eksekusi: `network=none`,
+    rootfs read-only, UID 10001, tanpa capability, `no-new-privileges`, 512 MB / 1 CPU / 128 pids,
+    `/tmp` tmpfs, `/workspace` volume anonim; container + volume selalu dihapus.
+  - `ExecutionRequest`/`ExecutionResult` = body HTTP runner; `bytes` + `ser_json_bytes`/
+    `val_json_bytes="base64"` (bukan `Base64Bytes`, yang juga men-decode input Python).
+  - Sandbox masuk `HarnessContext`; `ArtifactService` meneruskannya ke `run_context()`.
+  - Compose `sandbox-image` (build lalu selesai) + `sandbox-runner` (target Dockerfile baru, root).
+  - Test AST NFR-10 di `service/`, `agents/`, `harness/`, `sandbox/`.
+- **Hasil ukur:** 1102 pytest (+41), mutation check 15/15, e2e Compose 19/19 (jaringan diblokir,
+  loop berhenti 3 dtk, pandas menulis file, agent-service tanpa `docker.sock`). Smoke
+  `qwen3.5:9b` + runner sementara: `read_file` → `run_python` (pandas + matplotlib, total benar) →
+  `share_file chart.png` (19.341 byte) dalam 23,1 dtk; sapaan tanpa tool 1,0 dtk. Image sandbox
+  519 MB.
 - **Pelajaran:**
-  - `TextDecoderStream` bentrok dengan tipe lib TS (`BufferSource`); pakai `TextDecoder` dengan
-    `{ stream: true }`.
-  - jsdom butuh polyfill `ResizeObserver`, `scrollTo`, `scrollIntoView` untuk viewport assistant-ui.
-  - `new Request(request)` memakai body request asli; di wrapper `fetch` test, baca `input.url`.
-  - Lint `react-hooks/refs` melarang ref dibaca lewat callback di initializer `useState`; pasang
-    listener lewat effect.
-  - Mutation check menemukan guard `generation` di loop event tidak teruji, karena abort mematikan
-    stream; test baru memakai body yang mengabaikan abort.
-  - Rekaman `.sse` diakhiri `\n\n`, dan hook `end-of-file-fixer` memotongnya saat user commit.
-    Fixture dikecualikan dari hook itu. File data baru: cek hook pre-commit sebelum handoff.
+  - Probe Docker: `docker cp` ke volume container yang belum start berhasil, tetapi volume anonim
+    milik root kecuali image membuat foldernya dengan pemilik user sandbox. Tmpfs tidak bisa diisi
+    sebelum start.
+  - Di Git Bash, `docker` dengan path `/workspace` diubah menjadi path Windows; pakai
+    `MSYS_NO_PATHCONV=1`.
+  - Script Python di dalam string test e2e: tulis `\\n` (escape dua kali), kalau tidak literal bytes
+    terputus (gagal hanya di e2e).
+  - Model menyisipkan `![...](chart.png)` (path workspace) di jawaban; F38 perlu menampilkan
+    artifact dari tool message, bukan link markdown itu.
 
-### 2026-11-17: Frontend scaffold dari F32
+### 2026-11-18: Workspace & file tools dari F36
 
-- **Keputusan user:** pnpm lewat corepack (`packageManager` di-pin), Node 24 LTS, token di
-  `sessionStorage`, API lewat proxy same-origin `/api` (nginx image `web`, proxy Vite di dev),
-  tanpa CORS.
+- **Keputusan user:** tool file selalu untuk chatbot + research assistant; lampiran disalin ke
+  workspace `uploads/<nama>`; `TOOL_OUTPUT_MAX_TOKENS` 4.000; `grep` teks literal.
 - **Keputusan desain:**
-  - Versi diresolusi pnpm dengan `minimumReleaseAge: 20160` (14 hari, setara `exclude-newer` uv)
-    di `frontend/pnpm-workspace.yaml`. TypeScript dipin `~5.9.3`: typescript-eslint 8.72 (`<6.1`)
-    dan openapi-typescript 7.13 (`^5`) belum mendukung TypeScript 7.
-  - shadcn base Radix + paket `cn` (milik shadcn, diverifikasi maintainer dan repo). Vendor
-    `src/components/ui/` dan `src/hooks/use-mobile.ts` tidak diedit. ESLint mematikan tiga aturan
-    hanya untuk file vendor.
-  - Base URL client absolut `<origin>/api`; URL service tidak di-bake ke build. `API_UPSTREAM`
-    image `web` lewat template envsubst nginx.
-  - `SessionStore` menyimpan `expiresAt` absolut dan membuang sesi kedaluwarsa/rusak saat dibaca.
-    Logout otomatis hanya untuk 401 pada request yang membawa token (login salah tidak memicunya).
-  - Drift tipe API dicek oleh `pnpm check:api` (CI) dan hook `frontend-check`.
-  - Rencana commit 1–4 ROADMAP digabung: scaffold, vendor, client, dan login saling bergantung
-    untuk lolos `tsc` dan ESLint.
-- **Hasil ukur:** build image `web` pertama 4493 detik (registry npm sangat lambat, bukan
-  Dockerfile); install lokal 7–36 menit. Bundle 480 kB (155 kB gzip).
+  - Workspace + penerbit artifact lewat runtime context LangGraph (`HarnessContext`,
+    `ainvoke(..., context=...)`), tanpa mengubah `BaseAgent.build`. Tool memakai
+    `ToolRuntime[HarnessContext]`; thread/user dari config service.
+  - `PostgresWorkspace` di `memory/workspace.py` (tabel `workspace_files`, revisi `0007`, isi
+    `BYTEA`, batas = `ARTIFACT_MAX_BYTES`); protocol + `InMemoryWorkspace` di `files/workspace.py`.
+  - Offloader di `ToolNode(awrap_tool_call=...)`; `read_file`/`list_files`/`grep` dikecualikan.
+  - `share_file` → `ToolMessage.additional_kwargs["artifacts"]` lewat `ArtifactService.publish`.
+  - Path lampiran untuk model di `additional_kwargs["workspace_files"]`, ditambahkan hanya ke
+    salinan pesan untuk model.
+- **Hasil ukur:** 1061 pytest (+50), mutation check 16/16, e2e Compose 17/17. Smoke
+  `qwen3.5:9b`: lampiran CSV → `read_file uploads/sales.csv` dan total benar (17,4 dtk); tulis +
+  bagikan → `write_file` lalu `share_file` dengan artifact (4,2 dtk); sapaan tanpa tool (1,0 dtk).
 - **Pelajaran:**
-  - CLI shadcn memanggil `pnpm` langsung. Tanpa `corepack enable`, buat shim `pnpm.cmd` di
-    scratchpad yang memanggil `corepack pnpm`, lalu tambahkan ke PATH.
-  - openapi-fetch dengan base URL relatif (`/api`) gagal di jsdom karena `new Request()` butuh URL
-    absolut.
-  - `corepack pnpm --dir frontend` dari root memakai pnpm default corepack (bukan versi
-    `packageManager`), dan pnpm gagal `ERR_PNPM_BAD_PM_VERSION`. Ditemukan di cek akhir, bukan
-    saat implementasi, karena semua cek sebelumnya dijalankan dari dalam `frontend/`.
-  - Exit code `check:api` tertutup pipe (`| tail`); verifikasi exit code tanpa pipe.
-  - jsdom tidak punya `matchMedia`, padahal sidebar shadcn memakainya: polyfill di
-    `src/test/setup.ts`.
-  - `pnpm-lock.yaml` pnpm 12 berisi dua dokumen YAML; hook `check-yaml` butuh
-    `--allow-multiple-documents`. Ditemukan saat user commit (tidak ada cek lokal yang menjalankan
-    `check-yaml`).
-  - File hasil CLI bisa tanpa newline di akhir; hook `end-of-file-fixer` akan mengubahnya saat
-    commit.
+  - `context_schema` di `StateGraph` tidak dibutuhkan agar `ToolRuntime.context` terisi, dan
+    menspesialisasi `StateGraph[TypedDict, ...]` memicu error pyrefly baru; tanpa schema tidak ada
+    suppression tambahan.
+  - `ToolRuntime` tanpa parameter tipe memicu peringatan serializer Pydantic (context dianggap
+    `None`); field context bertipe `Protocol` butuh `@runtime_checkable`.
+  - Doctest mengubah tab di docstring menjadi spasi; contoh dengan tab ditulis lewat `repr`.
+  - `ORDER BY` teks di Postgres memakai collation locale yang mengabaikan tanda baca, jadi urutan
+    `sales-x.csv` vs `sales.csv` berubah-ubah (test flaky). Listing memakai `COLLATE "C"`.
+  - Wiring `context=` di route tidak teruji oleh `FakeModel` default; test memakai agent dengan
+    model terskrip yang memanggil `write_file` lewat API (invoke dan stream).
 
-### 2026-11-17: Dev-time skill dan arsip memory
+### 2026-11-18: Artifact storage dari F35
 
-- **Keputusan user:** skill di `.claude/skills/` (dipicu otomatis oleh Claude Code, dan didaftar
-  di AGENTS.md § Dev-time Skill untuk agent lain). Empat skill: `feature-workflow`,
-  `git-handoff`, `release`, `memory-maintenance`. memory.md diarsipkan sekarang. Skill dikerjakan
-  di branch `chore/dev-time-skills` sebelum F32.
+- **Keputusan user:** lampiran lewat `artifact_ids` di input run; artifact ikut terhapus bersama
+  thread, ditambah `DELETE /artifacts/{id}`; `ARTIFACT_MAX_BYTES` 25 MB; semua tipe diterima,
+  unduhan selalu `attachment` + `nosniff` (+ CSP `sandbox`).
 - **Keputusan desain:**
-  - Skill hanya berisi urutan kerja dan merujuk ke AGENTS.md, CONTRIBUTING.md, dan ROADMAP untuk
-    aturannya, supaya aturan tidak tersalin di dua tempat.
-  - `feature-workflow/references/smoke_template.py`: smoke test model asli di database sementara
-    (diverifikasi dengan `qwen3.5:9b`).
-  - Decision Log M0–M4 dipindah utuh ke `.agents/archive/decision-log-m0-m4.md`, termasuk tabel
-    "Pelajaran dari Kode Lama" (port sudah selesai). memory.md mendapat § Aturan Kerja dan
-    § Pelajaran Lintas Fitur sebagai ringkasan yang masih berlaku (890 → ±290 baris).
-  - `.claude/settings.local.json` di-gitignore. Hanya `.claude/skills/` yang dibagikan.
+  - Satu artifact satu thread (`artifacts.thread_id`), ditautkan saat pertama dikirim; thread lain
+    → 409, lampiran untuk jawaban interrupt → 422. Ditautkan setelah kepemilikan thread lolos
+    (`build_attached_run_input`).
+  - `ThreadRepository(cleanups=[...])` (`ThreadDataCleanup`) menghapus artifact di jalur hapus
+    thread dan hapus project.
+  - `LocalArtifactStore`: anyio, tulis ke `.part` lalu rename, kunci divalidasi pola.
+  - nginx `client_max_body_size ${API_MAX_BODY_SIZE}`; `python-multipart` eksplisit di extra.
+  - Fixture autouse `artifact_dir` di `tests/conftest.py` (env `ARTIFACT_DIR` → tmp_path).
+- **Hasil ukur:** 1011 pytest (+37), mutation check 12/12, e2e Compose 16/16 dalam 82 detik
+  (upload 2 MB lewat proxy `web`, bertahan setelah restart, user lain 404).
+- **Pelajaran:**
+  - Tanpa fixture `artifact_dir`, lifespan test membuat `data/artifacts` di repo (ditemukan dari
+    folder kosong setelah pytest). `data/` sekarang di `.gitignore`.
+  - FastAPI membaca body multipart sebelum handler, jadi batas ukuran baru ditegakkan saat
+    menyalin; proxy nginx adalah penahan pertama.
+  - E2E fitur sebelumnya dijalankan dari salinan repo di scratchpad (`uv run` di folder salinan),
+    supaya pengerjaan fitur berikutnya di working tree tidak ikut ter-build.
+  - Insiden rilis v0.6.0 (diperiksa dengan git read-only atas izin user): PR release → `main` tidak
+    di-merge, tag dibuat di `main` lama (menunjuk commit v0.5.0), dan `git branch -d` tetap
+    menghapus branch release karena sudah ter-push. Commit rilis diselamatkan dari reflog. Daftar
+    command rilis kini meminta user memastikan PR **Merged** dan memeriksa `git log` sebelum tag.
+  - Squash PR #40 (F34) memakai judul F33; tidak diperbaiki karena butuh force-push ke `develop`.
 
 ### 2026-11-15: Rencana Fase 2 (M4–M10)
 

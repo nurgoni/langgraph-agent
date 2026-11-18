@@ -87,7 +87,9 @@ def test_invoke_posts_payload_and_returns_reply_with_ids() -> None:
     )
 
     with client:
-        reply = client.invoke("Hai", model="fake", agent_config={"tone": "x"})
+        reply = client.invoke(
+            "Hai", model="fake", agent_config={"tone": "x"}, artifact_ids=["a1", "a2"]
+        )
 
     [request] = transport.requests
     assert (request.method, request.url.path) == ("POST", "/chatbot/invoke")
@@ -95,6 +97,7 @@ def test_invoke_posts_payload_and_returns_reply_with_ids() -> None:
         "message": "Hai",
         "model": "fake",
         "agent_config": {"tone": "x"},
+        "artifact_ids": ["a1", "a2"],
     }
     assert (reply.message.content, reply.thread_id) == ("Halo!", "t1")
 
@@ -488,3 +491,43 @@ def test_run_trace_request() -> None:
 
     assert transport.requests[0].url.raw_path == b"/runs/r%2F1/trace"
     assert trace.spans[0].name == "fake"
+
+
+ARTIFACT = {"id": "a1", "name": "sales.csv", "mime_type": "text/csv", "size": 3}
+
+
+def test_artifacts_are_uploaded_downloaded_and_deleted() -> None:
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            return httpx.Response(201, json=ARTIFACT)
+        if request.method == "GET":
+            return httpx.Response(200, content=b"a,b")
+        return httpx.Response(204)
+
+    client, transport = make_client(respond)
+
+    with client:
+        artifact = client.upload_artifact(b"a,b", "sales.csv", "text/csv")
+        content = client.download_artifact("a/1")
+        client.delete_artifact("a1")
+
+    upload, download, delete = transport.requests
+    assert (upload.method, upload.url.path) == ("POST", "/artifacts")
+    assert upload.headers["content-type"].startswith("multipart/form-data")
+    assert b'name="file"; filename="sales.csv"' in upload.content
+    assert b"Content-Type: text/csv" in upload.content
+    assert artifact.id == "a1"
+    assert download.url.raw_path == b"/artifacts/a%2F1"
+    assert content == b"a,b"
+    assert (delete.method, delete.url.path) == ("DELETE", "/artifacts/a1")
+
+
+def test_artifact_errors_keep_the_service_status() -> None:
+    client, _ = make_client(
+        lambda request: httpx.Response(413, json={"detail": "File is larger than the limit"})
+    )
+
+    with client, pytest.raises(AgentClientError) as error:
+        client.upload_artifact(b"x", "big.bin")
+
+    assert error.value.status_code == 413

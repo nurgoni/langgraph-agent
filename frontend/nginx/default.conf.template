@@ -1,7 +1,7 @@
 # Image `web` (F32): file statis hasil `pnpm build` dan proxy same-origin `/api/*` ke service,
 # jadi browser tidak butuh CORS dan URL API tidak di-bake ke build (keputusan user F32).
-# ${API_UPSTREAM} diisi envsubst image nginx saat start; variabel nginx ($host, $uri) tidak
-# disentuh karena bukan env var.
+# ${API_UPSTREAM} dan ${API_MAX_BODY_SIZE} diisi envsubst image nginx saat start; variabel nginx
+# ($host, $uri) tidak disentuh karena bukan env var.
 server {
     listen 8080;
     server_name _;
@@ -25,6 +25,8 @@ server {
         proxy_buffering off;
         proxy_cache off;
         proxy_read_timeout 600s;
+        # Upload artifact (F35): default nginx 1m. Service tetap menegakkan ARTIFACT_MAX_BYTES.
+        client_max_body_size ${API_MAX_BODY_SIZE};
     }
 
     # Aset ber-hash dari Vite boleh di-cache selamanya.

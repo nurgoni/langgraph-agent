@@ -1,5 +1,6 @@
 """Penyusunan input dan config untuk satu run agent dari request `UserInput`."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import Any, Final
 from uuid import UUID, uuid4
@@ -14,16 +15,24 @@ from pydantic import BaseModel, JsonValue, ValidationError
 
 from agent_service.agents.base import AgentGraph, BaseAgent
 from agent_service.core.constants import (
+    ARTIFACTS_KWARG,
     PROJECT_ID_CONFIG_KEY,
     PROJECT_INSTRUCTIONS_CONFIG_KEY,
     PROJECT_SKILL_IDS_CONFIG_KEY,
+    PROJECT_TOOL_APPROVAL_CONFIG_KEY,
     USER_ID_CONFIG_KEY,
+    WORKSPACE_FILES_KWARG,
 )
+from agent_service.harness.runtime import HarnessContext
+from agent_service.schema.artifacts import ArtifactRef
 from agent_service.schema.headers import THREAD_ID_HEADER
 from agent_service.schema.requests import UserInput
+from agent_service.service.artifacts import ArtifactService, artifact_ref
 from agent_service.service.thread_access import ensure_thread_owner, is_new_thread, run_metadata
 
 AGENT_CONFIG_LOCATION: Final = ("body", "agent_config")
+ARTIFACT_IDS_LOCATION: Final = ("body", "artifact_ids")
+ATTACHMENTS_ON_INTERRUPT_MESSAGE: Final = "Attachments cannot be sent as an answer to a question"
 # Header respons run di OpenAPI, supaya tipe client hasil generate tahu cara membaca ID thread.
 # Any: bentuk bebas objek OpenAPI milik FastAPI.
 RUN_RESPONSE_HEADERS: Final[dict[str, dict[str, Any]]] = {
@@ -48,6 +57,7 @@ class ProjectRunContext:
     project_id: str
     instructions: str = ""
     skill_ids: tuple[str, ...] = ()
+    tool_approval: str = "never"
 
     def configurable(self) -> dict[str, Any]:  # Any: nilai configurable LangGraph
         """Kunci `configurable` untuk project ini.
@@ -60,6 +70,7 @@ class ProjectRunContext:
             PROJECT_ID_CONFIG_KEY: self.project_id,
             PROJECT_INSTRUCTIONS_CONFIG_KEY: self.instructions,
             PROJECT_SKILL_IDS_CONFIG_KEY: list(self.skill_ids),
+            PROJECT_TOOL_APPROVAL_CONFIG_KEY: self.tool_approval,
         }
 
 
@@ -86,14 +97,39 @@ class RunTarget:
 
 
 @dataclass(frozen=True)
+class MessageAttachments:
+    """Lampiran pesan human: referensi artifact (F35) dan path salinannya di workspace (F36)."""
+
+    references: Sequence[ArtifactRef] = ()
+    workspace_paths: Sequence[str] = ()
+
+    def message_kwargs(self) -> dict[str, Any]:  # Any: nilai additional_kwargs LangChain
+        """`additional_kwargs` message human untuk lampiran ini.
+
+        >>> ref = ArtifactRef(id="a1", name="a.csv", mime_type="text/csv", size=3)
+        >>> sorted(MessageAttachments([ref], ["uploads/a.csv"]).message_kwargs())
+        ['artifacts', 'workspace_files']
+        """
+        kwargs: dict[str, Any] = {ARTIFACTS_KWARG: [ref.model_dump() for ref in self.references]}
+        if self.workspace_paths:
+            kwargs[WORKSPACE_FILES_KWARG] = list(self.workspace_paths)
+        return kwargs
+
+
+@dataclass(frozen=True)
 class RunInput:
-    """Semua yang dibutuhkan untuk menjalankan graph satu kali."""
+    """Semua yang dibutuhkan untuk menjalankan graph satu kali.
+
+    `context` dikirim sebagai runtime context LangGraph (`ainvoke(..., context=...)`), berisi
+    workspace dan penerbit artifact untuk tool harness (F36). `None` berarti tanpa workspace.
+    """
 
     graph_input: GraphInput
     config: RunnableConfig
     run_id: UUID
     thread_id: str
     user_id: str
+    context: HarnessContext | None = None
 
     def response_headers(self) -> dict[str, str]:
         """Header yang mengembalikan ID thread ke client (FR-13)."""
@@ -115,6 +151,7 @@ async def build_run_input(
     agent: BaseAgent,
     graph: AgentGraph,
     project: ProjectRunContext | None = None,
+    attachments: MessageAttachments | None = None,
 ) -> RunInput:
     """Siapkan input graph untuk request, termasuk ID baru dan resume interrupt.
 
@@ -126,12 +163,14 @@ async def build_run_input(
         agent: Agent tujuan, untuk validasi `agent_config`.
         graph: Graph agent untuk model yang dipilih.
         project: Project tempat run berjalan, atau `None` untuk route agent.
+        attachments: Lampiran yang sudah diperiksa kepemilikannya, untuk pesan human (F35, F36).
 
     Returns:
         Input dan config run. `thread_id` yang kosong diisi UUID baru (FR-13).
 
     Raises:
-        RequestValidationError: Jika `agent_config` tidak lolos `config_schema` agent (422).
+        RequestValidationError: Jika `agent_config` tidak lolos `config_schema` agent, atau ada
+            lampiran untuk jawaban interrupt (422).
         ThreadNotFoundError: Jika thread sudah ada tapi milik user, agent, atau project lain (404).
     """
     agent_config = parse_agent_config(agent, user_input.agent_config)
@@ -151,12 +190,55 @@ async def build_run_input(
     if not is_new_thread(snapshot):
         ensure_thread_owner(snapshot.metadata, thread_id, user_id, agent.agent_id, project_id)
     return RunInput(
-        graph_input=_graph_input_for(snapshot, user_input.message),
+        graph_input=_graph_input_for(snapshot, user_input.message, attachments),
         config=config,
         run_id=run_id,
         thread_id=thread_id,
         user_id=user_id,
     )
+
+
+async def build_attached_run_input(
+    user_input: UserInput,
+    user_id: str,
+    agent: BaseAgent,
+    graph: AgentGraph,
+    project: ProjectRunContext | None,
+    artifacts: ArtifactService,
+) -> RunInput:
+    """`build_run_input` dengan lampiran `artifact_ids` dan runtime context tool harness.
+
+    Lampiran diperiksa sebelum run disusun, lalu ditautkan ke thread dan disalin ke workspace-nya
+    (`uploads/`) setelah kepemilikan thread lolos, jadi request yang ditolak tidak mengubah
+    artifact maupun workspace. Thread baru mendapat ID lebih dulu supaya path salinan bisa dipilih.
+
+    Raises:
+        ArtifactNotFoundError: Lampiran tidak ada atau milik user lain (404).
+        ArtifactThreadConflictError: Lampiran sudah tertaut ke thread lain (409).
+        RequestValidationError: `agent_config` tidak valid, atau lampiran untuk jawaban interrupt
+            (422).
+        ThreadNotFoundError: Thread milik user, agent, atau project lain (404).
+    """
+    records = await artifacts.resolve_attachments(
+        user_id, user_input.artifact_ids, user_input.thread_id
+    )
+    if not records:
+        run = await build_run_input(user_input, user_id, agent, graph, project)
+        return replace(run, context=artifacts.run_context())
+    thread_id = user_input.thread_id or str(uuid4())
+    paths = await artifacts.workspace_paths(records, thread_id)
+    attachments = MessageAttachments([artifact_ref(record) for record in records], paths)
+    run = await build_run_input(
+        user_input.model_copy(update={"thread_id": thread_id}),
+        user_id,
+        agent,
+        graph,
+        project,
+        attachments,
+    )
+    await artifacts.link(records, run.thread_id)
+    await artifacts.copy_to_workspace(records, paths, run.thread_id)
+    return replace(run, context=artifacts.run_context())
 
 
 def parse_agent_config(agent: BaseAgent, raw_config: dict[str, JsonValue]) -> BaseModel:
@@ -184,11 +266,36 @@ def parse_agent_config(agent: BaseAgent, raw_config: dict[str, JsonValue]) -> Ba
         raise RequestValidationError(field_errors) from error
 
 
-def _graph_input_for(snapshot: StateSnapshot, message: str) -> GraphInput:
-    """Pilih `Command(resume=...)` jika thread sedang interrupt (FR-12), selain itu message baru."""
+def _graph_input_for(
+    snapshot: StateSnapshot, message: str, attachments: MessageAttachments | None
+) -> GraphInput:
+    """Pilih `Command(resume=...)` jika thread sedang interrupt (FR-12), selain itu message baru.
+
+    Lampiran disimpan di `additional_kwargs` message human: referensinya dibaca converter menjadi
+    `ChatMessage.artifacts`, dan path workspace-nya dibaca harness untuk model.
+
+    Raises:
+        RequestValidationError: Jika ada lampiran untuk jawaban interrupt (422).
+    """
+    references = [] if attachments is None else list(attachments.references)
     if snapshot.interrupts:
+        if references:
+            raise RequestValidationError(
+                [
+                    {
+                        "type": "value_error",
+                        "loc": ARTIFACT_IDS_LOCATION,
+                        "msg": ATTACHMENTS_ON_INTERRUPT_MESSAGE,
+                        "input": [reference.id for reference in references],
+                    }
+                ]
+            )
         return Command(resume=message)
-    return {"messages": [HumanMessage(content=message)]}
+    if attachments is None or not references:
+        return {"messages": [HumanMessage(content=message)]}
+    return {
+        "messages": [HumanMessage(content=message, additional_kwargs=attachments.message_kwargs())]
+    }
 
 
 if __name__ == "__main__":

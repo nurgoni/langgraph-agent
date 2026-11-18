@@ -49,10 +49,10 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F32 | Frontend scaffold & auth | M6 | done |
 | F33 | Chat UI | M6 | done |
 | F34 | Projects & threads UI | M6 | done |
-| F35 | Artifact storage | M7 | todo |
-| F36 | Workspace & file tools | M7 | todo |
-| F37 | Sandbox | M7 | todo |
-| F38 | Artifact panel UI | M7 | todo |
+| F35 | Artifact storage | M7 | done |
+| F36 | Workspace & file tools | M7 | done |
+| F37 | Sandbox | M7 | done |
+| F38 | Artifact panel UI | M7 | done |
 | F39 | SQL data source | M8 | todo |
 | F40 | Data analyst project | M8 | todo |
 | F41 | Worker & scheduler | M8 | todo |
@@ -1579,14 +1579,41 @@ Scope commit frontend: `frontend`. Aturan kode frontend ada di [ADR 0003](adr/00
   - Download memakai streaming response dengan `Content-Disposition`. Tipe file disimpan saat upload,
     dan nama file disanitasi.
   - `ArtifactStore` berupa protocol, supaya penyimpanan S3-compatible (backlog B7) bisa ditambah.
+- **Langkah 1 (keputusan user):**
+  - **Lampiran lewat `artifact_ids`** di `UserInput`/`StreamInput`: kepemilikan diperiksa (404),
+    referensi disimpan di message human, dan `ChatMessage.artifacts` terisi di riwayat. Agent belum
+    membaca isi file (F36).
+  - **Hapus ikut thread + `DELETE /artifacts/{id}`**: hapus thread atau project ikut menghapus
+    artifact-nya (metadata dan file). Upload yang belum dikirim tetap ada sampai dihapus.
+  - **`ARTIFACT_MAX_BYTES` default 25 MB.**
+  - **Semua tipe file diterima, unduhan selalu `attachment`** dengan `nosniff` (dan CSP `sandbox`).
+    MIME dari client dipakai jika formatnya valid, selain itu ditebak dari ekstensi.
 - **Rencana commit:**
   1. `feat(schema): add artifact references to chat messages`
   2. `feat(files): add local artifact store with metadata in postgres`
   3. `feat(service): add artifact upload and download routes`
   4. `feat(client): upload and download artifacts`
   5. `docs: record F35 artifact decisions`
+- **Penyesuaian saat implementasi:**
+  - Artifact tertaut ke satu thread (`artifacts.thread_id`), ditautkan saat pertama kali dikirim.
+    Mengirimnya ke thread lain → 409. Lampiran untuk jawaban interrupt → 422 (`Command(resume=...)`
+    tidak membawa message human).
+  - Lampiran diperiksa sebelum run disusun dan baru ditautkan setelah kepemilikan thread lolos
+    (`build_attached_run_input`), jadi request yang ditolak tidak mengubah artifact.
+  - `ThreadRepository` menerima `cleanups` (`ThreadDataCleanup`); `ArtifactService` menghapus
+    artifact thread di jalur yang sama dengan hapus thread dan hapus project.
+  - `LocalArtifactStore` memakai I/O async (anyio), menulis ke `.part` lalu rename, dan menolak
+    kunci yang bisa keluar dari direktori. Batas ukuran ditegakkan saat menyalin isi upload.
+  - Proxy nginx image `web`: `client_max_body_size` lewat `API_MAX_BODY_SIZE` (default 26m), karena
+    default nginx 1m menolak upload lebih dulu.
+  - `python-multipart` dideklarasikan eksplisit di extra `service` (sebelumnya transitif).
+  - Client: `upload_artifact`, `download_artifact`, `delete_artifact` (+ versi async) dan
+    `artifact_ids` di `invoke`/`stream`. Rencana commit 1–4 digabung karena schema, service, dan
+    client berbagi `ArtifactRef`.
 - **Acceptance criteria:**
-  - [ ] Artifact user lain → 404. File lebih besar dari `ARTIFACT_MAX_BYTES` → 413.
+  - [x] Artifact user lain → 404. File lebih besar dari `ARTIFACT_MAX_BYTES` → 413:
+        `tests/service/routes/test_artifacts.py` (GET/DELETE/lampiran user lain, 413 tanpa file
+        tersisa) dan e2e Compose (unduh user lain → 404).
 - **Squash title:** `feat(files): add artifact storage and download api (F35)`
 
 ### F36: Workspace & file tools
@@ -1601,15 +1628,51 @@ Scope commit frontend: `frontend`. Aturan kode frontend ada di [ADR 0003](adr/00
   - Tool `share_file(path)` menjadikan file workspace sebagai artifact di message jawaban.
   - Output tool yang terlalu besar ditulis ke `tool-outputs/<id>.txt`, dan model menerima cuplikan
     + path.
+- **Langkah 1 (keputusan user):**
+  - **Chatbot dan research assistant selalu** mendapat tool file (seperti tool memory), di dalam
+    maupun di luar project. Supervisor dan interrupt-agent tidak.
+  - **Lampiran disalin ke workspace** di `uploads/<nama>` saat pesan dikirim; model melihat path-nya
+    di pesan human.
+  - **`TOOL_OUTPUT_MAX_TOKENS` default 4.000.**
+  - **`grep` teks literal** (opsi abaikan huruf besar/kecil), tanpa regex, supaya aman dari ReDoS
+    di proses service.
 - **Rencana commit:**
   1. `feat(files): add per-thread workspace with path validation`
   2. `feat(harness): add read, write, edit, list and grep file tools`
   3. `feat(harness): offload large tool outputs to the workspace`
   4. `feat(harness): share workspace files as artifacts`
   5. `docs: record F36 workspace decisions`
+- **Penyesuaian saat implementasi:**
+  - Workspace dan penerbit artifact disalurkan sebagai **runtime context LangGraph**
+    (`HarnessContext`, `ainvoke(..., context=...)`), bukan lewat `BaseAgent.build`, jadi signature
+    agent custom tidak berubah. Tool membacanya dari `ToolRuntime`; `thread_id`/`user_id` dari
+    config yang ditetapkan service. Probe: context sampai ke tool (juga setelah resume interrupt)
+    tanpa `context_schema`, dan `ToolRuntime[HarnessContext]` menghindari peringatan Pydantic.
+  - `PostgresWorkspace` ada di `memory/workspace.py` (bukan `files/`), karena `files/` tidak boleh
+    meng-import tabel `memory/`. `files/workspace.py` berisi protocol, validasi path, dan
+    `InMemoryWorkspace`. Protocol `Workspace` dan `ArtifactPublisher` `@runtime_checkable` karena
+    Pydantic memvalidasi context di `ToolRuntime`.
+  - Isi file disimpan sebagai bytes (`BYTEA`), batas per file = `ARTIFACT_MAX_BYTES`, supaya file
+    workspace selalu bisa dibagikan. File biner tidak dibaca sebagai teks; model diarahkan ke
+    `share_file`.
+  - `share_file` mengembalikan `ToolMessage` dengan `additional_kwargs["artifacts"]`, jadi lampiran
+    ada di tool message (bukan message jawaban AI). `ArtifactService.publish` membuat artifact yang
+    langsung tertaut ke thread.
+  - Offloader dipasang lewat `ToolNode(awrap_tool_call=...)`. `read_file`, `list_files`, dan `grep`
+    membatasi outputnya sendiri (paging per baris), jadi tidak di-offload. Tanpa workspace, output
+    besar hanya dipotong.
+  - Path lampiran untuk model disimpan di `additional_kwargs["workspace_files"]` dan ditambahkan ke
+    salinan pesan yang dikirim ke model; riwayat yang dilihat user tidak berubah. Nama upload yang
+    sudah dipakai diberi penanda dari ID artifact.
+  - `sanitize_filename` dan `resolve_mime_type` dipindah ke `files/artifacts.py` (dipakai harness).
+  - Rencana commit 1–4 digabung: tool, offloader, dan `share_file` berbagi `HarnessContext` dan
+    `WorkspaceToolkit`.
 - **Acceptance criteria:**
-  - [ ] Path traversal ditolak. Workspace thread lain tidak terbaca.
-  - [ ] Output tool besar diganti cuplikan + path.
+  - [x] Path traversal ditolak. Workspace thread lain tidak terbaca: `tests/files/test_workspace.py`,
+        `tests/memory/test_workspace.py`, dan `tests/harness/tools/test_files.py` (tool di thread
+        lain → file tidak ada).
+  - [x] Output tool besar diganti cuplikan + path: `tests/harness/tools/test_files.py` (isi utuh di
+        `tool-outputs/<id>.txt`).
 - **Squash title:** `feat(harness): add workspace file tools and output offloading (F36)`
 
 ### F37: Sandbox
@@ -1622,6 +1685,10 @@ Scope commit frontend: `frontend`. Aturan kode frontend ada di [ADR 0003](adr/00
 - **Langkah 1 (klarifikasi):** cara service menjalankan container. Rekomendasi: service kecil
   `sandbox-runner` yang memegang akses Docker, supaya container API tidak pernah me-mount
   `docker.sock` (akses `docker.sock` setara root di host).
+  - **Keputusan user:** service **`sandbox-runner`** yang satu-satunya memegang `docker.sock`,
+    dipanggil agent-service lewat HTTP internal dengan `SANDBOX_TOKEN`. **`tool_approval` di
+    `ProjectSettings`, default `never`** (job terjadwal F41 tetap jalan tanpa user). `run_python` dan
+    `run_shell` untuk **chatbot + research assistant** jika `SANDBOX_URL` diisi. **Timeout 60 detik.**
 - **Catatan desain:**
   - Container per eksekusi: `network=none`, rootfs read-only + tmpfs `/workspace`, batas memori,
     CPU, dan pids, serta timeout `SANDBOX_TIMEOUT_SECONDS`.
@@ -1635,11 +1702,34 @@ Scope commit frontend: `frontend`. Aturan kode frontend ada di [ADR 0003](adr/00
   4. `feat(harness): add run_python and run_shell tools`
   5. `feat(harness): ask for approval before execution when the project requires it`
   6. `docs: record F37 sandbox decisions`
+- **Penyesuaian saat implementasi:**
+  - `DockerSandbox` memakai Docker Engine API langsung (httpx lewat Unix socket), tanpa dependency
+    `docker`. Probe: `/workspace` berupa **volume anonim** (bukan tmpfs), karena arsip tidak bisa
+    disalin ke tmpfs container yang belum start; image sandbox membuat `/workspace` milik UID 10001
+    supaya volume mewarisi pemiliknya. Rootfs read-only, `/tmp` tmpfs, `network=none`, tanpa
+    capability, `no-new-privileges`, 512 MB, 1 CPU, 128 proses. Container dan volumenya selalu
+    dihapus.
+  - Kode ditulis ke `/workspace/.sandbox/main.py|main.sh` (folder ini tidak disalin keluar). File
+    yang baru atau berubah kembali ke workspace thread; path yang tidak valid atau file terlalu besar
+    dilewati dan disebut ke model. Batas transfer 50 MB, stdout/stderr 64 KB.
+  - Model eksekusi (`ExecutionRequest`/`ExecutionResult`) menjadi body HTTP runner: `bytes` di
+    Python, base64 hanya saat JSON (`ser_json_bytes`/`val_json_bytes`).
+  - Sandbox masuk `HarnessContext` (runtime context F36). Persetujuan memakai `is_approval` milik
+    memory dengan kata tambahan ("run", "jalankan"). `ProjectSettings.tool_approval` diteruskan ke
+    `configurable["project_tool_approval"]`; form project frontend mendapat checkbox
+    "Ask before running code".
+  - Compose: service `sandbox-image` hanya membangun image lalu selesai; `sandbox-runner` (target
+    baru di `docker/Dockerfile`, root karena izin socket, tanpa port host). Pandas/numpy/matplotlib
+    hanya di image sandbox.
+  - Rencana commit 1–5 digabung: runner, tool, dan persetujuan berbagi model eksekusi dan
+    `HarnessContext`.
 - **Acceptance criteria:**
-  - [ ] Akses jaringan dari sandbox gagal. Infinite loop berhenti karena timeout.
-  - [ ] File yang ditulis di sandbox muncul di workspace.
-  - [ ] Test memastikan tidak ada `exec`/`eval`/subprocess untuk kode model di `service/`, `agents/`,
-        dan `harness/`.
+  - [x] Akses jaringan dari sandbox gagal. Infinite loop berhenti karena timeout: e2e Compose
+        (`test_sandbox_blocks_network_stops_loops_and_returns_files`, Docker asli).
+  - [x] File yang ditulis di sandbox muncul di workspace: `tests/harness/tools/test_execute.py` dan
+        e2e (pandas menulis `out.csv`).
+  - [x] Test memastikan tidak ada `exec`/`eval`/subprocess untuk kode model di `service/`,
+        `agents/`, dan `harness/` (juga `sandbox/`): `tests/test_no_code_execution.py`.
 - **Squash title:** `feat(sandbox): run model code in an isolated docker sandbox (F37)`
 
 ### F38: Artifact panel UI
@@ -1649,13 +1739,36 @@ Scope commit frontend: `frontend`. Aturan kode frontend ada di [ADR 0003](adr/00
 - **File:** `frontend/src/features/artifacts/`, upload di composer, `tests`
 - **Catatan desain:** panel kanan memakai komponen shadcn (`Sheet`/`Resizable`, `Table`). PDF
   ditampilkan dengan viewer bawaan browser, tanpa library viewer sendiri.
+- **Langkah 1 (keputusan user):**
+  - **Panel kanan Resizable** (shadcn `resizable`, `react-resizable-panels`); di layar sempit Sheet.
+  - **Upload saat file dipilih** (error 413 terlihat sebelum kirim; hapus chip → `DELETE`).
+  - **Gambar markdown dicocokkan ke artifact** jawaban yang sama (fetch bertoken); path relatif
+    lain tidak dimuat, URL absolut tetap.
+  - **papaparse** untuk preview CSV (200 baris pertama).
 - **Rencana commit:**
   1. `feat(frontend): show message attachments`
   2. `feat(frontend): preview artifacts in a side panel`
   3. `feat(frontend): upload files from the composer`
   4. `docs: record F38 artifact panel decisions`
+- **Penyesuaian saat implementasi:**
+  - Artifact jawaban asisten jadi part `data` bernama `artifacts` (dari tool message `share_file`
+    maupun message AI); artifact pesan user dibawa di `metadata.custom.artifacts` (lampiran
+    assistant-ui tidak membawa ukuran file). Keduanya dirender `ArtifactCards` yang membuka panel.
+  - Isi artifact dibaca lewat `GET /artifacts/{id}` bertoken menjadi `Blob` lalu object URL
+    (TanStack Query, `staleTime: Infinity`); unduhan lewat link sementara dengan atribut `download`.
+    Object URL tidak dicabut (StrictMode menjalankan cleanup dua kali).
+  - Chip lampiran composer disusun dari primitive assistant-ui (`ComposerPrimitive.Attachments`,
+    `AttachmentPrimitive`) dan komponen shadcn, bukan template registry `attachment` yang butuh
+    `avatar`, `use-attachment-src`, dan `zustand`. `ArtifactAttachmentAdapter` upload di `add`
+    (async generator: uploading → siap / error) dan menyerahkan ID artifact saat kirim.
+  - Grup `Resizable` selalu dirender, supaya chat tidak di-mount ulang saat panel dibuka/ditutup.
+  - Test: Vitest menukar `File`/`FormData` jsdom dengan milik Node di setup, karena lapisan
+    kompatibilitas `Request` Vitest mengubah File jsdom menjadi Blob tanpa nama.
+  - Rencana commit 1–3 digabung: kartu, panel, dan upload berbagi `ArtifactRef` dan service.
 - **Acceptance criteria:**
-  - [ ] Gambar, CSV, dan PDF dari agent bisa dipreview dan diunduh.
+  - [x] Gambar, CSV, dan PDF dari agent bisa dipreview dan diunduh: `artifacts.test.tsx` (tabel CSV
+        dengan sel berkoma, `<img>` dan `<iframe>` dari blob, unduh dengan nama file). Cek visual di
+        browser dilakukan user.
 - **Squash title:** `feat(frontend): add artifact panel and file upload (F38)`
 - **Setelah merge:** rilis **v0.7.0**.
 

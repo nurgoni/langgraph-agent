@@ -485,6 +485,30 @@ AppShell ── RecentsList ── useThreads(null) ── ThreadsService → GE
   instruksi ≤ 8000, maksimal 20 skill, batas token ≥ 1). Error service (misalnya model tidak
   dikenal) tampil di bawah form.
 
+### Artifact panel (F38)
+
+```text
+ChatPage ── ArtifactWorkspace (ArtifactPanelContext, ResizablePanelGroup | Sheet)
+             ├─ Thread
+             │   ├─ ComposerAttachments / ComposerAddAttachment ── ArtifactAttachmentAdapter
+             │   │      add(): POST /artifacts saat dipilih · remove(): DELETE · kirim: artifact_ids
+             │   ├─ UserMessage: metadata.custom.artifacts ──┐
+             │   └─ AssistantMessage: data part "artifacts" ─┴─ ArtifactCards → panel.open()
+             │       MarkdownText img → ArtifactMarkdownImage (nama file = artifact gambar?)
+             └─ ArtifactPanel → ArtifactPreview (useArtifactContent: GET /artifacts/{id} → Blob)
+                  image <img> · csv papaparse → Table · pdf <iframe> · teks <pre> · unduh
+```
+
+- **Token, bukan cookie.** Unduhan service membutuhkan header `Authorization`, jadi isi file
+  dibaca lewat client bertipe menjadi `Blob`, lalu ditampilkan dan diunduh lewat object URL.
+  Header `Content-Disposition: attachment` dan CSP `sandbox` dari service tetap melindungi akses
+  langsung ke URL API.
+- **Gambar markdown.** Path relatif yang namanya sama dengan artifact gambar di jawaban yang sama
+  ditampilkan dari artifact itu; path relatif lain hanya menampilkan teks alt, karena path
+  workspace tidak bisa dimuat browser. URL absolut dirender seperti biasa.
+- **Upload saat dipilih.** `ArtifactAttachmentAdapter.add` adalah async generator yang melapor
+  status uploading → siap atau error, sehingga 413 terlihat di chip sebelum pesan dikirim.
+
 ## Persistence
 
 Satu database Postgres di `DATABASE_URL` ([ADR 0001](adr/0001-postgres-only.md)):
@@ -497,6 +521,8 @@ Satu database Postgres di `DATABASE_URL` ([ADR 0001](adr/0001-postgres-only.md))
 | `projects` | `ProjectRepository` (SQLAlchemy Core) | Project built-in dan milik user |
 | `store`, `store_migrations` | `AsyncPostgresStore` (via `StoreProvider`) | Long-term memory user (F30) |
 | `run_traces` | `RunTraceRepository` (SQLAlchemy Core) | Trace run: satu baris per span run/model/tool (F31) |
+| `workspace_files` | `PostgresWorkspace` (SQLAlchemy Core) | File workspace per thread: path, isi (bytes), ukuran (F36) |
+| `artifacts` | `ArtifactRepository` (SQLAlchemy Core) | Metadata artifact: pemilik, thread, nama, tipe, ukuran (F35). Isi file di `ArtifactStore` |
 | `alembic_version` | Alembic | Revisi skema tabel aplikasi |
 
 - **Satu driver.** Checkpointer dan SQLAlchemy sama-sama memakai psycopg 3. `DATABASE_URL` ditulis
@@ -516,7 +542,97 @@ Satu database Postgres di `DATABASE_URL` ([ADR 0001](adr/0001-postgres-only.md))
   `asyncio.run(..., loop_factory=asyncio.SelectorEventLoop)`, dan test memakai hook
   `pytest_asyncio_loop_factories`.
 
-Penghapusan thread memanggil `adelete_thread` lalu menghapus judulnya.
+Penghapusan thread memanggil `adelete_thread`, menghapus judulnya, lalu menjalankan setiap
+`ThreadDataCleanup` (artifact thread F35, workspace thread F36).
+
+### Artifact (F35)
+
+```text
+POST /artifacts ── ArtifactService.upload ── LocalArtifactStore.write (.part → rename)
+                                         └─ ArtifactRepository.add (metadata, thread_id kosong)
+POST /invoke|/stream {artifact_ids} ── build_attached_run_input
+    ├─ ArtifactService.resolve_attachments  (milik user? 404; thread lain? 409)
+    ├─ build_run_input → HumanMessage(additional_kwargs["artifacts"] = [ArtifactRef])
+    └─ ArtifactService.link(thread_id)      (setelah kepemilikan thread lolos)
+GET /history ── langchain_to_chat_message → ChatMessage.artifacts
+DELETE thread/project ── ThreadRepository._remove → ArtifactService.delete_thread_data
+```
+
+- **Isi dan metadata terpisah.** `files/artifacts.py` berisi protocol `ArtifactStore` dan
+  `LocalArtifactStore` (folder `ARTIFACT_DIR`, volume `artifacts` di compose). Metadata ada di
+  tabel `artifacts`. Store S3-compatible (backlog B7) cukup mengimplementasikan protocol.
+- **Batas ukuran** ditegakkan saat isi upload disalin ke store; file `.part` dihapus jika melebihi
+  `ARTIFACT_MAX_BYTES` (413). Proxy nginx image `web` punya batas sendiri (`API_MAX_BODY_SIZE`).
+- **Keamanan unduhan.** Selalu `Content-Disposition: attachment` (nama ASCII + `filename*` UTF-8),
+  `X-Content-Type-Options: nosniff`, dan `Content-Security-Policy: sandbox`, jadi HTML/SVG tidak
+  pernah dirender di origin aplikasi. Nama file disanitasi (tanpa path dan karakter kontrol).
+- **Satu artifact, satu thread.** Artifact ditautkan ke thread saat pertama kali dikirim, supaya
+  penghapusan thread tahu file mana yang ikut dihapus. Lampiran tidak bisa menjadi jawaban
+  interrupt (422), karena `Command(resume=...)` tidak membawa message human.
+- **Isolasi.** Semua pembacaan disaring `owner_id`; artifact user lain dan ID yang bukan UUID
+  dijawab 404 dengan pesan yang sama.
+
+### Workspace dan tool file (F36)
+
+```text
+service: build_attached_run_input
+    ├─ lampiran → ArtifactService.copy_to_workspace → uploads/<nama>
+    │            HumanMessage.additional_kwargs["workspace_files"]
+    └─ RunInput.context = HarnessContext(workspace, artifacts=ArtifactService)
+graph.ainvoke / astream (..., context=run.context)
+ToolCallingAgent(files=WorkspaceToolkit)
+    ├─ call_model: with_attachment_notes(messages) → model melihat path lampiran
+    └─ ToolNode(awrap_tool_call=ToolOutputOffloader)
+          read_file · write_file · edit_file · list_files · grep · share_file
+          ToolRuntime[HarnessContext] → workspace + thread_id/user_id dari config
+          output > TOOL_OUTPUT_MAX_TOKENS → tool-outputs/<id>.txt + cuplikan
+```
+
+- **Runtime context, bukan konstruktor.** Agent dibuat di `create_app` sebelum database ada, jadi
+  workspace dan penerbit artifact datang per run lewat `context=` (`harness/runtime.py`). Run tanpa
+  context (sub-agent, test unit) membuat tool file menjawab "workspace not available".
+- **Isolasi.** Tool tidak menerima thread dari model: `thread_id` dan `user_id` dibaca dari config
+  yang ditetapkan service setelah kepemilikan thread diperiksa. Path dinormalisasi
+  (`normalize_workspace_path`): path absolut, huruf drive, `..`, dan karakter kontrol ditolak.
+- **Isi bytes.** File biner (lampiran PDF, gambar dari sandbox F37) disimpan apa adanya; `read_file`
+  dan `grep` hanya membaca teks UTF-8. `share_file` menerbitkan file apa pun sebagai artifact yang
+  tertaut ke thread, lewat `ToolMessage.additional_kwargs["artifacts"]`.
+- **Offload.** `ToolOutputOffloader` memotong output tool lain yang melebihi
+  `TOOL_OUTPUT_MAX_TOKENS`, menyimpan isi utuh di `tool-outputs/<tool_call_id>.txt`, dan memberi
+  model seperempat batas sebagai cuplikan. `read_file`, `list_files`, dan `grep` membatasi
+  outputnya sendiri (paging per baris), jadi tidak di-offload.
+- **`grep` literal.** Pola dari model dicocokkan sebagai substring, bukan regex, karena `re` tidak
+  punya timeout dan berjalan di event loop service.
+
+### Sandbox (F37)
+
+```text
+agent-service                                   sandbox-runner (satu-satunya dengan docker.sock)
+ run_python / run_shell                          POST /execute  (Bearer SANDBOX_TOKEN)
+  ├─ tool_approval = "always"? → interrupt         └─ DockerSandbox → Docker Engine API (httpx UDS)
+  ├─ workspace thread → ExecutionRequest.files         create (network none, rootfs ro, uid 10001,
+  └─ RemoteSandbox ──── HTTP internal compose ───►       no caps, 512 MB, 1 CPU, 128 pids)
+       ExecutionResult.files → workspace ◄────────     put archive /workspace (volume anonim)
+                                                       start → wait (timeout → kill)
+                                                       logs → archive /workspace → delete -v
+```
+
+- **NFR-10.** Kode model tidak pernah dijalankan di proses service. `tests/test_no_code_execution.py`
+  memeriksa AST `service/`, `agents/`, `harness/`, dan `sandbox/`: tanpa `exec`/`eval`/`compile`,
+  `subprocess`, `os.system`/`exec*`/`spawn*`, atau `asyncio.create_subprocess_*`.
+- **Akses Docker terpisah.** `docker.sock` setara root di host, jadi hanya `sandbox-runner` (tanpa
+  port di host) yang me-mount-nya. Agent-service memanggilnya lewat `RemoteSandbox` dengan token
+  bersama; tanpa `SANDBOX_URL`, tool eksekusi tidak di-bind.
+- **Satu container per eksekusi.** `/workspace` berupa volume anonim karena arsip tidak bisa disalin
+  ke tmpfs container yang belum berjalan; image sandbox membuat folder itu milik UID 10001. Kode
+  ditulis ke `/workspace/.sandbox/` (tidak disalin keluar). Hanya file yang baru atau berubah yang
+  kembali, dibatasi 50 MB; stdout/stderr dipotong 64 KB. Symlink dan path di luar `/workspace`
+  diabaikan saat arsip dibuka.
+- **Persetujuan.** `ProjectSettings.tool_approval` diteruskan ke `configurable`. Dengan `always`,
+  tool memanggil `interrupt()` berisi kodenya sebelum eksekusi; jawaban yang bukan persetujuan
+  dikembalikan ke model. Default `never`, supaya job terjadwal (F41) tetap jalan tanpa user.
+- **Image.** `docker/sandbox.Dockerfile` (Python 3.12 + numpy, pandas, matplotlib dipin, `MPLBACKEND=Agg`,
+  HOME dan cache di `/tmp`). Library analisa tidak ada di image service.
 
 ## Agent dengan Tool
 

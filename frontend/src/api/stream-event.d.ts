@@ -15,6 +15,23 @@ export type Type1 = "token";
  * Sub-agent (expert) yang membuat message ini, atau kosong untuk agent utama.
  */
 export type Agent = string | null;
+export type Id = string;
+/**
+ * Tipe konten file.
+ */
+export type MimeType = string;
+/**
+ * Nama file yang sudah disanitasi.
+ */
+export type Name = string;
+/**
+ * Ukuran file dalam byte.
+ */
+export type Size = number;
+/**
+ * File yang dilampirkan user atau dibuat agent di message ini.
+ */
+export type Artifacts = ArtifactRef[];
 export type Content2 = string;
 export type JsonValue = unknown;
 /**
@@ -32,8 +49,8 @@ export type ToolCallId = string | null;
 /**
  * ID dari provider, dipakai oleh ToolMessage.
  */
-export type Id = string | null;
-export type Name = string;
+export type Id1 = string | null;
+export type Name1 = string;
 export type ToolCalls = ToolCall[];
 /**
  * Untuk message `ai`: jawaban berhenti karena batas token (`LLM_MAX_TOKENS`).
@@ -73,6 +90,7 @@ export interface MessageEvent {
  */
 export interface ChatMessage {
   agent?: Agent;
+  artifacts?: Artifacts;
   content: Content2;
   custom_data?: CustomData;
   reasoning?: Reasoning;
@@ -82,6 +100,15 @@ export interface ChatMessage {
   tool_calls?: ToolCalls;
   truncated?: Truncated;
   type: Type2;
+}
+/**
+ * Referensi satu artifact. Isi file diunduh lewat `GET /artifacts/{id}`.
+ */
+export interface ArtifactRef {
+  id: Id;
+  mime_type: MimeType;
+  name: Name;
+  size: Size;
 }
 /**
  * Payload untuk message `custom` (event khusus agent).
@@ -100,8 +127,8 @@ export interface ResponseMetadata {
  */
 export interface ToolCall {
   args?: Args;
-  id?: Id;
-  name: Name;
+  id?: Id1;
+  name: Name1;
 }
 export interface Args {
   [k: string]: JsonValue;

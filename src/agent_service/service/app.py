@@ -18,11 +18,14 @@ from agent_service.agents.catalog import (
 from agent_service.agents.registry import AgentRegistry
 from agent_service.agents.tools.web_search import SearchBackend, create_search_backend
 from agent_service.core.settings import Settings
+from agent_service.files.artifacts import LocalArtifactStore
 from agent_service.harness.context_policy import ContextPolicy
 from agent_service.harness.skills.registry import SkillRegistry
 from agent_service.harness.skills.sources import BUILTIN_SKILLS_DIR, FilesystemSkillSource
 from agent_service.harness.skills.toolkit import SkillToolkit
+from agent_service.harness.workspace import WorkspaceToolkit
 from agent_service.llm.factory import ModelFactory
+from agent_service.memory.artifacts import ArtifactRepository
 from agent_service.memory.checkpointer import CheckpointerProvider
 from agent_service.memory.database import DatabaseEngineProvider
 from agent_service.memory.migrator import ensure_database_migrated
@@ -32,12 +35,17 @@ from agent_service.memory.thread_metadata import ThreadMetadataRepository
 from agent_service.memory.traces import RunTraceRepository
 from agent_service.memory.user_memories import UserMemoryRepository
 from agent_service.memory.users import UserRepository
+from agent_service.memory.workspace import PostgresWorkspace
+from agent_service.sandbox.model import Sandbox
+from agent_service.sandbox.remote import RemoteSandbox
 from agent_service.schema.headers import THREAD_ID_HEADER
+from agent_service.service.artifacts import ArtifactService
 from agent_service.service.auth import Authenticator
 from agent_service.service.dependencies import current_principal
 from agent_service.service.errors import register_exception_handlers
 from agent_service.service.projects import ProjectService
 from agent_service.service.routes import (
+    artifacts,
     auth,
     health,
     history,
@@ -81,7 +89,8 @@ def create_app(
     Args:
         settings: Konfigurasi service. Default: dibaca dari env dan `.env`.
         agents: Agent yang didaftarkan. Default: `create_default_agents()` dengan web search
-            dari `FIRECRAWL_API_KEY` dan anggaran riwayat dari `CONTEXT_MAX_TOKENS`.
+            dari `FIRECRAWL_API_KEY`, anggaran riwayat dari `CONTEXT_MAX_TOKENS`, dan tool file
+            workspace dengan batas output `TOOL_OUTPUT_MAX_TOKENS`.
         default_agent_id: Agent untuk `/info` dan route tanpa `{agent_id}`.
         builtin_projects: Project built-in yang di-seed saat startup, jika agent dasarnya
             terdaftar.
@@ -106,6 +115,7 @@ def create_app(
             build_search_backend(resolved_settings),
             SkillToolkit(resolved_skills),
             ContextPolicy(max_tokens=resolved_settings.context_max_tokens),
+            build_workspace_toolkit(resolved_settings),
         )
     else:
         resolved_agents = list(agents)
@@ -139,6 +149,7 @@ def create_app(
     app.include_router(skills.router, dependencies=protected)
     app.include_router(memories.router, dependencies=protected)
     app.include_router(runs.router, dependencies=protected)
+    app.include_router(artifacts.router, dependencies=protected)
     app.state.settings = resolved_settings
     app.state.default_agent_id = default_agent_id
     return app
@@ -147,6 +158,29 @@ def create_app(
 def default_skill_registry() -> SkillRegistry:
     """Registry berisi skill built-in dari `skills/builtin/` (belum dimuat)."""
     return SkillRegistry([FilesystemSkillSource(BUILTIN_SKILLS_DIR)])
+
+
+@asynccontextmanager
+async def open_sandbox(settings: Settings) -> AsyncGenerator[Sandbox | None]:
+    """`RemoteSandbox` ke `sandbox-runner` selama lifespan, atau `None` tanpa `SANDBOX_URL`."""
+    if settings.sandbox_url is None or settings.sandbox_token is None:
+        yield None
+        return
+    token = settings.sandbox_token.get_secret_value()
+    async with RemoteSandbox(settings.sandbox_url, token) as sandbox:
+        logger.info("Code execution uses the sandbox runner at %s", settings.sandbox_url)
+        yield sandbox
+
+
+def build_workspace_toolkit(settings: Settings) -> WorkspaceToolkit:
+    """Tool file workspace, ditambah tool eksekusi jika `SANDBOX_URL` diisi (F37).
+
+    >>> settings = Settings(_env_file=None, use_fake_model=True, jwt_secret="x" * 32)
+    >>> [tool.name for tool in build_workspace_toolkit(settings).tools][-1]
+    'share_file'
+    """
+    timeout = settings.sandbox_timeout_seconds if settings.sandbox_url is not None else None
+    return WorkspaceToolkit(settings.tool_output_max_tokens, execution_timeout_seconds=timeout)
 
 
 def build_search_backend(settings: Settings) -> SearchBackend:
@@ -168,23 +202,27 @@ def _build_lifespan(
 ) -> Lifespan:
     """Buat lifespan yang membuka database, mendaftarkan, dan memuat semua agent.
 
-    Urutan: muat skill → `ModelFactory` → engine + `CheckpointerProvider` + `StoreProvider` → cek
-    migrasi → `AgentRegistry.load_all()` → seed project built-in. Factory, registry,
-    `ThreadRepository`, `ProjectService`, `UserMemoryRepository`, `RunTraceRepository`, dan
-    `Authenticator` disimpan di `app.state`. Engine dan pool checkpointer/store ditutup saat
-    shutdown. Startup gagal jika Postgres tidak terjangkau atau migrasi belum dijalankan.
+    Urutan: muat skill → siapkan direktori artifact → `ModelFactory` → engine +
+    `CheckpointerProvider` + `StoreProvider` → cek migrasi → `AgentRegistry.load_all()` → seed
+    project built-in. Factory, registry, `ThreadRepository`, `ProjectService`, `ArtifactService`,
+    `UserMemoryRepository`, `RunTraceRepository`, dan `Authenticator` disimpan di `app.state`.
+    Engine dan pool checkpointer/store ditutup saat shutdown. Startup gagal jika Postgres tidak
+    terjangkau atau migrasi belum dijalankan.
     """
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         await skill_registry.load()
         app.state.skill_registry = skill_registry
+        artifact_store = LocalArtifactStore(settings.artifact_dir)
+        await artifact_store.prepare()
         model_factory = ModelFactory(settings)
         database_url = settings.database_url.get_secret_value()
         async with (
             DatabaseEngineProvider(database_url) as engine,
             CheckpointerProvider(database_url) as checkpointer,
             StoreProvider(database_url) as store,
+            open_sandbox(settings) as sandbox,
         ):
             await ensure_database_migrated(engine)
             titles = ThreadMetadataRepository(engine)
@@ -199,7 +237,17 @@ def _build_lifespan(
             await registry.load_all()
             app.state.model_factory = model_factory
             app.state.registry = registry
-            thread_repository = ThreadRepository(checkpointer, titles)
+            workspace = PostgresWorkspace(engine, settings.artifact_max_bytes)
+            artifact_service = ArtifactService(
+                ArtifactRepository(engine),
+                artifact_store,
+                settings.artifact_max_bytes,
+                workspace,
+                sandbox,
+            )
+            thread_repository = ThreadRepository(
+                checkpointer, titles, cleanups=[artifact_service, workspace]
+            )
             project_service = ProjectService(
                 ProjectRepository(engine),
                 thread_repository,
@@ -212,6 +260,7 @@ def _build_lifespan(
             app.state.memory_repository = UserMemoryRepository(store)
             app.state.trace_repository = RunTraceRepository(engine)
             app.state.project_service = project_service
+            app.state.artifact_service = artifact_service
             yield
         logger.info("Service shut down")
 

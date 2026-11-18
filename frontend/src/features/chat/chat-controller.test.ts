@@ -62,6 +62,7 @@ describe("ChatController", () => {
       thread_id: null,
       model: "qwen3.5:9b",
       stream_tokens: true,
+      artifact_ids: [],
     });
     expect(created).toHaveBeenCalledWith(NEW_THREAD_ID);
     expect(controller.getSnapshot()).toMatchObject({ threadId: NEW_THREAD_ID, isRunning: false });

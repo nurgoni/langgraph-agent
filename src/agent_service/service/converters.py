@@ -5,17 +5,23 @@ Ditulis sebagai function karena tanpa state (AGENTS.md § Class vs Function). Le
 """
 
 import json
+import logging
 from collections.abc import Mapping
 from typing import Any, Final
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.messages import ChatMessage as LangChainChatMessage
 from langgraph.types import Interrupt
+from pydantic import TypeAdapter, ValidationError
 
 from agent_service.agents.base import BaseAgent
 from agent_service.agents.supervisor import subagent_name
+from agent_service.core.constants import ARTIFACTS_KWARG
 from agent_service.llm.reasoning import message_reasoning
+from agent_service.schema.artifacts import ArtifactRef
 from agent_service.schema.responses import AgentInfo, ChatMessage, ToolCall
+
+logger = logging.getLogger(__name__)
 
 CUSTOM_MESSAGE_ROLE: Final = "custom"
 TEXT_BLOCK_TYPE: Final = "text"
@@ -24,6 +30,7 @@ MESSAGES_KEY: Final = "messages"
 FINISH_REASON_KEY: Final = "finish_reason"
 # Nilai `finish_reason` OpenAI-compatible saat jawaban berhenti karena `max_tokens` (FR-30).
 TOKEN_LIMIT_FINISH_REASON: Final = "length"
+ARTIFACT_REFS_ADAPTER: Final = TypeAdapter(list[ArtifactRef])
 
 
 class UnsupportedMessageError(ValueError):
@@ -82,12 +89,42 @@ def langchain_to_chat_message(message: BaseMessage) -> ChatMessage:
 
     >>> langchain_to_chat_message(HumanMessage("Hai")).type
     'human'
+    >>> ref = {"id": "a1", "name": "a.csv", "mime_type": "text/csv", "size": 3}
+    >>> human = HumanMessage("Lihat", additional_kwargs={"artifacts": [ref]})
+    >>> langchain_to_chat_message(human).artifacts[0].name
+    'a.csv'
     """
     chat_message = _convert_by_type(message)
+    update: dict[str, Any] = {}  # Any: nilai field ChatMessage
     agent = subagent_name(message)
-    if agent is None:
+    if agent is not None:
+        update["agent"] = agent
+    artifacts = message_artifacts(message)
+    if artifacts:
+        update["artifacts"] = artifacts
+    if not update:
         return chat_message
-    return chat_message.model_copy(update={"agent": agent})
+    return chat_message.model_copy(update=update)
+
+
+def message_artifacts(message: BaseMessage) -> list[ArtifactRef]:
+    """Referensi artifact di `additional_kwargs[ARTIFACTS_KWARG]` (F35), atau daftar kosong.
+
+    Isi yang rusak dicatat di log dan diabaikan, supaya riwayat thread tetap bisa dibaca.
+
+    >>> message_artifacts(HumanMessage("Hai"))
+    []
+    >>> message_artifacts(HumanMessage("Hai", additional_kwargs={"artifacts": "rusak"}))
+    []
+    """
+    raw = message.additional_kwargs.get(ARTIFACTS_KWARG)
+    if raw is None:
+        return []
+    try:
+        return ARTIFACT_REFS_ADAPTER.validate_python(raw)
+    except ValidationError:
+        logger.warning("Ignoring invalid artifact references on message %s", message.id)
+        return []
 
 
 def _convert_by_type(message: BaseMessage) -> ChatMessage:

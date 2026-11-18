@@ -14,6 +14,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, JsonValue
 
+from agent_service.schema.artifacts import ArtifactRef
+
 MessageType = Literal["human", "ai", "tool", "custom"]
 
 
@@ -47,6 +49,10 @@ class ChatMessage(BaseModel):
     truncated: bool = Field(
         default=False,
         description="Untuk message `ai`: jawaban berhenti karena batas token (`LLM_MAX_TOKENS`).",
+    )
+    artifacts: list[ArtifactRef] = Field(
+        default_factory=list,
+        description="File yang dilampirkan user atau dibuat agent di message ini.",
     )
     response_metadata: dict[str, JsonValue] = Field(
         default_factory=dict,

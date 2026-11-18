@@ -50,10 +50,14 @@ git push -u origin release/vX.Y.Z
 3. PR `release/vX.Y.Z` → `main` lewat web, judul `chore(release): vX.Y.Z`, merge dengan **"Create a
    merge commit"** (bukan squash).
 
+Lanjut ke langkah 4 hanya jika PR berstatus **Merged**. Tanpa itu, tag menunjuk ke rilis lama
+(insiden v0.6.0, lihat memory.md).
+
 ```powershell
-# 4. Tag di main
+# 4. Tag di main (log teratas harus merge PR release/vX.Y.Z)
 git switch main
 git pull origin main
+git log --oneline -3
 git tag -a vX.Y.Z -m "vX.Y.Z: <nama milestone>"
 git push origin vX.Y.Z
 

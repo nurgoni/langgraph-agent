@@ -1,6 +1,6 @@
 [project]
 name = "agent-service"
-version = "0.6.0"
+version = "0.7.0"
 description = "LangGraph agent service with FastAPI streaming, a Python client and a Streamlit UI"
 readme = "README.md"
 authors = [{ name = "nurgoni" }]
@@ -27,6 +27,8 @@ service = [
     "psycopg[binary]~=3.3",
     "pydantic-settings~=2.16",
     "pyjwt~=2.15",
+    # Upload multipart `POST /artifacts` (F35).
+    "python-multipart~=0.0.32",
     "pyyaml~=6.0",
     "sqlalchemy[asyncio]~=2.1",
     "uvicorn~=0.54",

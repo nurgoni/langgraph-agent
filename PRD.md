@@ -255,18 +255,24 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
 
 - **FR-46** Artifact. File (upload user atau hasil agent) disimpan lewat `ArtifactStore` (volume
   lokal di fase 2), dengan metadata di Postgres. `ChatMessage.artifacts` berisi daftar
-  `ArtifactRef {id, name, mime_type, size}`. `POST /artifacts` untuk upload dan
-  `GET /artifacts/{id}` untuk download, hanya untuk pemiliknya. Ukuran dibatasi
-  `ARTIFACT_MAX_BYTES`.
+  `ArtifactRef {id, name, mime_type, size}`. `POST /artifacts` untuk upload,
+  `GET /artifacts/{id}` untuk download (selalu `attachment`), dan `DELETE /artifacts/{id}`, hanya
+  untuk pemiliknya. Ukuran dibatasi `ARTIFACT_MAX_BYTES` (default 25 MB). Upload dilampirkan ke
+  pesan lewat `artifact_ids` di input run, dan artifact ikut terhapus saat thread-nya dihapus.
 - **FR-47** Workspace (virtual filesystem) per thread di Postgres. Tool `read_file`, `write_file`,
   `edit_file`, `list_files`, dan `grep`. Path dinormalisasi dan tidak bisa keluar dari workspace.
-- **FR-48** Output tool yang melebihi `TOOL_OUTPUT_MAX_TOKENS` ditulis ke workspace. Model hanya
-  menerima cuplikan dan path-nya.
+- **FR-48** Output tool yang melebihi `TOOL_OUTPUT_MAX_TOKENS` (default 4.000) ditulis ke workspace.
+  Model hanya menerima cuplikan dan path-nya. Lampiran pesan disalin ke workspace (`uploads/`), dan
+  tool `share_file` membagikan file workspace sebagai artifact.
 - **FR-49** Sandbox. Kode (`run_python`, `run_shell`) hanya dijalankan di dalam `Sandbox`, tidak
   pernah di proses service. Sandbox berjalan tanpa jaringan, dengan batas CPU, memori, jumlah proses,
-  dan waktu. File workspace disalin masuk sebelum eksekusi, dan file baru disalin keluar sebagai
-  artifact. Project menentukan apakah eksekusi perlu persetujuan user (interrupt).
+  dan waktu. File workspace disalin masuk sebelum eksekusi, dan file baru atau berubah disalin
+  kembali ke workspace (dibagikan sebagai artifact lewat `share_file`). `ProjectSettings.tool_approval`
+  (`never`/`always`, default `never`) menentukan apakah eksekusi perlu persetujuan user (interrupt).
+  Hanya service `sandbox-runner` yang memegang akses Docker.
 - **FR-50** Panel artifact di frontend: preview gambar, tabel CSV, viewer PDF, dan tombol download.
+  File dari composer di-upload saat dipilih dan dikirim sebagai `artifact_ids`; gambar markdown
+  yang menyebut nama artifact di jawaban yang sama ditampilkan dari artifact itu.
 
 ### Fase 2: Data Analytics (M8)
 
@@ -352,7 +358,7 @@ dan pemilik thread diambil dari token (FR-33).
 |---|---|---|---|
 | GET, DELETE | `/memories`, `/memories/{memory_id}` | FR-40 | F30 |
 | GET | `/runs/{run_id}/trace` | FR-41 | F31 |
-| POST, GET | `/artifacts`, `/artifacts/{artifact_id}` | FR-46 | F35 |
+| POST, GET, DELETE | `/artifacts`, `/artifacts/{artifact_id}` | FR-46 | F35 (selesai) |
 | GET | `/jobs`, `/jobs/{job_id}/runs` | FR-53 | F41 |
 | POST, GET, DELETE | `/projects/{project_id}/documents` | FR-55 | F43 |
 | GET, POST | `/v1/models`, `/v1/chat/completions` | FR-58 | F46 |
@@ -433,9 +439,9 @@ Node yang LLM-nya diberi tag `skip_stream` tidak menghasilkan frame `token`.
 | `LLM_MAX_TOKENS` | F21 | Batas token jawaban default |
 | `DATABASE_URL` | F23 (selesai) | Koneksi Postgres. Menggantikan `SQLITE_DB_PATH` |
 | `CONTEXT_MAX_TOKENS` | F29 | Anggaran token riwayat yang dikirim ke model |
-| `ARTIFACT_DIR`, `ARTIFACT_MAX_BYTES` | F35 | Lokasi dan batas ukuran artifact |
-| `TOOL_OUTPUT_MAX_TOKENS` | F36 | Batas output tool sebelum dipindah ke workspace |
-| `SANDBOX_IMAGE`, `SANDBOX_TIMEOUT_SECONDS` | F37 | Image dan batas waktu sandbox |
+| `ARTIFACT_DIR`, `ARTIFACT_MAX_BYTES` | F35 (selesai) | Lokasi (default `data/artifacts`) dan batas ukuran artifact (default 25 MB) |
+| `TOOL_OUTPUT_MAX_TOKENS` | F36 (selesai) | Batas output tool sebelum dipindah ke workspace (default 4.000) |
+| `SANDBOX_URL`, `SANDBOX_TOKEN`, `SANDBOX_TIMEOUT_SECONDS`, `SANDBOX_IMAGE` | F37 (selesai) | URL dan token `sandbox-runner`, batas waktu eksekusi (default 60 detik), image sandbox (di runner) |
 | `DATA_SOURCE_URL` | F39 | Koneksi read-only ke database yang dianalisa |
 | `JOBS_FILE` | F41 | Lokasi definisi job terjadwal |
 | `EMBEDDING_MODEL` | F43 | Model embedding OpenAI-compatible |

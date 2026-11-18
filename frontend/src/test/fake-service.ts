@@ -12,6 +12,13 @@ type ProjectCreate = components["schemas"]["ProjectCreate"];
 type ProjectUpdate = components["schemas"]["ProjectUpdate"];
 type SkillSummary = components["schemas"]["SkillSummary"];
 type ThreadSummary = components["schemas"]["ThreadSummary"];
+type ArtifactRef = components["schemas"]["ArtifactRef"];
+
+/** Artifact yang tersimpan di service palsu, beserta isinya. */
+export interface StoredArtifact {
+  ref: ArtifactRef;
+  content: string;
+}
 
 export const VALID_PASSWORD = "correct-horse";
 export const TOKEN_TTL_SECONDS = 3600;
@@ -54,7 +61,7 @@ export const BUILTIN_PROJECT: Project = {
   model: null,
   instructions: "Cite every source.",
   skill_ids: ["builtin/research-report"],
-  settings: { max_tokens: null },
+  settings: { max_tokens: null, tool_approval: "never" },
   created_at: FIXED_TIME,
   updated_at: FIXED_TIME,
 };
@@ -70,6 +77,10 @@ export interface FakeServiceOptions {
   threads?: Record<string, ThreadSummary[]>;
   /** Project awal. Default: satu project built-in. */
   projects?: Project[];
+  /** Artifact awal (F38), misalnya file yang dibagikan agent di riwayat. */
+  artifacts?: StoredArtifact[];
+  /** Ukuran upload maksimum; lebih besar dijawab 413 seperti `ARTIFACT_MAX_BYTES`. */
+  maxUploadBytes?: number;
 }
 
 export interface RecordedRequest {
@@ -83,6 +94,8 @@ const PROJECT_PATH = /^\/api\/projects\/([^/]+)$/;
 const PROJECT_ROUTE = /^\/api\/projects\/([^/]+)\/(stream|history|threads)$/;
 const PROJECT_THREAD_PATH = /^\/api\/projects\/([^/]+)\/threads\/([^/]+)$/;
 const THREAD_PATH = /^\/api\/threads\/([^/]+)$/;
+const ARTIFACT_PATH = /^\/api\/artifacts\/([^/]+)$/;
+const DEFAULT_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 export class FakeService {
   readonly requests: RecordedRequest[] = [];
@@ -90,6 +103,7 @@ export class FakeService {
   private readonly threads = new Map<string, ThreadSummary[]>();
   private readonly projects: Project[];
   private createdProjects = 0;
+  readonly artifacts = new Map<string, StoredArtifact>();
 
   constructor(options: FakeServiceOptions = {}) {
     this.options = options;
@@ -97,12 +111,15 @@ export class FakeService {
     for (const [scope, threads] of Object.entries(options.threads ?? {})) {
       this.threads.set(scope, [...threads]);
     }
+    for (const artifact of options.artifacts ?? []) {
+      this.artifacts.set(artifact.ref.id, artifact);
+    }
   }
 
   readonly fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const request = new Request(input, init);
     const path = decodeURIComponent(new URL(request.url).pathname);
-    const body: unknown = hasJsonBody(request) ? await request.clone().json() : null;
+    const body: unknown = await requestBody(request);
     this.requests.push({
       method: request.method,
       path,
@@ -114,6 +131,13 @@ export class FakeService {
     }
     if (path === "/api/info") {
       return this.info(request);
+    }
+    if (path === "/api/artifacts" && body instanceof FormData) {
+      return this.upload(body);
+    }
+    const artifact = ARTIFACT_PATH.exec(path);
+    if (artifact !== null) {
+      return this.artifact(request.method, artifact[1] ?? "");
     }
     return this.route(request.method, path, body);
   };
@@ -255,7 +279,10 @@ export class FakeService {
       model: input.model ?? null,
       instructions: input.instructions ?? "",
       skill_ids: input.skill_ids ?? [],
-      settings: { max_tokens: input.settings?.max_tokens ?? null },
+      settings: {
+        max_tokens: input.settings?.max_tokens ?? null,
+        tool_approval: input.settings?.tool_approval ?? "never",
+      },
       created_at: FIXED_TIME,
       updated_at: FIXED_TIME,
     };
@@ -287,6 +314,39 @@ export class FakeService {
 
   private findProject(projectId: string): Project | undefined {
     return this.projects.find((project) => project.id === projectId);
+  }
+
+  private upload(form: FormData): Response {
+    const file = form.get("file");
+    if (!(file instanceof File)) {
+      return json({ detail: [{ msg: "Field required" }] }, 422);
+    }
+    if (file.size > (this.options.maxUploadBytes ?? DEFAULT_MAX_UPLOAD_BYTES)) {
+      return json({ detail: "File is larger than the limit" }, 413);
+    }
+    const ref: ArtifactRef = {
+      id: `artifact-${this.artifacts.size + 1}`,
+      name: file.name,
+      mime_type: file.type || "application/octet-stream",
+      size: file.size,
+    };
+    this.artifacts.set(ref.id, { ref, content: "" });
+    return json(ref, 201);
+  }
+
+  private artifact(method: string, artifactId: string): Response {
+    const stored = this.artifacts.get(artifactId);
+    if (stored === undefined) {
+      return json({ detail: "Artifact not found" }, 404);
+    }
+    if (method === "DELETE") {
+      this.artifacts.delete(artifactId);
+      return new Response(null, { status: 204 });
+    }
+    return new Response(stored.content, {
+      status: 200,
+      headers: { "Content-Type": stored.ref.mime_type },
+    });
   }
 
   private async login(request: Request): Promise<Response> {
@@ -328,8 +388,16 @@ function isStream(request: RecordedRequest): boolean {
   return request.path.endsWith("/stream");
 }
 
-function hasJsonBody(request: Request): boolean {
-  return request.method === "POST" || request.method === "PATCH";
+/** Body request: JSON, `FormData` untuk upload multipart, atau `null`. */
+async function requestBody(request: Request): Promise<unknown> {
+  if (request.method !== "POST" && request.method !== "PATCH") {
+    return null;
+  }
+  const contentType = request.headers.get("Content-Type") ?? "";
+  if (contentType.startsWith("multipart/form-data")) {
+    return request.clone().formData();
+  }
+  return request.clone().json();
 }
 
 function withUpdate(project: Project, changes: ProjectUpdate): Project {

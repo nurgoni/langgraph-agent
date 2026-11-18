@@ -15,6 +15,7 @@ from agent_service.agents.supervisor import create_supervisor_agent
 from agent_service.agents.tools.web_search import SearchBackend
 from agent_service.harness.context_policy import ContextPolicy
 from agent_service.harness.skills.toolkit import SkillToolkit
+from agent_service.harness.workspace import WorkspaceToolkit
 
 DEFAULT_AGENT_ID: Final = CHATBOT_AGENT_ID
 
@@ -23,6 +24,7 @@ def create_default_agents(
     search_backend: SearchBackend | None = None,
     skills: SkillToolkit | None = None,
     context_policy: ContextPolicy | None = None,
+    files: WorkspaceToolkit | None = None,
 ) -> list[BaseAgent]:
     """Buat instance baru untuk setiap agent bawaan.
 
@@ -34,6 +36,8 @@ def create_default_agents(
         skills: Toolkit skill untuk chatbot dan research assistant. Default: tanpa skill.
         context_policy: Anggaran token riwayat (`CONTEXT_MAX_TOKENS`) untuk agent percakapan.
             Default: `ContextPolicy()`. Interrupt agent tidak memakainya (percakapannya pendek).
+        files: Tool file workspace untuk chatbot dan research assistant (keputusan user F36).
+            Default: tanpa workspace.
 
     Chatbot dan research assistant memakai long-term memory user (keputusan user F30). Memory
     aktif saat registry punya store, jadi graph yang dibangun tanpa store tetap seperti sebelumnya.
@@ -47,8 +51,10 @@ def create_default_agents(
     'chatbot'
     """
     return [
-        ChatbotAgent(skills=skills, context_policy=context_policy, use_memory=True),
-        create_research_assistant(search_backend, skills, context_policy, use_memory=True),
+        ChatbotAgent(skills=skills, context_policy=context_policy, use_memory=True, files=files),
+        create_research_assistant(
+            search_backend, skills, context_policy, use_memory=True, files=files
+        ),
         InterruptAgent(),
         create_supervisor_agent(search_backend, context_policy),
     ]

@@ -15,7 +15,7 @@ exclude-newer = "2026-10-18T00:00:00Z"
 
 [[package]]
 name = "agent-service"
-version = "0.6.0"
+version = "0.7.0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
@@ -40,6 +40,7 @@ service = [
     { name = "psycopg-pool" },
     { name = "pydantic-settings" },
     { name = "pyjwt" },
+    { name = "python-multipart" },
     { name = "pyyaml" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "uvicorn" },
@@ -79,6 +80,7 @@ requires-dist = [
     { name = "pydantic-settings", marker = "extra == 'service'", specifier = "~=2.16" },
     { name = "pydantic-settings", marker = "extra == 'ui'", specifier = "~=2.16" },
     { name = "pyjwt", marker = "extra == 'service'", specifier = "~=2.15" },
+    { name = "python-multipart", marker = "extra == 'service'", specifier = "~=0.0.32" },
     { name = "pyyaml", marker = "extra == 'evals'", specifier = "~=6.0" },
     { name = "pyyaml", marker = "extra == 'service'", specifier = "~=6.0" },
     { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'service'", specifier = "~=2.1" },

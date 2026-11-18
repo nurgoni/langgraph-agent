@@ -4,6 +4,8 @@
 'Riset pasar'
 >>> ProjectSettings().max_tokens is None
 True
+>>> ProjectSettings().tool_approval
+'never'
 """
 
 from datetime import datetime
@@ -21,6 +23,7 @@ SKILL_ID_PATTERN: Final = r"^(builtin|org|user|project)/[a-z0-9]+(-[a-z0-9]+)*$"
 SKILL_ID_MAX_LENGTH: Final = 72
 
 type ProjectScope = Literal["builtin", "user"]
+type ToolApproval = Literal["never", "always"]
 
 ProjectName = Annotated[
     str,
@@ -40,6 +43,10 @@ class ProjectSettings(BaseModel):
         default=None,
         ge=1,
         description="Answer token limit for runs in this project. Empty uses LLM_MAX_TOKENS.",
+    )
+    tool_approval: ToolApproval = Field(
+        default="never",
+        description="`always` asks the user to approve every run_python/run_shell call first.",
     )
 
 

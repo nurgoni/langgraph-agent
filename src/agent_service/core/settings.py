@@ -1,5 +1,6 @@
 """Konfigurasi service yang dibaca dari environment variable dan file `.env`."""
 
+from pathlib import Path
 from typing import Annotated, Final, Self
 from urllib.parse import urlsplit
 
@@ -7,6 +8,8 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from agent_service.core.constants import (
+    DEFAULT_ARTIFACT_DIR,
+    DEFAULT_ARTIFACT_MAX_BYTES,
     DEFAULT_CONTEXT_MAX_TOKENS,
     DEFAULT_DATABASE_URL,
     DEFAULT_HOST,
@@ -15,16 +18,22 @@ from agent_service.core.constants import (
     DEFAULT_LLM_MAX_TOKENS_PARAM,
     DEFAULT_LOG_LEVEL,
     DEFAULT_PORT,
+    DEFAULT_SANDBOX_TIMEOUT_SECONDS,
+    DEFAULT_TOOL_OUTPUT_MAX_TOKENS,
     ENV_FILE,
     ENV_FILE_ENCODING,
     FAKE_MODEL_NAME,
     LIST_SEPARATOR,
     MAX_PORT,
+    MAX_SANDBOX_TIMEOUT_SECONDS,
+    MIN_ARTIFACT_MAX_BYTES,
     MIN_CONTEXT_MAX_TOKENS,
     MIN_JWT_SECRET_LENGTH,
     MIN_JWT_TTL_SECONDS,
     MIN_LLM_MAX_TOKENS,
     MIN_PORT,
+    MIN_SANDBOX_TIMEOUT_SECONDS,
+    MIN_TOOL_OUTPUT_MAX_TOKENS,
     POSTGRES_URL_SCHEMES,
     LogLevel,
     MaxTokensParam,
@@ -68,6 +77,24 @@ class Settings(BaseSettings):
 
     # Secret karena berisi password. Default = Postgres dari compose.yaml untuk dev lokal.
     database_url: SecretStr = SecretStr(DEFAULT_DATABASE_URL)
+
+    # File artifact (FR-46). Metadata di Postgres, isi file di direktori ini (volume di compose).
+    artifact_dir: Path = DEFAULT_ARTIFACT_DIR
+    artifact_max_bytes: int = Field(default=DEFAULT_ARTIFACT_MAX_BYTES, ge=MIN_ARTIFACT_MAX_BYTES)
+    # Output tool yang lebih besar ditulis ke workspace thread, model menerima cuplikan (FR-48).
+    tool_output_max_tokens: int = Field(
+        default=DEFAULT_TOOL_OUTPUT_MAX_TOKENS, ge=MIN_TOOL_OUTPUT_MAX_TOKENS
+    )
+
+    # Sandbox eksekusi kode (FR-49): URL service `sandbox-runner` dan token bersamanya. Kosong
+    # berarti tool `run_python`/`run_shell` tidak di-bind ke agent.
+    sandbox_url: str | None = None
+    sandbox_token: SecretStr | None = None
+    sandbox_timeout_seconds: int = Field(
+        default=DEFAULT_SANDBOX_TIMEOUT_SECONDS,
+        ge=MIN_SANDBOX_TIMEOUT_SECONDS,
+        le=MAX_SANDBOX_TIMEOUT_SECONDS,
+    )
 
     # Kosong berarti tool web search menjawab "not configured", tanpa menggagalkan startup.
     firecrawl_api_key: SecretStr | None = None
@@ -145,6 +172,17 @@ class Settings(BaseSettings):
                 f"DEFAULT_MODEL {default_model!r} is not in AVAILABLE_MODELS "
                 f"{self.available_models}"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _require_sandbox_token(self) -> Self:
+        """`SANDBOX_URL` tanpa `SANDBOX_TOKEN` ditolak, supaya runner tidak dipanggil tanpa token.
+
+        Raises:
+            ValueError: Jika `SANDBOX_URL` terisi tetapi `SANDBOX_TOKEN` kosong.
+        """
+        if self.sandbox_url is not None and self.sandbox_token is None:
+            raise ValueError("SANDBOX_TOKEN is required when SANDBOX_URL is set")
         return self
 
     def _require_llm_fields(self) -> None:

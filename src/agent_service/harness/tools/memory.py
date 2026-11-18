@@ -69,8 +69,13 @@ def memory_user_id(config: Mapping[str, Any] | None) -> str | None:  # Any: Runn
     return user_id
 
 
-def is_approval(reply: object) -> bool:
-    """Cek apakah jawaban user menyetujui penyimpanan.
+def is_approval(reply: object, lead_words: frozenset[str] = APPROVAL_LEAD_WORDS) -> bool:
+    """Cek apakah jawaban user menyetujui aksi yang ditanyakan.
+
+    Args:
+        reply: Jawaban user untuk interrupt.
+        lead_words: Kata pembuka yang berarti setuju. Tool lain bisa menambah kata (misalnya
+            "run" untuk eksekusi kode).
 
     >>> is_approval("Yes!"), is_approval("ya, simpan saja"), is_approval("ok go ahead")
     (True, True, True)
@@ -80,9 +85,9 @@ def is_approval(reply: object) -> bool:
     if not isinstance(reply, str):
         return False
     words = WORD_PATTERN.findall(reply.casefold())
-    if not words or words[0] not in APPROVAL_LEAD_WORDS:
+    if not words or words[0] not in lead_words:
         return False
-    allowed = APPROVAL_LEAD_WORDS | APPROVAL_FILLER_WORDS
+    allowed = lead_words | APPROVAL_FILLER_WORDS
     return all(word in allowed for word in words)
 
 

@@ -292,3 +292,104 @@ def test_browser_path_through_the_web_proxy(stack: ComposeStack) -> None:
     assert info.default_agent == "chatbot"
     assert any(isinstance(event, TokenEvent) for event in events)
     assert isinstance(events[-1], MessageEvent)
+
+
+# Lebih besar dari default `client_max_body_size` nginx (1 MB), jadi membuktikan batas proxy F35.
+LARGE_ARTIFACT_BYTES = 2 * 1024 * 1024
+
+
+def test_artifacts_go_through_the_web_proxy_and_survive_restart(stack: ComposeStack) -> None:
+    """Upload lewat proxy `/api`, volume `artifacts`, lampiran pesan, dan isolasi user (F35)."""
+    content = os.urandom(LARGE_ARTIFACT_BYTES)
+    with stack.client(base_url=f"{stack.web_url}/api") as client:
+        artifact = client.upload_artifact(content, "report.bin")
+        reply = client.invoke("Lihat lampiran", artifact_ids=[artifact.id])
+        human = client.get_history(reply.thread_id).messages[0]
+
+    stack.compose("restart", "agent-service")
+    stack.compose("up", "-d", "--wait", "agent-service")
+
+    with stack.client() as client:
+        downloaded = client.download_artifact(artifact.id)
+    with stack.client(OTHER_USERNAME) as other, pytest.raises(AgentClientError) as error:
+        other.download_artifact(artifact.id)
+
+    assert artifact.size == LARGE_ARTIFACT_BYTES
+    assert human.artifacts == [artifact]
+    assert downloaded == content
+    assert error.value.status_code == 404
+
+
+def test_attachments_land_in_the_thread_workspace(stack: ComposeStack) -> None:
+    """Migrasi `0007` dan salinan lampiran ke workspace thread (F36)."""
+    with stack.client() as client:
+        artifact = client.upload_artifact(b"region,total\nnorth,10\n", "sales.csv", "text/csv")
+        reply = client.invoke("Baca lampiran", artifact_ids=[artifact.id])
+
+    query = f"SELECT path FROM workspace_files WHERE thread_id = '{reply.thread_id}'"
+    user = stack.env.get("POSTGRES_USER") or "agent"
+    database = stack.env.get("POSTGRES_DB") or "agent_service"
+    output = stack.compose(
+        "exec", "-T", "postgres", "psql", "-U", user, "-d", database, "-tAc", query
+    )
+
+    assert output.split() == ["uploads/sales.csv"]
+
+
+# Dijalankan di container sandbox-runner: memanggil runner itu sendiri lewat RemoteSandbox, jadi
+# Docker asli yang membuat container sekali pakai (F37).
+SANDBOX_SCRIPT = """
+import asyncio, json, os
+from agent_service.sandbox.model import ExecutionRequest
+from agent_service.sandbox.remote import RemoteSandbox
+
+NETWORK = '''
+import socket
+try:
+    socket.create_connection(("1.1.1.1", 80), timeout=3)
+    print("network reachable")
+except OSError:
+    print("network blocked")
+'''
+
+async def main():
+    async with RemoteSandbox("http://localhost:8080", os.environ["SANDBOX_TOKEN"]) as sandbox:
+        network = await sandbox.execute(ExecutionRequest(language="python", code=NETWORK))
+        loop = await sandbox.execute(
+            ExecutionRequest(language="python", code="while True: pass", timeout_seconds=3)
+        )
+        files = await sandbox.execute(ExecutionRequest(
+            language="python",
+            code="import pandas as pd; pd.read_csv('in.csv').sum().to_csv('out.csv'); print('ok')",
+            files={"in.csv": b"a,b\\n1,2\\n3,4\\n"},
+        ))
+    print(json.dumps({
+        "network": network.stdout.strip(),
+        "loop": [loop.timed_out, loop.exit_code],
+        "files": {path: content.decode() for path, content in files.files.items()},
+        "stdout": files.stdout.strip(),
+    }))
+
+asyncio.run(main())
+"""
+
+
+def test_sandbox_blocks_network_stops_loops_and_returns_files(stack: ComposeStack) -> None:
+    """Acceptance F37 di Docker asli: tanpa jaringan, timeout, dan file keluar ke workspace."""
+    output = stack.compose(
+        "exec", "-T", "sandbox-runner", "python", "-c", SANDBOX_SCRIPT, timeout=300
+    )
+
+    result = json.loads(output.strip().splitlines()[-1])
+    assert result["network"] == "network blocked"
+    assert result["loop"] == [True, None]
+    assert result["stdout"] == "ok"
+    assert result["files"] == {"out.csv": ",0\na,4\nb,6\n"}
+
+
+def test_service_container_has_no_docker_access(stack: ComposeStack) -> None:
+    """Hanya sandbox-runner yang memegang docker.sock (keputusan user F37)."""
+    script = "import os; print(os.path.exists('/var/run/docker.sock'))"
+    output = stack.compose("exec", "-T", "agent-service", "python", "-c", script)
+
+    assert output.strip().splitlines()[-1] == "False"

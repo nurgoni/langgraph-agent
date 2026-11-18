@@ -9,6 +9,7 @@
 import type { ThreadMessageLike } from "@assistant-ui/react";
 
 import type { ChatMessage, StreamEvent } from "@/api/stream-event";
+import type { ArtifactRef } from "@/features/artifacts/artifacts-service";
 
 /** Satu baris riwayat: message dari service, error run, atau run yang dihentikan user. */
 export type ChatEntry =
@@ -33,6 +34,11 @@ type MessageStatus = NonNullable<ThreadMessageLike["status"]>;
 type ToolArgs = NonNullable<Extract<MessagePart, { type: "tool-call" }>["args"]>;
 
 export const CUSTOM_DATA_PART_NAME = "custom";
+/**
+ * Artifact di jawaban asisten (part `data`) dan di pesan user (`metadata.custom`), memakai nama
+ * yang sama. Keduanya dirender sebagai kartu yang membuka panel preview (F38).
+ */
+export const ARTIFACTS_DATA_PART_NAME = "artifacts";
 export const EMPTY_LIVE: LiveReply = { reasoning: "", text: "" };
 export const EMPTY_CONVERSATION: ConversationState = { entries: [], live: EMPTY_LIVE };
 
@@ -49,9 +55,13 @@ export function conversationFromHistory(messages: readonly ChatMessage[]): Conve
   };
 }
 
-/** Tambahkan pesan user yang baru dikirim. */
-export function appendHuman(state: ConversationState, text: string): ConversationState {
-  const message: ChatMessage = { type: "human", content: text };
+/** Tambahkan pesan user yang baru dikirim, beserta lampirannya. */
+export function appendHuman(
+  state: ConversationState,
+  text: string,
+  artifacts: readonly ArtifactRef[] = [],
+): ConversationState {
+  const message: ChatMessage = { type: "human", content: text, artifacts: [...artifacts] };
   return { entries: [...state.entries, { kind: "message", message }], live: EMPTY_LIVE };
 }
 
@@ -174,7 +184,12 @@ class ThreadMessageBuilder {
     switch (message.type) {
       case "human":
         this.closeAssistant();
-        this.messages.push({ id: `user-${index}`, role: "user", content: message.content });
+        this.messages.push({
+          id: `user-${index}`,
+          role: "user",
+          content: message.content,
+          metadata: { custom: { [ARTIFACTS_DATA_PART_NAME]: message.artifacts ?? [] } },
+        });
         return;
       case "ai":
         this.addAiMessage(message, index);
@@ -216,6 +231,16 @@ class ThreadMessageBuilder {
     if (message.truncated) {
       draft.status = TRUNCATED;
     }
+    this.addArtifacts(draft, message);
+  }
+
+  /** Kartu artifact yang dibagikan message ini (misalnya hasil `share_file`). */
+  private addArtifacts(draft: AssistantDraft, message: ChatMessage): void {
+    const artifacts = message.artifacts ?? [];
+    if (artifacts.length === 0) {
+      return;
+    }
+    draft.parts.push({ type: "data", name: ARTIFACTS_DATA_PART_NAME, data: artifacts });
   }
 
   /** Isi hasil tool call yang cocok dengan `tool_call_id`, atau tambahkan part tool baru. */
@@ -225,6 +250,7 @@ class ThreadMessageBuilder {
     const call = callIndex === undefined ? undefined : draft.parts[callIndex];
     if (call?.type === "tool-call" && callIndex !== undefined) {
       draft.parts[callIndex] = { ...call, result: message.content };
+      this.addArtifacts(draft, message);
       return;
     }
     draft.parts.push({
@@ -235,6 +261,7 @@ class ThreadMessageBuilder {
       result: message.content,
       parentId: message.agent ?? undefined,
     });
+    this.addArtifacts(draft, message);
   }
 
   private assistant(index: number): AssistantDraft {

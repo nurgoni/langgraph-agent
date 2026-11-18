@@ -103,6 +103,11 @@ docker compose down              # hentikan (tambahkan -v untuk menghapus data P
   `web` (nginx) menyajikan build React dan meneruskan `/api/*` ke service, jadi browser tidak butuh
   CORS.
 - **Akun:** `docker compose exec agent-service python -m agent_service.manage create-user demo`.
+- **Sandbox kode (F37):** `sandbox-image` membangun image eksekusi (Python + pandas, numpy,
+  matplotlib) lalu selesai, dan `sandbox-runner` menjalankan satu container sekali pakai per
+  `run_python`/`run_shell`: tanpa jaringan, rootfs read-only, user non-root, 512 MB, 1 CPU, 128
+  proses, timeout `SANDBOX_TIMEOUT_SECONDS`. Hanya `sandbox-runner` yang me-mount `docker.sock`,
+  tanpa port di host; agent-service memanggilnya dengan `SANDBOX_TOKEN`.
 - **Urutan start:** `postgres` (healthy) → `migrate` (Alembic + tabel checkpointer, lalu selesai)
   → `agent-service` → `web` dan `ui`. Migrasi tidak dijalankan di lifespan, supaya beberapa replika tidak
   menjalankannya bersamaan.
@@ -139,6 +144,11 @@ menunjuk ke container itu sendiri.
 | `JWT_TTL_SECONDS` | tidak | Umur access token, default `43200` (12 jam). Tidak ada refresh token |
 | `CORS_ORIGINS` | tidak | Origin browser yang boleh memanggil API, dipisah koma. Kosong = tidak ada |
 | `FIRECRAWL_API_KEY` | tidak | Key [Firecrawl](https://firecrawl.dev) untuk tool `web_search` (research-assistant, supervisor). Kosong = tanpa pencarian web |
+| `ARTIFACT_DIR` | tidak | Folder isi file artifact, default `data/artifacts`. Compose memakai volume `artifacts` |
+| `TOOL_OUTPUT_MAX_TOKENS` | tidak | Output tool lebih besar dari ini (default `4000` token) disimpan di workspace thread, dan model menerima cuplikan + path |
+| `SANDBOX_URL`, `SANDBOX_TOKEN` | tidak | URL service `sandbox-runner` dan token bersamanya. Kosong = tanpa `run_python`/`run_shell`. Compose mengisi `SANDBOX_URL` sendiri; `SANDBOX_TOKEN` default nilai dev yang tidak aman |
+| `SANDBOX_TIMEOUT_SECONDS` | tidak | Batas waktu satu eksekusi kode, default `60`, maksimum `600` |
+| `ARTIFACT_MAX_BYTES` | tidak | Batas ukuran upload, default `26214400` (25 MB). Upload lebih besar → 413. Di balik proxy `web`, naikkan juga `API_MAX_BODY_SIZE` (default `26m`) |
 | `AGENT_URL` | tidak | URL service untuk UI/client/eval, default `http://localhost:8080` |
 | `EVAL_USERNAME`, `EVAL_PASSWORD` | eval | Akun untuk `run_evals`, sebaiknya service account (`--role service`) |
 | `EVAL_TIMEOUT_SECONDS` | tidak | Batas waktu per request eval, default `300` |
@@ -165,6 +175,8 @@ menunjuk ke container itu sendiri.
 | GET | `/memories` | Long-term memory milik user, yang terakhir diubah lebih dulu |
 | DELETE | `/memories/{memory_id}` | Hapus satu memory. Memory user lain menjawab 404 |
 | GET | `/runs/{run_id}/trace` | Trace satu run: durasi, token, panggilan model dan tool. Run user lain menjawab 404 |
+| POST | `/artifacts` | Upload satu file (multipart, field `file`). Lebih besar dari `ARTIFACT_MAX_BYTES` → 413 |
+| GET, DELETE | `/artifacts/{artifact_id}` | Unduh (selalu `attachment`) atau hapus artifact. Artifact user lain menjawab 404 |
 | GET | `/health` | Health check, selalu tanpa auth |
 
 Semua endpoint selain `/health` dan `/auth/login` butuh `Authorization: Bearer <access_token>`.
@@ -179,6 +191,34 @@ TOKEN=$(curl -s -X POST http://localhost:8080/auth/login \
 curl -N -X POST http://localhost:8080/chatbot/stream \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"message": "Halo!", "stream_tokens": true}'
+```
+
+### Artifact
+
+File diunggah lewat `POST /artifacts`, lalu dilampirkan ke pesan dengan `artifact_ids`. Lampiran
+tampil di `ChatMessage.artifacts` pada riwayat, dan artifact ikut terhapus saat thread-nya dihapus.
+Satu artifact hanya bisa dilampirkan di satu thread (thread lain → 409).
+
+Chatbot dan research assistant punya workspace per thread (F36): lampiran disalin ke
+`uploads/<nama>`, dan agent memakai tool `read_file`, `write_file`, `edit_file`, `list_files`,
+`grep` (teks literal), serta `share_file` untuk memberi file ke user sebagai artifact. Output tool
+yang lebih besar dari `TOOL_OUTPUT_MAX_TOKENS` disimpan di `tool-outputs/`. Workspace ikut
+terhapus bersama thread-nya.
+
+Jika sandbox dikonfigurasi (F37), agent yang sama juga punya `run_python` dan `run_shell`. Kode
+berjalan di container terisolasi dengan seluruh isi workspace di `/workspace`, dan file yang ditulis
+kembali ke workspace (misalnya chart, lalu dibagikan dengan `share_file`). Project dengan
+`settings.tool_approval = "always"` (checkbox "Ask before running code" di form) meminta
+persetujuan sebelum setiap eksekusi.
+
+```python
+with AgentClient(base_url="http://localhost:8080") as client:
+    client.login("demo", "rahasia-demo")
+    artifact = client.upload_artifact(b"region,total
+north,10
+", "sales.csv", "text/csv")
+    reply = client.invoke("Ringkas file ini", artifact_ids=[artifact.id])
+    content = client.download_artifact(artifact.id)
 ```
 
 Kontrak lengkap ada di [`contracts/openapi.json`](contracts/openapi.json) dan
@@ -286,6 +326,11 @@ corepack pnpm build            # build statis ke dist/
   baru di project itu; chat project dibuka ulang di `/projects/<id>/chat/<thread_id>`. Form buat
   dan edit project memakai komponen form shadcn (react-hook-form + zod) dengan pemilih skill dari
   `GET /skills`.
+- **Artifact** (F38): file yang dibagikan agent dan lampiran user tampil sebagai kartu; klik untuk
+  membuka panel kanan (lebar bisa ditarik) dengan preview gambar, tabel CSV (200 baris pertama),
+  PDF (viewer browser), atau teks, plus tombol unduh. Tombol klip di composer meng-upload file
+  saat dipilih (lebih dari `ARTIFACT_MAX_BYTES` langsung ditolak), lalu file ikut terkirim
+  bersama pesan.
 - **Token** disimpan di `sessionStorage`: bertahan saat refresh, hilang saat tab ditutup.
 - **`src/components/assistant-ui/`** berisi template registry assistant-ui. `thread.tsx` sudah
   disesuaikan untuk service, sedangkan `elements/` disalin apa adanya supaya bisa dibandingkan saat
