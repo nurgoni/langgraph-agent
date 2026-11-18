@@ -266,8 +266,10 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
   tool `share_file` membagikan file workspace sebagai artifact.
 - **FR-49** Sandbox. Kode (`run_python`, `run_shell`) hanya dijalankan di dalam `Sandbox`, tidak
   pernah di proses service. Sandbox berjalan tanpa jaringan, dengan batas CPU, memori, jumlah proses,
-  dan waktu. File workspace disalin masuk sebelum eksekusi, dan file baru disalin keluar sebagai
-  artifact. Project menentukan apakah eksekusi perlu persetujuan user (interrupt).
+  dan waktu. File workspace disalin masuk sebelum eksekusi, dan file baru atau berubah disalin
+  kembali ke workspace (dibagikan sebagai artifact lewat `share_file`). `ProjectSettings.tool_approval`
+  (`never`/`always`, default `never`) menentukan apakah eksekusi perlu persetujuan user (interrupt).
+  Hanya service `sandbox-runner` yang memegang akses Docker.
 - **FR-50** Panel artifact di frontend: preview gambar, tabel CSV, viewer PDF, dan tombol download.
 
 ### Fase 2: Data Analytics (M8)
@@ -437,7 +439,7 @@ Node yang LLM-nya diberi tag `skip_stream` tidak menghasilkan frame `token`.
 | `CONTEXT_MAX_TOKENS` | F29 | Anggaran token riwayat yang dikirim ke model |
 | `ARTIFACT_DIR`, `ARTIFACT_MAX_BYTES` | F35 (selesai) | Lokasi (default `data/artifacts`) dan batas ukuran artifact (default 25 MB) |
 | `TOOL_OUTPUT_MAX_TOKENS` | F36 (selesai) | Batas output tool sebelum dipindah ke workspace (default 4.000) |
-| `SANDBOX_IMAGE`, `SANDBOX_TIMEOUT_SECONDS` | F37 | Image dan batas waktu sandbox |
+| `SANDBOX_URL`, `SANDBOX_TOKEN`, `SANDBOX_TIMEOUT_SECONDS`, `SANDBOX_IMAGE` | F37 (selesai) | URL dan token `sandbox-runner`, batas waktu eksekusi (default 60 detik), image sandbox (di runner) |
 | `DATA_SOURCE_URL` | F39 | Koneksi read-only ke database yang dianalisa |
 | `JOBS_FILE` | F41 | Lokasi definisi job terjadwal |
 | `EMBEDDING_MODEL` | F43 | Model embedding OpenAI-compatible |

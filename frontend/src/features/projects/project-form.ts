@@ -41,6 +41,8 @@ export const projectFormSchema = z.object({
     .trim()
     .regex(WHOLE_NUMBER, "Enter a whole number.")
     .refine((value) => value === "" || Number(value) >= 1, "Use at least 1."),
+  /** `ProjectSettings.tool_approval = "always"`: tanya user sebelum `run_python`/`run_shell` (F37). */
+  askBeforeRunningCode: z.boolean(),
 });
 
 export type ProjectFormValues = z.infer<typeof projectFormSchema>;
@@ -55,6 +57,7 @@ export function newProjectValues(defaultAgentId: string): ProjectFormValues {
     instructions: "",
     skillIds: [],
     maxTokens: "",
+    askBeforeRunningCode: false,
   };
 }
 
@@ -69,6 +72,7 @@ export function projectValues(project: Project): ProjectFormValues {
     instructions: project.instructions,
     skillIds: [...project.skill_ids],
     maxTokens: maxTokens === null || maxTokens === undefined ? "" : String(maxTokens),
+    askBeforeRunningCode: project.settings.tool_approval === "always",
   };
 }
 
@@ -92,6 +96,9 @@ function editableFields(values: ProjectFormValues): Omit<ProjectCreate, "base_ag
     model: values.model === SERVICE_DEFAULT_MODEL ? null : values.model,
     instructions: values.instructions,
     skill_ids: values.skillIds,
-    settings: { max_tokens: values.maxTokens === "" ? null : Number(values.maxTokens) },
+    settings: {
+      max_tokens: values.maxTokens === "" ? null : Number(values.maxTokens),
+      tool_approval: values.askBeforeRunningCode ? "always" : "never",
+    },
   };
 }

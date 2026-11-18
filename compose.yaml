@@ -1,5 +1,5 @@
-# Stack lokal: Postgres, migrasi, service API (:8080), frontend React (:3000), dan dev console
-# Streamlit (:8501).
+# Stack lokal: Postgres, migrasi, service API (:8080), frontend React (:3000), dev console
+# Streamlit (:8501), dan sandbox eksekusi kode (sandbox-runner, tanpa port di host).
 #   docker compose up --build
 #   docker compose up -d postgres     # hanya database, untuk dev lokal dan test
 #   docker compose exec agent-service python -m agent_service.manage create-user demo
@@ -12,6 +12,8 @@ name: agent-service
 x-database-url: &database-url "postgresql://${POSTGRES_USER:-agent}:${POSTGRES_PASSWORD:-agent}@postgres:5432/${POSTGRES_DB:-agent_service}"
 # Hanya untuk stack lokal/demo. Di luar mesin dev, set JWT_SECRET sendiri (lihat .env.example).
 x-jwt-secret: &jwt-secret "${JWT_SECRET:-dev-only-insecure-jwt-secret-change-me}"
+# Token antara agent-service dan sandbox-runner (F37). Sama: set SANDBOX_TOKEN sendiri di luar dev.
+x-sandbox-token: &sandbox-token "${SANDBOX_TOKEN:-dev-only-insecure-sandbox-token-change-me}"
 
 services:
   postgres:
@@ -79,10 +81,45 @@ services:
       # Artifact (F35): isi file di volume `artifacts`, metadata di Postgres.
       ARTIFACT_DIR: /app/data/artifacts
       ARTIFACT_MAX_BYTES: ${ARTIFACT_MAX_BYTES:-}
+      # Sandbox (F37): kode model dijalankan lewat sandbox-runner, bukan di container ini.
+      SANDBOX_URL: http://sandbox-runner:8080
+      SANDBOX_TOKEN: *sandbox-token
+      SANDBOX_TIMEOUT_SECONDS: ${SANDBOX_TIMEOUT_SECONDS:-}
     volumes:
       - artifacts:/app/data/artifacts
     depends_on:
       migrate:
+        condition: service_completed_successfully
+      sandbox-runner:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Image eksekusi kode (F37). Service ini hanya membangun image lalu selesai; runner membuat
+  # container sekali pakai dari image ini untuk setiap eksekusi.
+  sandbox-image:
+    build:
+      context: docker
+      dockerfile: sandbox.Dockerfile
+    image: agent-service-sandbox:local
+    network_mode: none
+    restart: "no"
+
+  # Satu-satunya service dengan akses Docker (keputusan user F37). Tanpa port di host; hanya
+  # agent-service yang memanggilnya, dengan SANDBOX_TOKEN.
+  sandbox-runner:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: sandbox-runner
+    image: agent-service-sandbox-runner:local
+    environment:
+      SANDBOX_TOKEN: *sandbox-token
+      SANDBOX_IMAGE: agent-service-sandbox:local
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      sandbox-image:
         condition: service_completed_successfully
     restart: unless-stopped
 

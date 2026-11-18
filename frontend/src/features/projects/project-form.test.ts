@@ -46,16 +46,21 @@ describe("project payloads", () => {
       model: null,
       instructions: "",
       skill_ids: ["builtin/a"],
-      settings: { max_tokens: null },
+      settings: { max_tokens: null, tool_approval: "never" },
     });
   });
 
   it("round-trips an existing project without sending the base agent", () => {
-    const project = { ...BUILTIN_PROJECT, model: "fake", settings: { max_tokens: 600 } };
+    const project = {
+      ...BUILTIN_PROJECT,
+      model: "fake",
+      settings: { max_tokens: 600, tool_approval: "always" as const },
+    };
     const values = projectValues(project);
 
     expect(values.model).toBe("fake");
     expect(values.maxTokens).toBe("600");
+    expect(values.askBeforeRunningCode).toBe(true);
     expect(projectValues(BUILTIN_PROJECT).model).toBe(SERVICE_DEFAULT_MODEL);
     expect(toProjectUpdate(values)).toEqual({
       name: project.name,
@@ -63,7 +68,7 @@ describe("project payloads", () => {
       model: "fake",
       instructions: project.instructions,
       skill_ids: project.skill_ids,
-      settings: { max_tokens: 600 },
+      settings: { max_tokens: 600, tool_approval: "always" },
     });
   });
 });

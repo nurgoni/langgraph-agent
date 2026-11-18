@@ -54,7 +54,7 @@ export const BUILTIN_PROJECT: Project = {
   model: null,
   instructions: "Cite every source.",
   skill_ids: ["builtin/research-report"],
-  settings: { max_tokens: null },
+  settings: { max_tokens: null, tool_approval: "never" },
   created_at: FIXED_TIME,
   updated_at: FIXED_TIME,
 };
@@ -255,7 +255,10 @@ export class FakeService {
       model: input.model ?? null,
       instructions: input.instructions ?? "",
       skill_ids: input.skill_ids ?? [],
-      settings: { max_tokens: input.settings?.max_tokens ?? null },
+      settings: {
+        max_tokens: input.settings?.max_tokens ?? null,
+        tool_approval: input.settings?.tool_approval ?? "never",
+      },
       created_at: FIXED_TIME,
       updated_at: FIXED_TIME,
     };

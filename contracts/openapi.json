@@ -530,6 +530,11 @@
             ],
             "description": "Answer token limit for runs in this project. Empty uses LLM_MAX_TOKENS.",
             "title": "Max Tokens"
+          },
+          "tool_approval": {
+            "$ref": "#/components/schemas/ToolApproval",
+            "default": "never",
+            "description": "`always` asks the user to approve every run_python/run_shell call first."
           }
         },
         "title": "ProjectSettings",
@@ -1075,6 +1080,13 @@
         "enum": [
           "user",
           "service"
+        ],
+        "type": "string"
+      },
+      "ToolApproval": {
+        "enum": [
+          "never",
+          "always"
         ],
         "type": "string"
       },
