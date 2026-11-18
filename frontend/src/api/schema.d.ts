@@ -880,6 +880,11 @@ export interface components {
              * @description Answer token limit for runs in this project. Empty uses LLM_MAX_TOKENS.
              */
             max_tokens?: number | null;
+            /**
+             * @description `always` asks the user to approve every run_python/run_shell call first.
+             * @default never
+             */
+            tool_approval: components["schemas"]["ToolApproval"];
         };
         /**
          * ProjectUpdate
@@ -1139,6 +1144,8 @@ export interface components {
         };
         /** @enum {string} */
         TokenRole: "user" | "service";
+        /** @enum {string} */
+        ToolApproval: "never" | "always";
         /**
          * ToolCall
          * @description Permintaan model untuk memanggil satu tool.

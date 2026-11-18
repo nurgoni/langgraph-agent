@@ -86,6 +86,7 @@ def run_context(record: ProjectRecord) -> ProjectRunContext:
         project_id=record.project_id,
         instructions=record.instructions,
         skill_ids=record.skill_ids,
+        tool_approval=ProjectSettings.model_validate(record.settings).tool_approval,
     )
 
 

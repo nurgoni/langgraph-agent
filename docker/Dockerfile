@@ -36,6 +36,21 @@ HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=10 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=2)"]
 CMD ["python", "-m", "agent_service.run_service"]
 
+FROM base AS sandbox-runner
+# Service `sandbox-runner` (F37): satu-satunya container yang me-mount docker.sock. Berjalan
+# sebagai root karena izin socket Docker; tidak punya port di host.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project --extra service
+COPY src ./src
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-editable --extra service
+ENV HOST=0.0.0.0 \
+    PORT=8080
+EXPOSE 8080
+HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=10 \
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=2)"]
+CMD ["python", "-m", "agent_service.run_sandbox_runner"]
+
 FROM base AS ui
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project --extra ui

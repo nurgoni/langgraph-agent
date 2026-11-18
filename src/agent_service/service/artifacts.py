@@ -17,6 +17,7 @@ from agent_service.files.artifacts import ArtifactStore, resolve_mime_type, sani
 from agent_service.files.workspace import Workspace, unique_path
 from agent_service.harness.runtime import HarnessContext
 from agent_service.memory.artifacts import ArtifactRecord, ArtifactRepository, NewArtifact
+from agent_service.sandbox.model import Sandbox
 from agent_service.schema.artifacts import ArtifactRef
 
 UPLOADS_FOLDER: Final = "uploads"
@@ -56,6 +57,7 @@ class ArtifactService:
         store: ArtifactStore,
         max_bytes: int,
         workspace: Workspace,
+        sandbox: Sandbox | None = None,
     ) -> None:
         """Inisialisasi service.
 
@@ -64,15 +66,17 @@ class ArtifactService:
             store: Tempat isi file disimpan.
             max_bytes: Batas ukuran satu artifact (`ARTIFACT_MAX_BYTES`).
             workspace: Workspace thread, tujuan salinan lampiran (F36).
+            sandbox: Sandbox eksekusi kode untuk runtime context (F37), atau `None`.
         """
         self._repository = repository
         self._store = store
         self._max_bytes = max_bytes
         self._workspace = workspace
+        self._sandbox = sandbox
 
     def run_context(self) -> HarnessContext:
-        """Runtime context tool harness untuk run agent (workspace + penerbit artifact)."""
-        return HarnessContext(workspace=self._workspace, artifacts=self)
+        """Runtime context tool harness untuk run agent: workspace, penerbit artifact, sandbox."""
+        return HarnessContext(workspace=self._workspace, artifacts=self, sandbox=self._sandbox)
 
     @property
     def max_bytes(self) -> int:

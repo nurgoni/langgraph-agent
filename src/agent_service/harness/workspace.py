@@ -15,6 +15,7 @@ from langchain_core.tools import BaseTool
 from agent_service.core.constants import WORKSPACE_FILES_KWARG
 from agent_service.harness.context_policy import CHARS_PER_TOKEN
 from agent_service.harness.offload import ToolOutputOffloader
+from agent_service.harness.tools.execute import create_execution_tools
 from agent_service.harness.tools.files import create_workspace_tools
 
 ATTACHMENT_NOTE_HEADING: Final = "[Attached files in the workspace (read them with read_file):"
@@ -26,18 +27,24 @@ class WorkspaceToolkit:
     Workspace sendiri tidak disimpan di sini: tool membacanya dari runtime context setiap run.
     """
 
-    def __init__(self, output_max_tokens: int) -> None:
+    def __init__(
+        self, output_max_tokens: int, execution_timeout_seconds: int | None = None
+    ) -> None:
         """Inisialisasi toolkit.
 
         Args:
             output_max_tokens: Batas output satu tool call (`TOOL_OUTPUT_MAX_TOKENS`).
+            execution_timeout_seconds: Batas waktu `run_python`/`run_shell` (F37). `None` berarti
+                sandbox tidak dikonfigurasi, jadi tool eksekusi tidak di-bind.
         """
         self._tools = create_workspace_tools(output_max_tokens * CHARS_PER_TOKEN)
+        if execution_timeout_seconds is not None:
+            self._tools.extend(create_execution_tools(execution_timeout_seconds))
         self._offloader = ToolOutputOffloader(output_max_tokens)
 
     @property
     def tools(self) -> list[BaseTool]:
-        """Tool file yang selalu di-bind ke model (keputusan user F36)."""
+        """Tool file (F36) dan, jika sandbox dikonfigurasi, tool eksekusi (F37)."""
         return list(self._tools)
 
     @property

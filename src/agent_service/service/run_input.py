@@ -19,6 +19,7 @@ from agent_service.core.constants import (
     PROJECT_ID_CONFIG_KEY,
     PROJECT_INSTRUCTIONS_CONFIG_KEY,
     PROJECT_SKILL_IDS_CONFIG_KEY,
+    PROJECT_TOOL_APPROVAL_CONFIG_KEY,
     USER_ID_CONFIG_KEY,
     WORKSPACE_FILES_KWARG,
 )
@@ -56,6 +57,7 @@ class ProjectRunContext:
     project_id: str
     instructions: str = ""
     skill_ids: tuple[str, ...] = ()
+    tool_approval: str = "never"
 
     def configurable(self) -> dict[str, Any]:  # Any: nilai configurable LangGraph
         """Kunci `configurable` untuk project ini.
@@ -68,6 +70,7 @@ class ProjectRunContext:
             PROJECT_ID_CONFIG_KEY: self.project_id,
             PROJECT_INSTRUCTIONS_CONFIG_KEY: self.instructions,
             PROJECT_SKILL_IDS_CONFIG_KEY: list(self.skill_ids),
+            PROJECT_TOOL_APPROVAL_CONFIG_KEY: self.tool_approval,
         }
 
 

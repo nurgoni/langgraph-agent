@@ -15,7 +15,15 @@ from pydantic import BaseModel, Field, JsonValue, StringConstraints, field_valid
 # Diisi service di `configurable`, jadi tidak boleh ditimpa `agent_config`. Kunci project sama
 # dengan `PROJECT_*_CONFIG_KEY` di `core/constants.py` (schema tidak boleh import core).
 RESERVED_AGENT_CONFIG_KEYS: Final = frozenset(
-    {"thread_id", "user_id", "model", "project_id", "project_instructions", "project_skill_ids"}
+    {
+        "thread_id",
+        "user_id",
+        "model",
+        "project_id",
+        "project_instructions",
+        "project_skill_ids",
+        "project_tool_approval",
+    }
 )
 
 THREADS_LIMIT_DEFAULT: Final = 20

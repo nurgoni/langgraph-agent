@@ -36,6 +36,8 @@ from agent_service.memory.traces import RunTraceRepository
 from agent_service.memory.user_memories import UserMemoryRepository
 from agent_service.memory.users import UserRepository
 from agent_service.memory.workspace import PostgresWorkspace
+from agent_service.sandbox.model import Sandbox
+from agent_service.sandbox.remote import RemoteSandbox
 from agent_service.schema.headers import THREAD_ID_HEADER
 from agent_service.service.artifacts import ArtifactService
 from agent_service.service.auth import Authenticator
@@ -113,7 +115,7 @@ def create_app(
             build_search_backend(resolved_settings),
             SkillToolkit(resolved_skills),
             ContextPolicy(max_tokens=resolved_settings.context_max_tokens),
-            WorkspaceToolkit(resolved_settings.tool_output_max_tokens),
+            build_workspace_toolkit(resolved_settings),
         )
     else:
         resolved_agents = list(agents)
@@ -158,6 +160,29 @@ def default_skill_registry() -> SkillRegistry:
     return SkillRegistry([FilesystemSkillSource(BUILTIN_SKILLS_DIR)])
 
 
+@asynccontextmanager
+async def open_sandbox(settings: Settings) -> AsyncGenerator[Sandbox | None]:
+    """`RemoteSandbox` ke `sandbox-runner` selama lifespan, atau `None` tanpa `SANDBOX_URL`."""
+    if settings.sandbox_url is None or settings.sandbox_token is None:
+        yield None
+        return
+    token = settings.sandbox_token.get_secret_value()
+    async with RemoteSandbox(settings.sandbox_url, token) as sandbox:
+        logger.info("Code execution uses the sandbox runner at %s", settings.sandbox_url)
+        yield sandbox
+
+
+def build_workspace_toolkit(settings: Settings) -> WorkspaceToolkit:
+    """Tool file workspace, ditambah tool eksekusi jika `SANDBOX_URL` diisi (F37).
+
+    >>> settings = Settings(_env_file=None, use_fake_model=True, jwt_secret="x" * 32)
+    >>> [tool.name for tool in build_workspace_toolkit(settings).tools][-1]
+    'share_file'
+    """
+    timeout = settings.sandbox_timeout_seconds if settings.sandbox_url is not None else None
+    return WorkspaceToolkit(settings.tool_output_max_tokens, execution_timeout_seconds=timeout)
+
+
 def build_search_backend(settings: Settings) -> SearchBackend:
     """Mesin pencari untuk tool web search, dari `FIRECRAWL_API_KEY` di `Settings`.
 
@@ -197,6 +222,7 @@ def _build_lifespan(
             DatabaseEngineProvider(database_url) as engine,
             CheckpointerProvider(database_url) as checkpointer,
             StoreProvider(database_url) as store,
+            open_sandbox(settings) as sandbox,
         ):
             await ensure_database_migrated(engine)
             titles = ThreadMetadataRepository(engine)
@@ -213,7 +239,11 @@ def _build_lifespan(
             app.state.registry = registry
             workspace = PostgresWorkspace(engine, settings.artifact_max_bytes)
             artifact_service = ArtifactService(
-                ArtifactRepository(engine), artifact_store, settings.artifact_max_bytes, workspace
+                ArtifactRepository(engine),
+                artifact_store,
+                settings.artifact_max_bytes,
+                workspace,
+                sandbox,
             )
             thread_repository = ThreadRepository(
                 checkpointer, titles, cleanups=[artifact_service, workspace]

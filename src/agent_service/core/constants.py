@@ -84,3 +84,11 @@ DEFAULT_TOOL_OUTPUT_MAX_TOKENS: Final = 4000
 MIN_TOOL_OUTPUT_MAX_TOKENS: Final = 100
 # Kunci `additional_kwargs` message human berisi path lampiran di workspace thread (F36).
 WORKSPACE_FILES_KWARG: Final = "workspace_files"
+
+# Sandbox eksekusi kode (FR-49, keputusan user F37). Batas waktu per eksekusi; batas lain
+# (memori, CPU, jumlah proses) ditetapkan runner.
+DEFAULT_SANDBOX_TIMEOUT_SECONDS: Final = 60
+MIN_SANDBOX_TIMEOUT_SECONDS: Final = 1
+MAX_SANDBOX_TIMEOUT_SECONDS: Final = 600
+# Kunci `configurable`: persetujuan sebelum eksekusi kode di project (`ProjectSettings`).
+PROJECT_TOOL_APPROVAL_CONFIG_KEY: Final = "project_tool_approval"

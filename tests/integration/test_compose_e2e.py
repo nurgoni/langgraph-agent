@@ -334,3 +334,62 @@ def test_attachments_land_in_the_thread_workspace(stack: ComposeStack) -> None:
     )
 
     assert output.split() == ["uploads/sales.csv"]
+
+
+# Dijalankan di container sandbox-runner: memanggil runner itu sendiri lewat RemoteSandbox, jadi
+# Docker asli yang membuat container sekali pakai (F37).
+SANDBOX_SCRIPT = """
+import asyncio, json, os
+from agent_service.sandbox.model import ExecutionRequest
+from agent_service.sandbox.remote import RemoteSandbox
+
+NETWORK = '''
+import socket
+try:
+    socket.create_connection(("1.1.1.1", 80), timeout=3)
+    print("network reachable")
+except OSError:
+    print("network blocked")
+'''
+
+async def main():
+    async with RemoteSandbox("http://localhost:8080", os.environ["SANDBOX_TOKEN"]) as sandbox:
+        network = await sandbox.execute(ExecutionRequest(language="python", code=NETWORK))
+        loop = await sandbox.execute(
+            ExecutionRequest(language="python", code="while True: pass", timeout_seconds=3)
+        )
+        files = await sandbox.execute(ExecutionRequest(
+            language="python",
+            code="import pandas as pd; pd.read_csv('in.csv').sum().to_csv('out.csv'); print('ok')",
+            files={"in.csv": b"a,b\\n1,2\\n3,4\\n"},
+        ))
+    print(json.dumps({
+        "network": network.stdout.strip(),
+        "loop": [loop.timed_out, loop.exit_code],
+        "files": {path: content.decode() for path, content in files.files.items()},
+        "stdout": files.stdout.strip(),
+    }))
+
+asyncio.run(main())
+"""
+
+
+def test_sandbox_blocks_network_stops_loops_and_returns_files(stack: ComposeStack) -> None:
+    """Acceptance F37 di Docker asli: tanpa jaringan, timeout, dan file keluar ke workspace."""
+    output = stack.compose(
+        "exec", "-T", "sandbox-runner", "python", "-c", SANDBOX_SCRIPT, timeout=300
+    )
+
+    result = json.loads(output.strip().splitlines()[-1])
+    assert result["network"] == "network blocked"
+    assert result["loop"] == [True, None]
+    assert result["stdout"] == "ok"
+    assert result["files"] == {"out.csv": ",0\na,4\nb,6\n"}
+
+
+def test_service_container_has_no_docker_access(stack: ComposeStack) -> None:
+    """Hanya sandbox-runner yang memegang docker.sock (keputusan user F37)."""
+    script = "import os; print(os.path.exists('/var/run/docker.sock'))"
+    output = stack.compose("exec", "-T", "agent-service", "python", "-c", script)
+
+    assert output.strip().splitlines()[-1] == "False"

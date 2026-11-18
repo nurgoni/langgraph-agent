@@ -10,6 +10,7 @@ from typing import Protocol, runtime_checkable
 
 from agent_service.files.workspace import Workspace
 from agent_service.memory.artifacts import ArtifactRecord
+from agent_service.sandbox.model import Sandbox
 
 
 # runtime_checkable: Pydantic memvalidasi `HarnessContext` di `ToolRuntime` dengan isinstance.
@@ -30,7 +31,11 @@ class ArtifactPublisher(Protocol):
 
 @dataclass(frozen=True)
 class HarnessContext:
-    """Dependency tool harness untuk satu run. Dibuat sekali di lifespan dan dipakai semua run."""
+    """Dependency tool harness untuk satu run. Dibuat sekali di lifespan dan dipakai semua run.
+
+    `sandbox` kosong jika `SANDBOX_URL` tidak diisi; tool eksekusi kode lalu tidak tersedia.
+    """
 
     workspace: Workspace
     artifacts: ArtifactPublisher
+    sandbox: Sandbox | None = None
