@@ -6,6 +6,17 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 
 ## [Unreleased]
 
+### Added
+
+- `docs/DATA_MODEL.md`: ERD semua tabel Postgres (aplikasi dan LangGraph), kamus kolom,
+  kardinalitas, rujukan ke luar database, dan alur penghapusan data.
+
+### Changed
+
+- Dokumentasi disinkronkan dengan `v0.7.0`: bagian umum `docs/ARCHITECTURE.md` (gambaran besar,
+  layer, siklus hidup, error, client, deployment, testing), status dan fitur `README.md`, endpoint,
+  schema, dan env var `PRD.md`, serta status rilis per milestone di `docs/ROADMAP.md`.
+
 ## [0.7.0] - 2026-11-18
 
 M7 Files & Execution: file milik user dan agent. Upload dan unduh artifact, workspace per thread

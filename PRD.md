@@ -3,13 +3,14 @@
 | | |
 |---|---|
 | Status | Draft |
-| Versi dokumen | 0.2 (menambah Fase 2: M4–M10) |
-| Tanggal | 2026-11-01, direvisi 2026-11-15 |
-| Referensi | `agent-service-toolkit/` (kode asli), [docs/adr/](docs/adr/) (keputusan arsitektur) |
+| Versi dokumen | 0.3 (sinkron dengan `v0.7.0`) |
+| Tanggal | 2026-11-01, direvisi 2026-11-15 dan 2026-11-19 |
+| Referensi | `agent-service-toolkit/` (kode asli), [docs/adr/](docs/adr/) (keputusan arsitektur), [docs/DATA_MODEL.md](docs/DATA_MODEL.md) (skema data) |
 
-**Fase 1 (v1, M1–M3)** sudah selesai di `v0.3.0`. **Fase 2 (M4–M10)** mengubah service menjadi
-produk chat dengan Project, skill, file, eksekusi kode, analisa data, RAG, dan frontend React.
-Requirement fase 2 ada di §5 bagian "Fase 2" (FR-30 dan seterusnya).
+**Fase 1 (v1, M1–M3)** selesai di `v0.3.0`. **Fase 2 (M4–M10)** mengubah service menjadi produk
+chat dengan Project, skill, file, eksekusi kode, analisa data, RAG, dan frontend React. M4–M7
+(FR-30–FR-50) sudah dirilis di `v0.7.0`. M8–M10 (FR-51–FR-58) belum dikerjakan. Requirement fase 2
+ada di §5 bagian "Fase 2" (FR-30 dan seterusnya).
 
 ## 1. Latar Belakang
 
@@ -346,19 +347,22 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
 | GET, PATCH, DELETE | `/projects/{project_id}` | – / `ProjectUpdate` / – | `Project` / `Project` / 204 |
 | POST | `/projects/{project_id}/invoke`, `/stream`, `/history` | sama dengan route agent | sama dengan route agent |
 | GET, PATCH, DELETE | `/projects/{project_id}/threads[/{thread_id}]` | sama dengan route agent | sama dengan route agent |
+| GET | `/memories` | – | `MemoryList` |
+| DELETE | `/memories/{memory_id}` | – | 204 |
+| GET | `/runs/{run_id}/trace` | – | `RunTrace` |
+| POST | `/artifacts` | multipart `file` | `ArtifactRef` (201) |
+| GET | `/artifacts/{artifact_id}` | – | isi file (`attachment`) |
+| DELETE | `/artifacts/{artifact_id}` | – | 204 |
 | GET | `/health` | – | `{"status": "ok"}` |
 
 Varian tanpa `{agent_id}` (`/invoke`, `/stream`, dan seterusnya) memakai agent default. Mulai F24,
 semua endpoint kecuali `/health` dan `/auth/login` butuh `Authorization: Bearer <access_token>`,
 dan pemilik thread diambil dari token (FR-33).
 
-**Endpoint baru Fase 2 (rencana, detail final ditetapkan di fitur masing-masing):**
+**Endpoint yang direncanakan (detail final ditetapkan di fitur masing-masing):**
 
 | Method | Path | FR | Fitur |
 |---|---|---|---|
-| GET, DELETE | `/memories`, `/memories/{memory_id}` | FR-40 | F30 |
-| GET | `/runs/{run_id}/trace` | FR-41 | F31 |
-| POST, GET, DELETE | `/artifacts`, `/artifacts/{artifact_id}` | FR-46 | F35 (selesai) |
 | GET | `/jobs`, `/jobs/{job_id}/runs` | FR-53 | F41 |
 | POST, GET, DELETE | `/projects/{project_id}/documents` | FR-55 | F43 |
 | GET, POST | `/v1/models`, `/v1/chat/completions` | FR-58 | F46 |
@@ -369,11 +373,14 @@ dan pemilik thread diambil dari token (FR-33).
 LoginRequest    { username: str (huruf kecil, [a-z0-9._-], 3–32), password: str }
 TokenResponse   { access_token: str, token_type: "bearer", expires_in: int, user_id: str,
                   username: str, role: "user"|"service" }
-UserInput       { message: str, model?: str, thread_id?: str, agent_config?: dict }
+UserInput       { message: str, model?: str, thread_id?: str, agent_config?: dict,
+                  artifact_ids?: list[str] }
 StreamInput     UserInput + { stream_tokens: bool = true }
 ChatMessage     { type: "human"|"ai"|"tool"|"custom", content: str, tool_calls: list,
                   tool_call_id?: str, run_id?: str, agent?: str, reasoning?: str,
+                  truncated: bool, artifacts: list[ArtifactRef], response_metadata?: dict,
                   custom_data?: dict }
+ArtifactRef     { id: str (UUID), name: str, mime_type: str, size: int }
 ChatHistoryInput { thread_id: str }
 ChatHistory     { messages: list[ChatMessage] }
 ThreadSummary   { thread_id: str, agent_id: str, project_id?: str, title: str,
@@ -382,7 +389,7 @@ ProjectCreate   { name: str, base_agent_id: str, description?: str, model?: str,
                   instructions?: str, skill_ids?: list["<scope>/<name>"],
                   settings?: ProjectSettings }
 ProjectUpdate   ProjectCreate tanpa base_agent_id, semua opsional (PATCH)
-ProjectSettings { max_tokens?: int }
+ProjectSettings { max_tokens?: int, tool_approval: "never"|"always" = "never" }
 SkillSummary    { id: "<scope>/<name>", name, description, scope, version, read_only,
                   resources: list[str] }
 SkillDetail     SkillSummary + { body: str }
@@ -390,6 +397,11 @@ Project         ProjectCreate + { id, scope: "builtin"|"user", read_only, create
                   updated_at }
 ThreadRenameInput { title: str (1–TITLE_MAX_LENGTH karakter) }
 AgentInfo       { key: str, description: str, config_schema: dict (JSON Schema) }
+Memory          { id: str, text: str, created_at: datetime, updated_at: datetime }
+RunTrace        { run_id, thread_id, agent_id, project_id?, status, started_at, ended_at,
+                  duration_ms, input_tokens?, output_tokens?, error?, spans: list[TraceSpan] }
+TraceSpan       { kind: "run"|"model"|"tool", name, status: "ok"|"error"|"interrupted",
+                  started_at, ended_at, duration_ms, input_tokens?, output_tokens?, error? }
 ```
 
 `agent_config` tidak boleh berisi key reservasi `thread_id`, `user_id`, atau `model` (422). Selain
@@ -412,7 +424,7 @@ Stream selalu diakhiri `[DONE]`, termasuk ketika terjadi error. Urutan per run: 
 call, hasil tool, pertanyaan interrupt, event custom), lalu `[DONE]`. Input human tidak di-echo.
 Node yang LLM-nya diberi tag `skip_stream` tidak menghasilkan frame `token`.
 
-## 8. Konfigurasi (env var v1)
+## 8. Konfigurasi (env var)
 
 | Variabel | Default | Keterangan |
 |---|---|---|
@@ -427,21 +439,26 @@ Node yang LLM-nya diberi tag `skip_stream` tidak menghasilkan frame `token`.
 | `JWT_SECRET` | – (wajib) | Kunci HS256 access token, minimal 32 karakter (FR-33). Menggantikan `AUTH_SECRET` mulai F24 |
 | `JWT_TTL_SECONDS` | `43200` | Umur access token (12 jam), tanpa refresh token |
 | `CORS_ORIGINS` | – | Origin browser yang diizinkan, dipisah koma (FR-34) |
+| `CONTEXT_MAX_TOKENS` | `16000` | Anggaran token riwayat yang dikirim ke model, minimum 1000 (FR-39) |
+| `ARTIFACT_DIR` | `data/artifacts` | Folder isi file artifact (FR-46) |
+| `ARTIFACT_MAX_BYTES` | `26214400` (25 MB) | Batas ukuran artifact dan file workspace (FR-46, FR-47) |
+| `TOOL_OUTPUT_MAX_TOKENS` | `4000` | Batas output tool sebelum dipindah ke workspace (FR-48) |
+| `SANDBOX_URL`, `SANDBOX_TOKEN` | – | URL dan token bersama `sandbox-runner`. Kosong = tanpa tool eksekusi (FR-49) |
+| `SANDBOX_TIMEOUT_SECONDS` | `60` | Batas waktu satu eksekusi kode, maksimum 600 |
+| `SANDBOX_IMAGE` | image sandbox compose | Dibaca `sandbox-runner`, bukan service API |
 | `FIRECRAWL_API_KEY` | – | Key Firecrawl untuk tool `web_search`. Kosong = tool menjawab "not configured", agent tetap berjalan |
 | `HOST` / `PORT` | `0.0.0.0` / `8080` | Bind address service |
 | `LOG_LEVEL` | `INFO` | Level logging |
-| `AGENT_URL` | `http://localhost:8080` | Dipakai UI/client |
+| `AGENT_URL` | `http://localhost:8080` | Dipakai UI/client/eval |
+| `EVAL_USERNAME`, `EVAL_PASSWORD`, `EVAL_TIMEOUT_SECONDS` | –, –, `300` | Akun dan batas waktu runner eval (FR-41) |
 
-**Env var baru Fase 2 (rencana):**
+`SQLITE_DB_PATH` (digantikan `DATABASE_URL` di F23) dan `AUTH_SECRET` (digantikan `JWT_SECRET` di
+F24) sudah dihapus.
+
+**Env var yang direncanakan:**
 
 | Variabel | Fitur | Keterangan |
 |---|---|---|
-| `LLM_MAX_TOKENS` | F21 | Batas token jawaban default |
-| `DATABASE_URL` | F23 (selesai) | Koneksi Postgres. Menggantikan `SQLITE_DB_PATH` |
-| `CONTEXT_MAX_TOKENS` | F29 | Anggaran token riwayat yang dikirim ke model |
-| `ARTIFACT_DIR`, `ARTIFACT_MAX_BYTES` | F35 (selesai) | Lokasi (default `data/artifacts`) dan batas ukuran artifact (default 25 MB) |
-| `TOOL_OUTPUT_MAX_TOKENS` | F36 (selesai) | Batas output tool sebelum dipindah ke workspace (default 4.000) |
-| `SANDBOX_URL`, `SANDBOX_TOKEN`, `SANDBOX_TIMEOUT_SECONDS`, `SANDBOX_IMAGE` | F37 (selesai) | URL dan token `sandbox-runner`, batas waktu eksekusi (default 60 detik), image sandbox (di runner) |
 | `DATA_SOURCE_URL` | F39 | Koneksi read-only ke database yang dianalisa |
 | `JOBS_FILE` | F41 | Lokasi definisi job terjadwal |
 | `EMBEDDING_MODEL` | F43 | Model embedding OpenAI-compatible |
