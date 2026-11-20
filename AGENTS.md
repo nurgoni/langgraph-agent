@@ -8,6 +8,7 @@ mulai bekerja.
 - Cara menjalankan project → [README.md](README.md)
 - Keputusan, status, dan konteks terakhir → [.agents/memory.md](.agents/memory.md)
 - Cara kerja service (lifespan, alur request, menambah agent) → [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- Tabel, relasi, dan alur penghapusan data (ERD) → [docs/DATA_MODEL.md](docs/DATA_MODEL.md)
 - Daftar fitur dan urutan pengerjaan → [docs/ROADMAP.md](docs/ROADMAP.md)
 - Branch, commit, PR, dan release → [CONTRIBUTING.md](CONTRIBUTING.md)
 - Prosedur kerja berulang untuk coding agent → [Dev-time Skill](#dev-time-skill)
@@ -315,6 +316,8 @@ Skill ini untuk **mengembangkan repo**, berbeda dengan skill runtime produk di
 - [ ] Ada contoh penggunaan (`__main__` atau doctest).
 - [ ] README diperbarui jika ada perintah/env var/endpoint baru.
 - [ ] `contracts/` diekspor ulang jika schema atau route API berubah.
+- [ ] `docs/ARCHITECTURE.md` diperbarui jika alur atau desain berubah, dan
+      `docs/DATA_MODEL.md` jika skema data berubah.
 - [ ] PRD diperbarui jika requirement berubah.
 - [ ] Status fitur di [docs/ROADMAP.md](docs/ROADMAP.md) diperbarui.
 - [ ] **`.agents/memory.md` diperbarui** jika ada keputusan desain, perubahan scope, atau pelajaran

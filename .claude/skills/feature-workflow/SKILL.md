@@ -76,7 +76,10 @@ uv run ruff check . && uv run ruff format --check . && uv run pyrefly check \
 - `PRD.md` jika requirement berubah (FR, tabel endpoint, §11 open question terjawab).
 - `CHANGELOG.md` § [Unreleased]: Added/Changed, termasuk langkah upgrade (migrasi, env baru).
 - `README.md` dan `.env.example` untuk command, env var, dan endpoint baru. `AGENTS.md` § Perintah
-  untuk entrypoint baru. `docs/ARCHITECTURE.md` untuk alur dan desain.
+  untuk entrypoint baru. `docs/ARCHITECTURE.md` untuk alur dan desain, termasuk bagian umum
+  (Gambaran Besar, Layer, Siklus Hidup, Error, Deployment, Testing) jika fitur mengubahnya.
+- `docs/DATA_MODEL.md` jika ada tabel, kolom, index, channel state, atau alur penghapusan baru
+  (diagram, kamus entitas, tabel relasi).
 - `.agents/memory.md` lewat skill `memory-maintenance`.
 
 ## 7. Laporan ke user

@@ -6,43 +6,68 @@ kontrak API ada di [PRD.md](../PRD.md).
 
 ## Gambaran Besar
 
-Service ini membungkus graph LangGraph dengan API FastAPI. Satu proses berisi:
+Service ini membungkus graph LangGraph dengan API FastAPI. Proses `agent-service` berisi:
 
 - **Registry agent.** Setiap agent dapat membangun graph untuk model mana pun yang diizinkan.
-- **Satu database Postgres.** Database ini menyimpan checkpoint percakapan dan judul custom thread.
-- **Endpoint HTTP.** Ada endpoint untuk menjalankan agent (`/invoke`, `/stream`), membaca riwayat
-  (`/history`), dan mengelola thread (`/threads`).
+- **Harness** (`harness/`). Prompt dirakit setiap giliran, skill, context policy, long-term memory,
+  tool file workspace, dan tool eksekusi kode.
+- **Project.** Agent deklaratif: agent kode + instruksi, skill, model, dan pengaturan.
+- **Satu database Postgres.** Checkpoint percakapan, akun, project, memory, trace, metadata artifact,
+  dan file workspace. Skema lengkapnya ada di [DATA_MODEL.md](DATA_MODEL.md).
+- **Endpoint HTTP.** Login, menjalankan agent (`/invoke`, `/stream`), riwayat, thread, project,
+  skill, memory, trace, dan artifact.
 
-Client dan UI (M2) berkomunikasi dengan service hanya lewat HTTP, dengan schema dari
-`agent_service.schema`.
+Proses lain di stack Compose:
 
-Dokumen ini menjelaskan arsitektur yang **sudah dibangun** (`v0.3.0`). Arah Fase 2 (Postgres,
-harness, Project, frontend React, sandbox) ada di [ADR](adr/README.md) dan
-[ROADMAP](ROADMAP.md). Bagian dokumen ini diperbarui oleh fitur yang mengubahnya.
+```text
+browser ──► web (nginx + React) ──/api──► agent-service ──► postgres
+                                              ├──────────► sandbox-runner ──► Docker (container sekali pakai)
+                                              └──────────► LLM OpenAI-compatible
+dev console Streamlit (ui) ─────────────────► agent-service
+```
+
+Client, UI, dan frontend berkomunikasi dengan service hanya lewat HTTP: Python memakai schema dari
+`agent_service.schema`, dan frontend memakai tipe yang digenerate dari `contracts/`.
+
+Dokumen ini menjelaskan arsitektur yang **sudah dibangun** (`v0.7.0`, sampai F38). Fitur
+berikutnya ada di [ROADMAP](ROADMAP.md), dan keputusan besarnya di [ADR](adr/README.md). Bagian
+dokumen ini diperbarui oleh fitur yang mengubahnya.
 
 ## Layer
 
 ```text
 src/agent_service/
 ├── core/      Settings, konstanta, configure_logging
-├── llm/       ModelFactory, FakeModel
+├── llm/       ModelFactory, ReasoningChatOpenAI, FakeModel
 ├── agents/    BaseAgent, AgentRegistry, catalog, ChatbotAgent, ToolCallingAgent, InterruptAgent,
 │              SupervisorAgent, tools/
-├── memory/    DatabaseEngineProvider, migrator, CheckpointerProvider, StoreProvider,
-│              ThreadMetadataRepository, UserMemoryRepository
+├── harness/   ContextBuilder, ContextPolicy, SkillRegistry + SkillToolkit, MemoryToolkit,
+│              WorkspaceToolkit, ToolOutputOffloader, tool eksekusi, HarnessContext
+├── skills/    Skill built-in (builtin/<name>/SKILL.md), data, bukan kode
+├── files/     ArtifactStore (LocalArtifactStore), protocol Workspace (InMemoryWorkspace)
+├── sandbox/   Sandbox protocol, RemoteSandbox, DockerSandbox, runner (service sandbox-runner)
+├── memory/    DatabaseEngineProvider, migrator, CheckpointerProvider, StoreProvider, repository
+│              tabel (users, projects, thread_metadata, artifacts, run_traces), PostgresWorkspace,
+│              UserMemoryRepository
 ├── schema/    Model Pydantic untuk API: request, response, event SSE, nama header
-├── service/   create_app, lifespan, auth, route, StreamService, ThreadRepository
+├── service/   create_app, lifespan, auth, route, StreamService, ThreadRepository, ProjectService,
+│              ArtifactService, RunTraceCollector, contracts
+├── evals/     EvalRunner dan scorer (hanya lewat client)
 ├── client/    AgentClient (sync + async), StreamRun, SseParser
-└── ui/        Streamlit: app, UiSettings, UrlState, ChatSession, SidebarView, ChatView, MessageRenderer
+└── ui/        Streamlit dev console: app, LoginView, UrlState, ChatSession, SidebarView, ChatView,
+               MessageRenderer
+frontend/      React + TypeScript (lihat Frontend)
 ```
 
 Panah berarti "boleh import". Import ke arah sebaliknya dilarang.
 
 ```text
 ui ──► client ──► schema
-service ──► agents ──► llm ──► core
+evals ──► client
+service ──► agents ──► harness ──► llm, memory, files, sandbox ──► core
 service ──► memory ──► core
 service ──► schema
+frontend ──► contracts/ (tipe hasil generate), lewat HTTP saja
 ```
 
 - **`schema/` hanya bergantung pada pydantic dan stdlib.** Aturan ini dicek otomatis oleh
@@ -59,16 +84,21 @@ sequenceDiagram
     participant A as create_app
     participant L as lifespan
     U->>A: create_app(settings)
-    A->>A: validasi agent default, pasang exception handler dan router
+    A->>A: buat SkillRegistry, toolkit harness, dan agent bawaan
+    A->>A: validasi agent default, pasang exception handler, CORS, dan router
     U->>L: startup
-    L->>L: ModelFactory(settings)
-    L->>L: buka DatabaseEngineProvider + CheckpointerProvider (gagal cepat jika DB mati)
+    L->>L: SkillRegistry.load() (skill tidak valid dilewati)
+    L->>L: LocalArtifactStore.prepare(), ModelFactory(settings)
+    L->>L: buka engine + CheckpointerProvider + StoreProvider (gagal cepat jika DB mati)
+    L->>L: open_sandbox (RemoteSandbox jika SANDBOX_URL diisi)
     L->>L: ensure_database_migrated (gagal jika migrasi belum jalan)
-    L->>L: AgentRegistry.register(...) lalu load_all()
+    L->>L: AgentRegistry(model_factory, checkpointer, store).load_all()
+    L->>L: ArtifactService, ThreadRepository(cleanups), ProjectService
+    L->>L: ProjectService.seed_builtin(BUILTIN_PROJECTS)
     L->>L: simpan ke app.state
     Note over U,L: melayani request
     U->>L: shutdown
-    L->>L: tutup engine dan pool koneksi Postgres
+    L->>L: tutup client sandbox, pool store/checkpointer, dan engine
 ```
 
 - **Tidak ada side effect saat import.** `create_app()` tanpa argumen membaca `Settings()` saat
@@ -77,9 +107,14 @@ sequenceDiagram
 - **`load_all()`** menjalankan `agent.load()` dan meng-compile graph untuk model default. Agent
   yang gagal di tahap ini dicatat di log dan ditandai *unavailable* (503), sementara agent lain
   tetap berjalan.
-- **`app.state`** berisi `settings`, `default_agent_id`, `model_factory`, `registry`, dan
-  `thread_repository`. Route mengaksesnya lewat dependency bertipe di `service/dependencies.py`
-  (`RegistryDep`, `ThreadRepositoryDep`, dan lainnya), bukan lewat `request.app.state` langsung.
+- **`app.state`** berisi `settings`, `default_agent_id`, `skill_registry`, `authenticator`,
+  `model_factory`, `registry`, `thread_repository`, `memory_repository`, `trace_repository`,
+  `project_service`, dan `artifact_service`. Route mengaksesnya lewat dependency bertipe di
+  `service/dependencies.py` (`RegistryDep`, `ThreadRepositoryDep`, dan lainnya), bukan lewat
+  `request.app.state` langsung.
+- **Agent dibuat sebelum database ada.** Karena itu resource per run (workspace, penerbit artifact,
+  sandbox) sampai ke tool lewat runtime context `HarnessContext`, bukan konstruktor (lihat
+  [Workspace dan tool file](#workspace-dan-tool-file-f36)).
 
 ## Alur Request
 
@@ -135,7 +170,8 @@ Hal penting dari alur ini:
 
 ### Kepemilikan Thread
 
-Thread tidak punya tabel sendiri. Setiap run menyimpan `user_id` dan `agent_id` di
+Thread tidak punya tabel sendiri (lihat [DATA_MODEL.md](DATA_MODEL.md#thread-entitas-virtual)).
+Setiap run menyimpan `user_id`, `agent_id`, dan `project_id` (khusus thread project) di
 `RunnableConfig["metadata"]` (`thread_access.run_metadata`), dan LangGraph menyalinnya ke
 metadata setiap checkpoint. Dari situ:
 
@@ -151,8 +187,18 @@ metadata setiap checkpoint. Dari situ:
 
 | Exception | Status | Asal |
 |---|---|---|
+| `AuthenticationError` | 401 + `WWW-Authenticate: Bearer` | Login gagal, token tidak ada/rusak/kedaluwarsa |
 | `AgentNotFoundError` | 404 | `AgentRegistry.get_agent` |
 | `ThreadNotFoundError` | 404 | `ensure_thread_owner` |
+| `ProjectNotFoundError` | 404 | `ProjectService` (tidak ada atau milik user lain) |
+| `SkillNotFoundError` | 404 | `GET /skills/{id}` |
+| `MemoryNotFoundError` | 404 | `DELETE /memories/{id}` |
+| `RunTraceNotFoundError` | 404 | `GET /runs/{run_id}/trace` |
+| `ArtifactNotFoundError` | 404 | `ArtifactService` (tidak ada, milik user lain, atau ID bukan UUID) |
+| `ProjectReadOnlyError` | 403 | Mengubah atau menghapus project built-in |
+| `ArtifactThreadConflictError` | 409 | Artifact sudah tertaut ke thread lain |
+| `ArtifactTooLargeError` | 413 | File melebihi `ARTIFACT_MAX_BYTES` |
+| `InvalidProjectError` | 422 | Agent dasar tidak tersedia, skill tidak dikenal |
 | `UnknownModelError` | 422 | `ModelFactory.resolve_name` |
 | `RequestValidationError` | 422 (list per field) | Body/query FastAPI, `parse_agent_config` |
 | `AgentUnavailableError` | 503 | Agent yang gagal `load()`/`build()` saat startup |
@@ -511,11 +557,12 @@ ChatPage ── ArtifactWorkspace (ArtifactPanelContext, ResizablePanelGroup | S
 
 ## Persistence
 
-Satu database Postgres di `DATABASE_URL` ([ADR 0001](adr/0001-postgres-only.md)):
+Satu database Postgres di `DATABASE_URL` ([ADR 0001](adr/0001-postgres-only.md)). ERD, kamus
+kolom, kardinalitas, dan alur penghapusan ada di [DATA_MODEL.md](DATA_MODEL.md).
 
 | Tabel | Pemilik | Isi |
 |---|---|---|
-| `checkpoints`, `checkpoint_blobs`, `checkpoint_writes`, `checkpoint_migrations` | `AsyncPostgresSaver` (via `CheckpointerProvider`) | State graph per langkah, termasuk metadata `user_id`/`agent_id` |
+| `checkpoints`, `checkpoint_blobs`, `checkpoint_writes`, `checkpoint_migrations` | `AsyncPostgresSaver` (via `CheckpointerProvider`) | State graph per langkah, termasuk metadata `user_id`/`agent_id`/`project_id` |
 | `thread_metadata` | `ThreadMetadataRepository` (SQLAlchemy Core) | Judul custom hasil rename |
 | `users` | `UserRepository` (SQLAlchemy Core) | Akun login: username, hash argon2, role |
 | `projects` | `ProjectRepository` (SQLAlchemy Core) | Project built-in dan milik user |
@@ -543,7 +590,9 @@ Satu database Postgres di `DATABASE_URL` ([ADR 0001](adr/0001-postgres-only.md))
   `pytest_asyncio_loop_factories`.
 
 Penghapusan thread memanggil `adelete_thread`, menghapus judulnya, lalu menjalankan setiap
-`ThreadDataCleanup` (artifact thread F35, workspace thread F36).
+`ThreadDataCleanup` (artifact thread F35, workspace thread F36). Tidak ada foreign key, jadi
+penghapusan berantai ini dilakukan aplikasi. `run_traces` sengaja tidak ikut terhapus (lihat
+[DATA_MODEL.md](DATA_MODEL.md#data-yang-tidak-ikut-terhapus)).
 
 ### Artifact (F35)
 
@@ -717,7 +766,9 @@ START ─► (data sudah ada?) ─ya─► respond ─► END
        def __init__(self) -> None:
            super().__init__(agent_id="summarizer", description="Summarizes the conversation.")
 
-       def build(self, model: BaseChatModel, checkpointer: Checkpointer) -> AgentGraph:
+       def build(
+           self, model: BaseChatModel, checkpointer: Checkpointer, store: BaseStore | None = None
+       ) -> AgentGraph:
            async def summarize(state: MessagesState, config: RunnableConfig) -> MessagesState:
                limit = config["configurable"]["max_sentences"]
                prompt = SystemMessage(f"Summarize in at most {limit} sentences.")
@@ -730,6 +781,9 @@ START ─► (data sudah ada?) ─ya─► respond ─► END
            return builder.compile(checkpointer=checkpointer)
    ```
 
+   Override `build` wajib membawa semua parameter induk, termasuk `store` (dipakai agent yang
+   memerlukan long-term memory). Untuk agent dengan tool, prompt dari `ContextBuilder`, skill, atau
+   tool file, lebih sederhana membuat instance `ToolCallingAgent` daripada subclass baru.
 2. **Tulis deskripsi publik `config_schema` secara eksplisit dalam bahasa Inggris**
    (`json_schema_extra`). Docstring model ikut tampil di `/info`. Agent tanpa opsi cukup memakai
    `EmptyAgentConfig` bawaan.
@@ -746,8 +800,12 @@ START ─► (data sudah ada?) ─ya─► respond ─► END
 oleh `tests/client/test_layering.py`.
 
 - **Tidak ada request di konstruktor.** `get_info()` diambil saat pertama dipakai lalu di-cache.
-- **`invoke`** mengembalikan `AgentReply`, berisi message beserta ID thread/user dari header
-  respons.
+- **Login.** `login(username, password)` menyimpan access token di client dan mengirimkannya sebagai
+  `Authorization: Bearer` di setiap request berikutnya. Identitas user selalu dari token.
+- **`invoke`** mengembalikan `AgentReply`, berisi message beserta `thread_id` dari header
+  `X-Thread-Id`.
+- **Selain chat**, client membungkus thread, project, skill, memory, trace, dan artifact
+  (upload/unduh), semuanya dengan pasangan sync/async.
 - **`stream`** mengembalikan `StreamRun`. Request dikirim saat masuk `with`, sehingga error
   404/422 dilempar di situ sebagai `AgentClientError`. Event berupa model `StreamEvent` yang sama
   dengan milik service. Frame `error` diteruskan sebagai `ErrorEvent`, dan stream yang berakhir
@@ -757,8 +815,9 @@ oleh `tests/client/test_layering.py`.
 
 ## UI
 
-`ui/` hanya bergantung pada `client/`, `schema/`, streamlit, dan pydantic. Aturan ini dicek oleh
-`tests/ui/test_layering.py`.
+`ui/` adalah **dev console** Streamlit (FR-45): fitur baru tidak ditambahkan di sini, dan UI utama
+adalah [Frontend](#frontend) React. `ui/` hanya bergantung pada `client/`, `schema/`, streamlit, dan
+pydantic. Aturan ini dicek oleh `tests/ui/test_layering.py`.
 
 - **`app.py`** dijalankan ulang oleh Streamlit pada setiap interaksi. `UiSettings` membaca
   `AGENT_URL`. Setiap session browser punya `AgentClient` sendiri, karena `agent_id` dan access
@@ -809,16 +868,31 @@ dan `/history`. UI menampilkan peringatan di bawah jawaban. `FakeModel` menerusk
 
 ## Deployment
 
-`docker/Dockerfile` punya dua target dari base yang sama: `service`
-(`python -m agent_service.run_service`, juga dipakai service `migrate`) dan `ui` (`streamlit run`).
-Setiap target meng-install hanya extra miliknya (`uv sync --frozen --no-dev --extra service` atau
-`--extra ui`), sehingga image service tanpa Streamlit dan image UI tanpa LangGraph. Test e2e
-`test_image_ships_only_its_extra` menjaga batas ini.
-`compose.yaml` menjalankan `postgres` (image `pgvector/pgvector`, volume `postgres-data`),
-`migrate` (sekali jalan), lalu keduanya. Service API menunggu `migrate` selesai dengan sukses
-(`service_completed_successfully`). Service memakai FakeModel secara default, dan UI menunggu
-healthcheck service, lalu menghubunginya di `http://agent-service:8080`. `compose.llm.yaml`
-menimpa konfigurasi model dengan LLM asli.
+Image:
+
+| File | Target | Isi |
+|---|---|---|
+| `docker/Dockerfile` | `service` | `python -m agent_service.run_service`, juga dipakai service `migrate`. Extra `service` saja |
+| `docker/Dockerfile` | `sandbox-runner` | Runner sandbox (F37), satu-satunya yang me-mount `docker.sock` |
+| `docker/Dockerfile` | `ui` | Dev console Streamlit. Extra `ui` saja |
+| `docker/sandbox.Dockerfile` | – | Image eksekusi kode: Python + numpy, pandas, matplotlib |
+| `frontend/Dockerfile` | `web` | Build React, disajikan nginx unprivileged + proxy `/api` |
+
+Setiap target Python meng-install hanya extra miliknya (`uv sync --frozen --no-dev --extra
+service` atau `--extra ui`), sehingga image service tanpa Streamlit dan image UI tanpa LangGraph.
+Test e2e `test_image_ships_only_its_extra` menjaga batas ini.
+
+`compose.yaml`:
+
+```text
+postgres (healthy) ──► migrate (selesai) ─────────┐
+sandbox-image (build lalu selesai)                 ├──► agent-service (healthy) ──► web :3000, ui :8501
+sandbox-runner (healthy, tanpa port host) ─────────┘
+volume: postgres-data (database), artifacts (isi file artifact)
+```
+
+Service memakai FakeModel secara default. `compose.llm.yaml` menimpa konfigurasi model dengan LLM
+asli.
 
 ## Testing
 
@@ -842,3 +916,11 @@ menimpa konfigurasi model dengan LLM asli.
   `e2e`.
 - **pytest memakai `--import-mode=importlib`.** Akibatnya file test tidak saling import, dan fake
   bersama disediakan lewat fixture.
+- **Aturan arsitektur dites otomatis:** layering per package (`tests/*/test_layering.py`), larangan
+  eksekusi kode di proses service (`tests/test_no_code_execution.py`, NFR-10), dan kontrak API
+  yang usang (`export_contracts --check`).
+- **Eval:** `tests/evals/test_datasets.py` memvalidasi semua dataset dan menjalankan
+  `evals/smoke.yaml` dengan FakeModel.
+- **Frontend dites dengan Vitest** (jsdom) dari `frontend/` (`corepack pnpm test`), dengan rekaman
+  SSE asli di `src/features/chat/__fixtures__/`. `corepack pnpm run check` mencocokkan tipe API
+  dengan `contracts/`, lalu menjalankan `tsc` dan ESLint.

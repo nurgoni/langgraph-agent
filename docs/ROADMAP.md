@@ -64,19 +64,19 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 
 ## Milestone & Rilis
 
-| Milestone | Fitur | Rilis | Hasil |
-|---|---|---|---|
-| M0: Bootstrap | F00 | – | Repo, tooling, dan CI siap |
-| M1: Core + Service | F01–F10, F18 | `v0.1.0` | API lengkap dengan `chatbot`, dites dengan FakeModel |
-| M2: Client + UI | F11–F14 | `v0.2.0` | Chat end-to-end via Docker Compose |
-| M3: Agent tambahan | F19, F15–F17, F20 | `v0.3.0` | Reasoning terlihat, tool calling, human-in-the-loop, multi-agent |
-| M4: Foundation | F21–F25 | `v0.4.0` | Postgres di compose, login JWT, batas token, image lebih kecil, kontrak API dipublikasikan |
-| M5: Harness Core | F26–F31 | `v0.5.0` | Project, prompt dirakit per giliran, skill built-in, context management, memory, eval |
-| M6: Frontend | F32–F34 | `v0.6.0` | **Demo showcase:** chat React bergaya Claude dengan Projects |
-| M7: Files & Execution | F35–F38 | `v0.7.0` | Artifact, workspace, sandbox, panel artifact |
-| M8: Data Analytics | F39–F42 | `v0.8.0` | Analisa SQL → chart, job terjadwal → PDF |
-| M9: Knowledge | F43–F45 | `v0.9.0` | RAG per Project dengan ingestion |
-| M10: Interop | F46 | `v0.10.0` | Endpoint OpenAI-compatible |
+| Milestone | Fitur | Rilis | Status | Hasil |
+|---|---|---|---|---|
+| M0: Bootstrap | F00 | – | selesai | Repo, tooling, dan CI siap |
+| M1: Core + Service | F01–F10, F18 | `v0.1.0` | dirilis 2026-11-04 | API lengkap dengan `chatbot`, dites dengan FakeModel |
+| M2: Client + UI | F11–F14 | `v0.2.0` | dirilis 2026-11-05 | Chat end-to-end via Docker Compose |
+| M3: Agent tambahan | F19, F15–F17, F20 | `v0.3.0` | dirilis 2026-11-12 | Reasoning terlihat, tool calling, human-in-the-loop, multi-agent |
+| M4: Foundation | F21–F25 | `v0.4.0` | dirilis 2026-11-15 | Postgres di compose, login JWT, batas token, image lebih kecil, kontrak API dipublikasikan |
+| M5: Harness Core | F26–F31 | `v0.5.0` | dirilis 2026-11-17 | Project, prompt dirakit per giliran, skill built-in, context management, memory, eval |
+| M6: Frontend | F32–F34 | `v0.6.0` | dirilis 2026-11-18 | **Demo showcase:** chat React bergaya Claude dengan Projects |
+| M7: Files & Execution | F35–F38 | `v0.7.0` | dirilis 2026-11-18 | Artifact, workspace, sandbox, panel artifact |
+| M8: Data Analytics | F39–F42 | `v0.8.0` | **berikutnya** | Analisa SQL → chart, job terjadwal → PDF |
+| M9: Knowledge | F43–F45 | `v0.9.0` | todo | RAG per Project dengan ingestion |
+| M10: Interop | F46 | `v0.10.0` | todo | Endpoint OpenAI-compatible |
 
 Arsitektur Fase 2 (M4–M10) mengikuti [ADR 0001–0005](adr/README.md).
 

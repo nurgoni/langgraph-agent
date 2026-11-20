@@ -24,7 +24,7 @@ berulang ada di dev-time skill `.claude/skills/` (daftar di AGENTS.md § Dev-tim
   [archive/decision-log-m0-m4.md](archive/decision-log-m0-m4.md), F26–F31 di
   [archive/decision-log-m4-m5.md](archive/decision-log-m4-m5.md), dan dev-time skill + F32–F34 di
   [archive/decision-log-m6.md](archive/decision-log-m6.md).
-- **Terakhir diperbarui:** 2026-11-19 (back-merge v0.7.0)
+- **Terakhir diperbarui:** 2026-11-19 (audit dokumen + ERD, menunggu user commit/PR)
 
 ## Aturan Kerja
 
@@ -84,10 +84,31 @@ Ringkasan pelajaran dari M0–M6 yang masih berlaku (detail di arsip dan entri f
 - **E2E Docker:** build image `web` bisa melewati `BUILD_TIMEOUT_SECONDS` (900) atau putus karena
   registry. Build image terpisah tanpa timeout (dengan retry), lalu jalankan e2e. Untuk menguji fitur
   sebelumnya sambil mengerjakan fitur baru, jalankan e2e dari salinan repo di scratchpad.
+- **Dokumen umum ikut usang:** fitur cenderung hanya menambah bagiannya sendiri. Di akhir fitur,
+  periksa juga bagian umum ARCHITECTURE.md, status README, dan PRD §7–§8, serta `DATA_MODEL.md`.
 - **Hook pre-commit pada file data:** `end-of-file-fixer` mengubah fixture yang sengaja diakhiri
   `\n\n` (dikecualikan), dan `check-yaml` butuh `--allow-multiple-documents` untuk lockfile pnpm.
 
 ## Decision Log
+
+### 2026-11-19: Audit dokumentasi dan ERD
+
+- **Temuan:** bagian umum `docs/ARCHITECTURE.md` (Gambaran Besar masih `v0.3.0`, Layer, Siklus
+  Hidup, tabel Error, Client masih menyebut ID user dari header, Deployment, Testing) dan awal
+  `README.md` (status `v0.1.0`, daftar fitur, diagram) usang. Penyebabnya, setiap fitur hanya
+  menambah bagiannya sendiri. `PRD.md` §7–§8 juga belum sinkron (endpoint F30/F31/F35 masih di
+  tabel rencana, schema tanpa `truncated`/`artifacts`/`tool_approval`).
+- **Keputusan desain:** ERD ditulis di `docs/DATA_MODEL.md` (Mermaid), bukan di ARCHITECTURE.md.
+  Thread digambar sebagai entitas virtual, karena tidak punya tabel. Definition of Done
+  (`AGENTS.md`) dan skill `feature-workflow` § 6 kini mewajibkan bagian umum ARCHITECTURE.md dan
+  `DATA_MODEL.md` ikut diperbarui.
+- **Temuan model data:** tidak ada foreign key, jadi penghapusan berantai dilakukan aplikasi
+  (`ThreadRepository._remove`, `ProjectService.delete`). `run_traces` tidak ikut terhapus saat
+  thread/project dihapus. Artifact yang di-upload tetapi tidak pernah dikirim (`thread_id` NULL)
+  tidak dibersihkan otomatis. Tidak ada endpoint hapus user.
+- **Pelajaran:** `pre-commit run` memanggil git secara internal, jadi tidak dipakai agent. Cek
+  dokumen cukup `ruff format --check .` + script whitespace/EOF/link. Komentar atribut Mermaid
+  `erDiagram` dihindarkan dari `{ } < > |`.
 
 ### 2026-11-19: Rilis v0.7.0 ter-squash, perbaikan workflow merge
 
@@ -262,5 +283,7 @@ Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Dijawab di Langkah 1 
 - [ ] User: pasang ruleset GitHub (CONTRIBUTING.md § Setup Awal Repo): `main` hanya "Merge",
       `develop` hanya "Squash", default commit squash = judul PR, blokir force-push. Mencegah
       ulang insiden squash rilis v0.7.0 dan judul squash yang salah (#40, #45).
+- [ ] Usulkan ke user (dari audit ERD 2026-11-19): retensi `run_traces` atau hapus bersama thread,
+      pembersihan artifact yatim (`thread_id` NULL lebih dari N jam), dan kebijakan hapus user.
 - [ ] Setelah F32: pertimbangkan skill `api-contract-change` (ubah schema → export kontrak →
       generate tipe TS), pemicu dev-time skill berikutnya.

@@ -1,42 +1,56 @@
 # LangGraph Agent Service
 
 Service untuk menjalankan beberapa agent [LangGraph](https://langchain-ai.github.io/langgraph/)
-lewat satu API FastAPI, lengkap dengan streaming SSE, Python client, dan UI chat Streamlit.
+lewat satu API FastAPI, lengkap dengan streaming SSE, Project, skill, file, sandbox kode, frontend
+React, Python client, dan dev console Streamlit.
 
 Project ini adalah rewrite dari [`agent-service-toolkit/`](agent-service-toolkit/) dengan fokus pada
 kode yang sederhana, eksplisit, dan mudah dites (Zen of Python).
 
-> **Status:** v0.1.0 (service) sudah dirilis. M2 selesai di branch fitur: `AgentClient`, UI Streamlit, dan stack Docker Compose dengan test e2e. Rilis v0.2.0 menyusul. Lihat [PRD.md](PRD.md) untuk requirement dan
-> [.agents/memory.md](.agents/memory.md) untuk status terkini.
+> **Status:** `v0.7.0` (M7 Files & Execution) sudah dirilis. Berikutnya M8 Data Analytics (F39).
+> Lihat [docs/ROADMAP.md](docs/ROADMAP.md) untuk status per fitur dan
+> [.agents/memory.md](.agents/memory.md) untuk konteks terkini.
 
 ## Fitur
 
 - **Multi-agent registry**: pilih agent lewat URL `/{agent_id}/...`.
 - **Streaming SSE**: token dan message (termasuk tool call dan sub-agent) dikirim secara real-time.
 - **Reasoning terlihat**: pemikiran model reasoning (misalnya Qwen3 lewat Ollama) di-stream
-  sebelum jawaban dan tampil di blok "Thinking" UI.
+  sebelum jawaban dan tampil di blok "Thinking" UI. Batas token jawaban dengan tanda `truncated`.
 - **Percakapan persisten**: riwayat thread disimpan di Postgres via LangGraph checkpointer.
 - **Human-in-the-loop**: agent bisa berhenti (`interrupt`) dan melanjutkan dengan input user.
+- **Project**: agent deklaratif (agent dasar + instruksi, skill, model, pengaturan), termasuk
+  project built-in untuk demo.
+- **Harness**: system prompt dirakit setiap giliran, skill built-in dengan progressive disclosure,
+  ringkasan riwayat otomatis, dan long-term memory per user dengan persetujuan.
+- **File dan kode**: upload dan unduh artifact, workspace file per thread, serta `run_python`/
+  `run_shell` di sandbox Docker yang terisolasi.
+- **Trace dan eval**: trace per run (model, tool, token, latensi) dan runner eval lewat API.
+- **Frontend React**: login, chat streaming, Projects, Recents, dan panel artifact bergaya Claude.
 - **Python client**: `AgentClient` sync dan async.
-- **Frontend React** (`frontend/`, mulai F32): login, chat streaming, Projects, dan Recents
-  bergaya Claude.
-- **UI Streamlit**: dev console (chat, riwayat thread, pemilih agent dan model).
+- **Dev console Streamlit**: chat, riwayat thread, pemilih agent dan model.
 - **Auth per user**: login username/password, access token JWT.
 
 ## Arsitektur
 
 ```text
-┌──────────────┐  HTTP/SSE  ┌──────────────────────────────────────────┐
-│ Streamlit UI │ ─────────► │ FastAPI service                          │
-│ (ui/)        │            │  router ─► StreamService                 │
-└──────┬───────┘            │              │                           │
-       │ pakai              │              ▼                           │
-┌──────▼───────┐            │  AgentRegistry ─► BaseAgent (graph)      │
-│ AgentClient  │            │                     │        │           │
-│ (client/)    │            │              ModelFactory  Postgres      │
-└──────────────┘            │              (llm/)        checkpointer  │
-                            └──────────────────────────────────────────┘
+┌──────────────────┐ /api  ┌──────────────────────────────────────────────┐
+│ web (React)      │ ────► │ agent-service (FastAPI)                      │
+│ frontend/        │       │  router ─► StreamService                     │
+└──────────────────┘       │              │                               │
+┌──────────────────┐       │              ▼                               │
+│ Streamlit / eval │ ────► │  AgentRegistry ─► agent (graph LangGraph)    │
+│ via AgentClient  │       │                     │ harness: prompt, skill,│
+└──────────────────┘       │                     │ memory, file, sandbox  │
+                           │  ModelFactory ──────┘                        │
+                           └───────┬──────────────────┬───────────────────┘
+                                   ▼                  ▼
+                        Postgres (checkpoint,   sandbox-runner ─► Docker
+                        tabel aplikasi, store)  (container sekali pakai)
 ```
+
+Detail ada di [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), dan skema database di
+[docs/DATA_MODEL.md](docs/DATA_MODEL.md).
 
 ## Quickstart
 
@@ -80,6 +94,7 @@ dipasang lewat extra:
 | (dasar) | `AgentClient` sebagai library | pydantic, httpx |
 | `service` | API FastAPI | fastapi, uvicorn, langgraph, langchain, Postgres (psycopg, SQLAlchemy, Alembic) |
 | `ui` | UI Streamlit | streamlit, pydantic-settings |
+| `evals` | Runner eval (`run_evals`) | pydantic-settings, pyyaml |
 
 `uv sync` untuk development meng-install semuanya, karena grup `dev` mereferensikan
 `agent-service[service,ui]`. Untuk satu komponen saja: `uv sync --no-dev --extra service`.
@@ -153,7 +168,7 @@ menunjuk ke container itu sendiri.
 | `EVAL_USERNAME`, `EVAL_PASSWORD` | eval | Akun untuk `run_evals`, sebaiknya service account (`--role service`) |
 | `EVAL_TIMEOUT_SECONDS` | tidak | Batas waktu per request eval, default `300` |
 
-\* Tidak wajib jika `USE_FAKE_MODEL=true`. Daftar lengkap ada di [PRD.md §8](PRD.md#8-konfigurasi-env-var-v1).
+\* Tidak wajib jika `USE_FAKE_MODEL=true`. Daftar lengkap ada di [PRD.md §8](PRD.md#8-konfigurasi-env-var).
 
 ## API Singkat
 
@@ -400,7 +415,9 @@ Aturan penulisan kode (prosedur 5 langkah, Class vs Function, checklist Zen) ada
 |---|---|
 | [AGENTS.md](AGENTS.md) | Aturan kode dan workflow untuk coding agent dan kontributor |
 | [PRD.md](PRD.md) | Requirement, kontrak API, scope, milestone |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Lifespan, alur request, kepemilikan thread, cara menambah agent |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Lifespan, alur request, kepemilikan thread, harness, frontend, cara menambah agent |
+| [docs/DATA_MODEL.md](docs/DATA_MODEL.md) | ERD, kamus tabel, relasi, dan alur penghapusan data |
+| [docs/adr/](docs/adr/README.md) | Keputusan arsitektur besar (Postgres-only, harness, frontend, Project, skill) |
 | [.agents/memory.md](.agents/memory.md) | Status, decision log, pelajaran dari kode lama |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Daftar fitur, urutan eksekusi, rencana commit per fitur |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Git lifecycle: branch, commit message, PR, release, hotfix |
