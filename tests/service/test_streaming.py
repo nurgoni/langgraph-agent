@@ -14,6 +14,7 @@ from langgraph.types import interrupt
 
 from agent_service.agents.base import AgentGraph
 from agent_service.agents.chatbot import ChatbotAgent
+from agent_service.agents.errors import STEP_LIMIT_ERROR_DETAIL
 from agent_service.agents.supervisor import create_supervisor_agent
 from agent_service.agents.tools.web_search import SearchResult
 from agent_service.llm.fake import FakeModel
@@ -231,6 +232,26 @@ async def test_error_mid_stream_sends_error_then_done(caplog: pytest.LogCaptureF
     assert events[-1] == ErrorEvent(content=STREAM_ERROR_DETAIL)
     assert "secret detail" not in "".join(frames)
     assert "Stream failed" in caplog.text
+
+
+async def test_recursion_limit_sends_step_limit_error_then_done() -> None:
+    async def loop(state: MessagesState) -> MessagesState:
+        return {"messages": [AIMessage(content="again")]}
+
+    # pyrefly tidak mengenali TypedDict sebagai TypedDictLike milik LangGraph.
+    builder = StateGraph(MessagesState)  # pyrefly: ignore[bad-specialization]
+    builder.add_node("loop", loop)
+    builder.add_edge(START, "loop")
+    builder.add_edge("loop", "loop")
+    graph = builder.compile(checkpointer=InMemorySaver())
+    agent = ChatbotAgent(agent_id="loop")
+    run = await build_run_input(
+        UserInput(message="go", thread_id="t1"), "u1", agent, graph, recursion_limit=5
+    )
+
+    frames = [frame async for frame in StreamService(graph, run, False).stream()]
+
+    assert events_of(frames)[-1] == ErrorEvent(content=STEP_LIMIT_ERROR_DETAIL)
 
 
 async def test_client_disconnect_closes_without_done() -> None:

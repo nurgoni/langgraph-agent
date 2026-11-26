@@ -114,3 +114,15 @@ def test_invalid_agent_config_reports_field_location(tone_agent: BaseAgent) -> N
 def test_default_config_schema_rejects_any_key(chatbot: ChatbotAgent) -> None:
     with pytest.raises(RequestValidationError):
         parse_agent_config(chatbot, {"temperature": 1})
+
+
+async def test_recursion_limit_is_always_in_the_run_config(
+    chatbot: ChatbotAgent, chatbot_graph: AgentGraph
+) -> None:
+    default = await build_run_input(UserInput(message="a"), OWNER, chatbot, chatbot_graph)
+    configured = await build_run_input(
+        UserInput(message="b"), OWNER, chatbot, chatbot_graph, recursion_limit=12
+    )
+
+    assert default.config["recursion_limit"] == 50
+    assert configured.config["recursion_limit"] == 12

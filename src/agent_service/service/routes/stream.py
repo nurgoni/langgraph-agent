@@ -15,6 +15,7 @@ from agent_service.service.dependencies import (
     DefaultAgentIdDep,
     PrincipalDep,
     RegistryDep,
+    SettingsDep,
     TraceRepositoryDep,
 )
 from agent_service.service.run_input import (
@@ -47,10 +48,11 @@ async def stream_default_agent(
     registry: RegistryDep,
     traces: TraceRepositoryDep,
     artifacts: ArtifactServiceDep,
+    settings: SettingsDep,
     default_agent_id: DefaultAgentIdDep,
 ) -> StreamingResponse:
     """Sama dengan `POST /{agent_id}/stream` untuk agent default."""
-    target = RunTarget(default_agent_id, stream_input.model)
+    target = RunTarget(default_agent_id, stream_input.model, settings.agent_recursion_limit)
     return await stream(target, stream_input, principal.user_id, registry, traces, artifacts)
 
 
@@ -62,12 +64,13 @@ async def stream_agent(
     registry: RegistryDep,
     traces: TraceRepositoryDep,
     artifacts: ArtifactServiceDep,
+    settings: SettingsDep,
 ) -> StreamingResponse:
     """Alirkan frame `token`, `message`, dan `error`, selalu diakhiri `data: [DONE]`.
 
     Header `X-Thread-Id` berisi ID thread yang dipakai run, sama seperti `/invoke`.
     """
-    target = RunTarget(agent_id, stream_input.model)
+    target = RunTarget(agent_id, stream_input.model, settings.agent_recursion_limit)
     return await stream(target, stream_input, principal.user_id, registry, traces, artifacts)
 
 
@@ -106,9 +109,7 @@ async def stream(
     """
     agent = registry.get_agent(target.agent_id)
     graph = registry.get_graph(target.agent_id, target.model, target.max_tokens)
-    run = await build_attached_run_input(
-        stream_input, user_id, agent, graph, target.project, artifacts
-    )
+    run = await build_attached_run_input(stream_input, user_id, agent, graph, target, artifacts)
     logger.info(
         "Stream agent=%s project=%s run_id=%s thread_id=%s",
         target.agent_id,

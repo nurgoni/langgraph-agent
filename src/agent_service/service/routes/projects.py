@@ -21,6 +21,7 @@ from agent_service.service.dependencies import (
     PrincipalDep,
     ProjectServiceDep,
     RegistryDep,
+    SettingsDep,
     ThreadRepositoryDep,
     TraceRepositoryDep,
 )
@@ -34,11 +35,14 @@ from agent_service.service.run_input import RunTarget
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
-def run_target(record: ProjectRecord, requested_model: str | None) -> RunTarget:
-    """Target run di project: agent dasar, model request atau project, dan batas token project."""
+def run_target(
+    record: ProjectRecord, requested_model: str | None, recursion_limit: int
+) -> RunTarget:
+    """Target run di project: agent dasar, model request atau project, dan batas project."""
     return RunTarget(
         agent_id=record.base_agent_id,
         model=requested_model if requested_model is not None else record.model,
+        recursion_limit=recursion_limit,
         max_tokens=project_max_tokens(record),
         project=run_context(record),
     )
@@ -95,10 +99,11 @@ async def invoke_in_project(
     registry: RegistryDep,
     traces: TraceRepositoryDep,
     artifacts: ArtifactServiceDep,
+    settings: SettingsDep,
 ) -> ChatMessage:
     """Jalankan agent project sampai selesai, dengan instruksi dan pengaturan project."""
     record = await projects.get_visible(project_id, principal.user_id)
-    target = run_target(record, user_input.model)
+    target = run_target(record, user_input.model, settings.agent_recursion_limit)
     return await invoke(
         target, user_input, principal.user_id, response, registry, traces, artifacts
     )
@@ -113,10 +118,11 @@ async def stream_in_project(
     registry: RegistryDep,
     traces: TraceRepositoryDep,
     artifacts: ArtifactServiceDep,
+    settings: SettingsDep,
 ) -> StreamingResponse:
     """Alirkan run agent project sebagai SSE, sama seperti `/{agent_id}/stream`."""
     record = await projects.get_visible(project_id, principal.user_id)
-    target = run_target(record, stream_input.model)
+    target = run_target(record, stream_input.model, settings.agent_recursion_limit)
     return await stream(target, stream_input, principal.user_id, registry, traces, artifacts)
 
 

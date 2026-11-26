@@ -16,6 +16,7 @@ from pydantic import BaseModel, JsonValue, ValidationError
 from agent_service.agents.base import AgentGraph, BaseAgent
 from agent_service.core.constants import (
     ARTIFACTS_KWARG,
+    DEFAULT_AGENT_RECURSION_LIMIT,
     PROJECT_ID_CONFIG_KEY,
     PROJECT_INSTRUCTIONS_CONFIG_KEY,
     PROJECT_SKILL_IDS_CONFIG_KEY,
@@ -76,17 +77,20 @@ class ProjectRunContext:
 
 @dataclass(frozen=True)
 class RunTarget:
-    """Agent, model, batas token, dan project untuk satu run.
+    """Agent, model, batas langkah, batas token, dan project untuk satu run.
 
     Route agent memakai agent dari URL dan model dari request. Route project memakai agent dasar
-    project, model request → model project → default, dan `max_tokens` project.
+    project, model request → model project → default, dan `max_tokens` project. Route mengisi
+    `recursion_limit` dari `AGENT_RECURSION_LIMIT` (FR-59).
 
-    >>> RunTarget("chatbot").project_id is None
-    True
+    >>> target = RunTarget("chatbot")
+    >>> target.project_id is None, target.recursion_limit
+    (True, 50)
     """
 
     agent_id: str
     model: str | None = None
+    recursion_limit: int = DEFAULT_AGENT_RECURSION_LIMIT
     max_tokens: int | None = None
     project: ProjectRunContext | None = None
 
@@ -152,6 +156,7 @@ async def build_run_input(
     graph: AgentGraph,
     project: ProjectRunContext | None = None,
     attachments: MessageAttachments | None = None,
+    recursion_limit: int = DEFAULT_AGENT_RECURSION_LIMIT,
 ) -> RunInput:
     """Siapkan input graph untuk request, termasuk ID baru dan resume interrupt.
 
@@ -164,6 +169,8 @@ async def build_run_input(
         graph: Graph agent untuk model yang dipilih.
         project: Project tempat run berjalan, atau `None` untuk route agent.
         attachments: Lampiran yang sudah diperiksa kepemilikannya, untuk pesan human (F35, F36).
+        recursion_limit: Batas langkah graph run ini (FR-59). Selalu ditulis ke config, supaya
+            default LangGraph (10.007) tidak pernah dipakai.
 
     Returns:
         Input dan config run. `thread_id` yang kosong diisi UUID baru (FR-13).
@@ -185,6 +192,7 @@ async def build_run_input(
         configurable=configurable,
         metadata=run_metadata(user_id, agent.agent_id, project_id),
         run_id=run_id,
+        recursion_limit=recursion_limit,
     )
     snapshot = await graph.aget_state(config)
     if not is_new_thread(snapshot):
@@ -203,10 +211,12 @@ async def build_attached_run_input(
     user_id: str,
     agent: BaseAgent,
     graph: AgentGraph,
-    project: ProjectRunContext | None,
+    target: RunTarget,
     artifacts: ArtifactService,
 ) -> RunInput:
     """`build_run_input` dengan lampiran `artifact_ids` dan runtime context tool harness.
+
+    Project dan `recursion_limit` diambil dari `target`.
 
     Lampiran diperiksa sebelum run disusun, lalu ditautkan ke thread dan disalin ke workspace-nya
     (`uploads/`) setelah kepemilikan thread lolos, jadi request yang ditolak tidak mengubah
@@ -222,8 +232,11 @@ async def build_attached_run_input(
     records = await artifacts.resolve_attachments(
         user_id, user_input.artifact_ids, user_input.thread_id
     )
+    project = target.project
     if not records:
-        run = await build_run_input(user_input, user_id, agent, graph, project)
+        run = await build_run_input(
+            user_input, user_id, agent, graph, project, recursion_limit=target.recursion_limit
+        )
         return replace(run, context=artifacts.run_context())
     thread_id = user_input.thread_id or str(uuid4())
     paths = await artifacts.workspace_paths(records, thread_id)
@@ -235,6 +248,7 @@ async def build_attached_run_input(
         graph,
         project,
         attachments,
+        target.recursion_limit,
     )
     await artifacts.link(records, run.thread_id)
     await artifacts.copy_to_workspace(records, paths, run.thread_id)

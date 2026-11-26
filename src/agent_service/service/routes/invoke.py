@@ -4,7 +4,9 @@ import logging
 from typing import Any, Final
 
 from fastapi import APIRouter, Response
+from langgraph.errors import GraphRecursionError
 
+from agent_service.agents.errors import AgentStepLimitError
 from agent_service.agents.registry import AgentRegistry
 from agent_service.memory.traces import RunTraceRepository
 from agent_service.schema.requests import UserInput
@@ -16,6 +18,7 @@ from agent_service.service.dependencies import (
     DefaultAgentIdDep,
     PrincipalDep,
     RegistryDep,
+    SettingsDep,
     TraceRepositoryDep,
 )
 from agent_service.service.run_input import (
@@ -41,10 +44,11 @@ async def invoke_default_agent(
     registry: RegistryDep,
     traces: TraceRepositoryDep,
     artifacts: ArtifactServiceDep,
+    settings: SettingsDep,
     default_agent_id: DefaultAgentIdDep,
 ) -> ChatMessage:
     """Sama dengan `POST /{agent_id}/invoke` untuk agent default."""
-    target = RunTarget(default_agent_id, user_input.model)
+    target = RunTarget(default_agent_id, user_input.model, settings.agent_recursion_limit)
     return await invoke(
         target, user_input, principal.user_id, response, registry, traces, artifacts
     )
@@ -59,12 +63,13 @@ async def invoke_agent(
     registry: RegistryDep,
     traces: TraceRepositoryDep,
     artifacts: ArtifactServiceDep,
+    settings: SettingsDep,
 ) -> ChatMessage:
     """Jalankan agent dan kembalikan message terakhirnya, atau pertanyaan interrupt.
 
     Header `X-Thread-Id` berisi ID thread yang dipakai run, untuk melanjutkan thread.
     """
-    target = RunTarget(agent_id, user_input.model)
+    target = RunTarget(agent_id, user_input.model, settings.agent_recursion_limit)
     return await invoke(
         target, user_input, principal.user_id, response, registry, traces, artifacts
     )
@@ -101,12 +106,11 @@ async def invoke(
         ThreadNotFoundError: Thread milik user, agent, atau project lain (404).
         ArtifactNotFoundError: Lampiran tidak ada atau milik user lain (404).
         ArtifactThreadConflictError: Lampiran sudah tertaut ke thread lain (409).
+        AgentStepLimitError: Run melewati `recursion_limit` (500, FR-59).
     """
     agent = registry.get_agent(target.agent_id)
     graph = registry.get_graph(target.agent_id, target.model, target.max_tokens)
-    run = await build_attached_run_input(
-        user_input, user_id, agent, graph, target.project, artifacts
-    )
+    run = await build_attached_run_input(user_input, user_id, agent, graph, target, artifacts)
     logger.info(
         "Invoke agent=%s project=%s run_id=%s thread_id=%s",
         target.agent_id,
@@ -118,6 +122,9 @@ async def invoke(
     traced = run.with_callbacks(tracer)
     try:
         state = await graph.ainvoke(traced.graph_input, traced.config, context=traced.context)
+    except GraphRecursionError as error:
+        await tracer.save("error", error)
+        raise AgentStepLimitError(target.agent_id) from error
     # Bukan penanganan error: trace run yang gagal disimpan, lalu error diteruskan ke handler.
     except Exception as error:
         await tracer.save("error", error)
