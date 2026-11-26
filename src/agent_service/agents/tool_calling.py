@@ -6,7 +6,7 @@ from typing import Final, NotRequired, TypedDict
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import BaseTool, ToolException
+from langchain_core.tools import BaseTool
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.managed import RemainingSteps
 from langgraph.prebuilt import ToolNode, tools_condition
@@ -17,6 +17,7 @@ from agent_service.harness.context import ContextBuilder
 from agent_service.harness.context_policy import ContextPolicy, ContextWindow
 from agent_service.harness.memory import MemoryToolkit
 from agent_service.harness.skills.toolkit import SkillToolkit
+from agent_service.harness.tool_guard import ToolFailureGuard, tool_error_text
 from agent_service.harness.workspace import WorkspaceToolkit, with_attachment_notes
 
 AGENT_NODE: Final = "agent"
@@ -72,6 +73,10 @@ class ToolCallingAgent(BaseAgent):
     workspace selalu di-bind, output tool besar dipindah ke workspace, dan path lampiran ditambahkan
     ke pesan human yang dikirim ke model (FR-47, FR-48). Workspace datang dari `HarnessContext` yang
     dikirim service sebagai runtime context. Tanpa tool sama sekali, graph-nya `agent → END`.
+
+    Setiap tool call melewati `ToolFailureGuard` (FR-59): tool yang gagal beruntun sebanyak batas di
+    satu giliran tidak dijalankan lagi. Jumlah langkah dibatasi `recursion_limit` dari config run,
+    dan model yang masih memanggil tool saat sisa langkah habis dijawab `STEP_LIMIT_MESSAGE`.
     """
 
     def __init__(
@@ -84,6 +89,7 @@ class ToolCallingAgent(BaseAgent):
         context_policy: ContextPolicy | None = None,
         use_memory: bool = False,
         files: WorkspaceToolkit | None = None,
+        tool_guard: ToolFailureGuard | None = None,
     ) -> None:
         """Inisialisasi agent.
 
@@ -96,6 +102,7 @@ class ToolCallingAgent(BaseAgent):
             context_policy: Anggaran token riwayat. Default: `ContextPolicy()` (16.000 token).
             use_memory: Pakai long-term memory user jika `build` menerima store.
             files: Tool file workspace dan offloader output. `None` berarti tanpa workspace.
+            tool_guard: Batas kegagalan beruntun per tool. Default: `ToolFailureGuard()` (3).
         """
         super().__init__(agent_id=agent_id, description=description)
         self._policy = ContextPolicy() if context_policy is None else context_policy
@@ -104,6 +111,7 @@ class ToolCallingAgent(BaseAgent):
         self._context = context if skills is None else context.with_skills(skills)
         self._use_memory = use_memory
         self._files = files
+        self._guard = ToolFailureGuard() if tool_guard is None else tool_guard
 
     def build(
         self, model: BaseChatModel, checkpointer: Checkpointer, store: BaseStore | None = None
@@ -172,10 +180,13 @@ class ToolCallingAgent(BaseAgent):
             builder.add_edge(AGENT_NODE, END)
             return builder
         # Hanya ToolException (input salah, pencarian gagal) yang dikembalikan ke model sebagai
-        # pesan error. Bug lain tetap menggagalkan run supaya terlihat.
+        # pesan error. Bug lain tetap menggagalkan run supaya terlihat. Handler callable, bukan
+        # tuple: dengan wrapper, tuple tidak menyaring error yang keluar dari wrapper.
         offloader = None if self._files is None else self._files.offloader
         tool_node = ToolNode(
-            all_tools, handle_tool_errors=(ToolException,), awrap_tool_call=offloader
+            all_tools,
+            handle_tool_errors=tool_error_text,
+            awrap_tool_call=self._guard.around(offloader),
         )
         builder.add_node(TOOLS_NODE, tool_node)
         builder.add_conditional_edges(AGENT_NODE, tools_condition)

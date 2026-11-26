@@ -44,6 +44,7 @@ from agent_service.agents.tools.web_search import (
 )
 from agent_service.harness.context import ContextBuilder
 from agent_service.harness.context_policy import ContextPolicy
+from agent_service.harness.tool_guard import ToolFailureGuard
 
 SUPERVISOR_AGENT_ID: Final = "supervisor"
 SUPERVISOR_DESCRIPTION: Final = (
@@ -309,7 +310,9 @@ def expert_context(instructions: str) -> ContextBuilder:
 
 
 def create_supervisor_agent(
-    search_backend: SearchBackend | None = None, context_policy: ContextPolicy | None = None
+    search_backend: SearchBackend | None = None,
+    context_policy: ContextPolicy | None = None,
+    tool_guard: ToolFailureGuard | None = None,
 ) -> SupervisorAgent:
     """Buat supervisor dengan `math_expert` (kalkulator) dan `research_expert` (web search).
 
@@ -318,6 +321,7 @@ def create_supervisor_agent(
     Args:
         search_backend: Mesin pencari untuk research expert. Default: `UnconfiguredSearch`.
         context_policy: Anggaran token riwayat supervisor. Default: `ContextPolicy()`.
+        tool_guard: Batas kegagalan beruntun per tool di setiap expert (FR-59). Default: 3.
 
     Returns:
         Agent `supervisor` yang siap didaftarkan.
@@ -329,7 +333,11 @@ def create_supervisor_agent(
         name="math_expert",
         description="Solves arithmetic and math problems with a calculator.",
         agent=ToolCallingAgent(
-            "math_expert", "Math expert", [calculator], expert_context(MATH_EXPERT_PROMPT)
+            "math_expert",
+            "Math expert",
+            [calculator],
+            expert_context(MATH_EXPERT_PROMPT),
+            tool_guard=tool_guard,
         ),
     )
     research_expert = Expert(
@@ -340,6 +348,7 @@ def create_supervisor_agent(
             "Research expert",
             [create_web_search_tool(search_backend or UnconfiguredSearch())],
             expert_context(RESEARCH_EXPERT_PROMPT),
+            tool_guard=tool_guard,
         ),
     )
     return SupervisorAgent(

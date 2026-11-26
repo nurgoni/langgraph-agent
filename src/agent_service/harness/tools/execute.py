@@ -4,11 +4,15 @@ Kode tidak pernah dijalankan di proses service. Tool menyalin seluruh workspace 
 `/workspace` sandbox, menjalankan kode lewat `Sandbox` dari runtime context, lalu menyimpan file
 yang baru atau berubah kembali ke workspace. Jika project mewajibkan persetujuan
 (`ProjectSettings.tool_approval = "always"`), user ditanya lewat `interrupt()` sebelum eksekusi.
+
+Exit code bukan nol dan timeout dikembalikan sebagai `ToolMessage` berstatus `"error"` (FR-59),
+supaya `ToolFailureGuard` menghitungnya tanpa mencocokkan teks. Isinya tetap observasi lengkap.
 """
 
 from collections.abc import Mapping
 from typing import Any, Final
 
+from langchain_core.messages import ToolMessage
 from langchain_core.tools import BaseTool, ToolException, tool
 from langgraph.prebuilt import ToolRuntime
 from langgraph.types import interrupt
@@ -33,6 +37,8 @@ from agent_service.sandbox.model import (
 RUN_PYTHON_TOOL_NAME: Final = "run_python"
 RUN_SHELL_TOOL_NAME: Final = "run_shell"
 APPROVAL_REQUIRED: Final = "always"
+SUCCESS_EXIT_CODE: Final = 0
+ERROR_STATUS: Final = "error"
 EXECUTION_LEAD_WORDS: Final = APPROVAL_LEAD_WORDS | {"run", "execute", "jalankan"}
 CODE_FENCES: Final[Mapping[Language, str]] = {"python": "python", "shell": "sh"}
 SANDBOX_UNAVAILABLE_TEXT: Final = "Code execution is not available in this conversation."
@@ -94,7 +100,7 @@ def create_execution_tools(timeout_seconds: int) -> list[BaseTool]:
     """
 
     @tool(RUN_PYTHON_TOOL_NAME)
-    async def run_python(code: str, runtime: ToolRuntime[HarnessContext]) -> str:
+    async def run_python(code: str, runtime: ToolRuntime[HarnessContext]) -> str | ToolMessage:
         """Run Python code in an isolated sandbox without internet access.
 
         The working directory contains every file in the conversation workspace, and files you
@@ -104,10 +110,10 @@ def create_execution_tools(timeout_seconds: int) -> list[BaseTool]:
         Args:
             code: Complete Python script to run. Print the results you need.
         """
-        return await _run("python", code, runtime, timeout_seconds)
+        return await _run(RUN_PYTHON_TOOL_NAME, "python", code, runtime, timeout_seconds)
 
     @tool(RUN_SHELL_TOOL_NAME)
-    async def run_shell(command: str, runtime: ToolRuntime[HarnessContext]) -> str:
+    async def run_shell(command: str, runtime: ToolRuntime[HarnessContext]) -> str | ToolMessage:
         """Run a shell command in an isolated sandbox without internet access.
 
         The working directory contains every file in the conversation workspace, and files
@@ -116,18 +122,23 @@ def create_execution_tools(timeout_seconds: int) -> list[BaseTool]:
         Args:
             command: Shell command or short script, run with sh.
         """
-        return await _run("shell", command, runtime, timeout_seconds)
+        return await _run(RUN_SHELL_TOOL_NAME, "shell", command, runtime, timeout_seconds)
 
     return [run_python, run_shell]
 
 
 async def _run(
+    tool_name: str,
     language: Language,
     code: str,
     runtime: ToolRuntime[HarnessContext],
     timeout_seconds: int,
-) -> str:
-    """Minta persetujuan jika perlu, jalankan kode di sandbox, lalu simpan file hasilnya."""
+) -> str | ToolMessage:
+    """Minta persetujuan jika perlu, jalankan kode di sandbox, lalu simpan file hasilnya.
+
+    Returns:
+        Teks hasil, atau `ToolMessage` berstatus error jika kode gagal (exit code, timeout).
+    """
     scope = workspace_scope(runtime)
     sandbox = scope.context.sandbox
     if sandbox is None:
@@ -150,7 +161,23 @@ async def _run(
     except SandboxError as error:
         raise ToolException(str(error)) from error
     saved, skipped = await _save_outputs(scope, result.files)
-    return render_result(result, saved, skipped)
+    content = render_result(result, saved, skipped)
+    if not execution_failed(result) or runtime.tool_call_id is None:
+        return content
+    return ToolMessage(
+        content=content, tool_call_id=runtime.tool_call_id, name=tool_name, status=ERROR_STATUS
+    )
+
+
+def execution_failed(result: ExecutionResult) -> bool:
+    """Cek apakah eksekusi gagal: timeout atau exit code bukan nol.
+
+    >>> [execution_failed(ExecutionResult(exit_code=code)) for code in (0, 1)]
+    [False, True]
+    >>> execution_failed(ExecutionResult(exit_code=None, timed_out=True))
+    True
+    """
+    return result.timed_out or result.exit_code != SUCCESS_EXIT_CODE
 
 
 async def _workspace_files(scope: WorkspaceScope) -> dict[str, bytes]:
