@@ -10,12 +10,18 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 
 - `docs/DATA_MODEL.md`: ERD semua tabel Postgres (aplikasi dan LangGraph), kamus kolom,
   kardinalitas, rujukan ke luar database, dan alur penghapusan data.
+- ADR 0006 (data catalog sebagai semantic layer terstruktur) dan ADR 0007 (code-as-action: kernel
+  per thread, akses data lewat service).
 
 ### Changed
 
 - Dokumentasi disinkronkan dengan `v0.7.0`: bagian umum `docs/ARCHITECTURE.md` (gambaran besar,
   layer, siklus hidup, error, client, deployment, testing), status dan fitur `README.md`, endpoint,
   schema, dan env var `PRD.md`, serta status rilis per milestone di `docs/ROADMAP.md`.
+- Rencana M8 direvisi menjadi strategi code-as-action: **M8 Analytics Core** (F47 step budget &
+  retry guard, F39 data source & primitif eksplorasi, F48 data catalog, F49 kernel per thread, F50
+  plan & verify, F40 data analyst) dan **M9 Scheduled Analytics** (F41, F42). Knowledge menjadi M10
+  dan Interop M11. Requirement baru FR-59–FR-62 dan NFR-13, serta revisi FR-51 dan FR-52.
 
 ## [0.7.0] - 2026-11-18
 

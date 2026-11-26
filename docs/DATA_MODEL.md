@@ -356,5 +356,15 @@ Revisi berikutnya akan menambah tabel berikut (detail di [ROADMAP](ROADMAP.md)):
 | `documents`, `chunks` (pgvector) | F43 | Dokumen milik project, chunk milik dokumen. Menghapus dokumen menghapus chunk |
 | `ingestion_tasks` | F43 | Antrian per dokumen (`FOR UPDATE SKIP LOCKED`) |
 
+M8 (Analytics Core) tidak menambah tabel di database service:
+
+| Data | Fitur | Lokasi |
+|---|---|---|
+| Channel state `plan` (rencana agent) | F50 | `checkpoint_blobs`, seperti `summary` |
+| Registry data source dan data catalog | F39, F48 | File YAML (`DATA_SOURCES_FILE`, `catalogs/`), bukan tabel |
+| Hasil `run_sql` | F39 | `workspace_files` (`data/<nama>.parquet`) |
+| Kernel per thread | F49 | Memori `sandbox-runner`, tidak dipersist. Dihentikan saat thread dihapus |
+| Dataset demo | F39 | Database terpisah di server Postgres yang sama, dengan user read-only. Bukan bagian skema service |
+
 Saat tabel baru ditambahkan, perbarui diagram, kamus entitas, tabel relasi, dan alur penghapusan di
 dokumen ini dalam PR yang sama.

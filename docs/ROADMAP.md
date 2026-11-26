@@ -53,14 +53,18 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F36 | Workspace & file tools | M7 | done |
 | F37 | Sandbox | M7 | done |
 | F38 | Artifact panel UI | M7 | done |
-| F39 | SQL data source | M8 | todo |
+| F39 | Data source & exploration primitives | M8 | todo |
 | F40 | Data analyst project | M8 | todo |
-| F41 | Worker & scheduler | M8 | todo |
-| F42 | PDF report & scheduled analysis | M8 | todo |
-| F43 | Knowledge ingestion | M9 | todo |
-| F44 | Knowledge retrieval | M9 | todo |
-| F45 | Knowledge UI | M9 | todo |
-| F46 | OpenAI-compatible endpoint | M10 | todo |
+| F41 | Worker & scheduler | M9 | todo |
+| F42 | PDF report & scheduled analysis | M9 | todo |
+| F43 | Knowledge ingestion | M10 | todo |
+| F44 | Knowledge retrieval | M10 | todo |
+| F45 | Knowledge UI | M10 | todo |
+| F46 | OpenAI-compatible endpoint | M11 | todo |
+| F47 | Step budget & retry guard | M8 | todo |
+| F48 | Data catalog | M8 | todo |
+| F49 | Kernel per thread | M8 | todo |
+| F50 | Plan & verify | M8 | todo |
 
 ## Milestone & Rilis
 
@@ -74,11 +78,14 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | M5: Harness Core | F26–F31 | `v0.5.0` | dirilis 2026-11-17 | Project, prompt dirakit per giliran, skill built-in, context management, memory, eval |
 | M6: Frontend | F32–F34 | `v0.6.0` | dirilis 2026-11-18 | **Demo showcase:** chat React bergaya Claude dengan Projects |
 | M7: Files & Execution | F35–F38 | `v0.7.0` | dirilis 2026-11-18 | Artifact, workspace, sandbox, panel artifact |
-| M8: Data Analytics | F39–F42 | `v0.8.0` | **berikutnya** | Analisa SQL → chart, job terjadwal → PDF |
-| M9: Knowledge | F43–F45 | `v0.9.0` | todo | RAG per Project dengan ingestion |
-| M10: Interop | F46 | `v0.10.0` | todo | Endpoint OpenAI-compatible |
+| M8: Analytics Core | F47, F39, F48, F49, F50, F40 | `v0.8.0` | **berikutnya** | Agent analisa data dari primitif generik: eksplorasi data, katalog, kernel per thread, rencana dan verifikasi, eval lintas dataset |
+| M9: Scheduled Analytics | F41, F42 | `v0.9.0` | todo | Job terjadwal → thread berisi laporan PDF |
+| M10: Knowledge | F43–F45 | `v0.10.0` | todo | RAG per Project dengan ingestion |
+| M11: Interop | F46 | `v0.11.0` | todo | Endpoint OpenAI-compatible |
 
-Arsitektur Fase 2 (M4–M10) mengikuti [ADR 0001–0005](adr/README.md).
+Arsitektur Fase 2 (M4–M11) mengikuti [ADR 0001–0007](adr/README.md). M8 semula "Data Analytics"
+(F39–F42), lalu direvisi 2026-11-26 menjadi Analytics Core + Scheduled Analytics (Decision Log
+memory.md).
 
 ## Dependency Graph
 
@@ -103,7 +110,7 @@ F13 → F14 → *rilis v0.2.0* → F19 → F15 → F16 → F17 → F20 → *rili
   `httpx.MockTransport`.
 - F15 ∥ M2
 
-### Fase 2 (M4–M10)
+### Fase 2 (M4–M11)
 
 ```text
 F21, F22 (independen)
@@ -112,8 +119,9 @@ F23 ─┬─► F24 ─► F25 ─► F32 ─► F33 ─► F34 ─► F38 ─�
      │               ├─► F29
      │               ├─► F30
      │               └─► F31
-     ├─► F35 ─► F36 ─► F37 ─► F40 ─► F42
-     ├─► F39 ─► F40
+     ├─► F35 ─► F36 ─► F37 ─► F49 ─► F40 ─► F42
+     ├─► F47 ─► F50 ─► F40
+     ├─► F39 ─► F48 ─► F40
      ├─► F41 ─► F42
      └─► F43 ─► F44 ─► F45
 F24, F26 ─► F46
@@ -122,18 +130,21 @@ F24, F26 ─► F46
 Prasyarat tambahan yang tidak terlihat di graph:
 
 - F34 butuh F26 dan F28 (pemilih skill). F38 butuh F35.
-- F40 butuh F28 (skill semantic layer), F36, dan F37. F42 butuh F35 dan F41.
+- F39 butuh F26 (data source per project) dan F36 (hasil query ke workspace).
+- F40 butuh F28 (playbook skill), F39, F48, F49, dan F50. F42 butuh F35, F41, dan F50.
+- F41 butuh F47, supaya job tanpa user tidak berputar tanpa batas.
 - F43 butuh F26, F35, dan F41 (worker untuk ingestion).
 
 **Urutan eksekusi yang disarankan (satu developer):**
 F21 → F22 → F23 → F24 → F25 → *rilis v0.4.0* → F26 → F27 → F28 → F29 → F30 → F31 → *rilis v0.5.0* →
-F32 → F33 → F34 → *rilis v0.6.0* → F35 → F36 → F37 → F38 → *rilis v0.7.0* → F39 → F40 → F41 → F42 →
-*rilis v0.8.0* → F43 → F44 → F45 → *rilis v0.9.0* → F46 → *rilis v0.10.0*
+F32 → F33 → F34 → *rilis v0.6.0* → F35 → F36 → F37 → F38 → *rilis v0.7.0* → F47 → F39 → F48 → F49 →
+F50 → F40 → *rilis v0.8.0* → F41 → F42 → *rilis v0.9.0* → F43 → F44 → F45 → *rilis v0.10.0* → F46 →
+*rilis v0.11.0*
 
 **Bisa dikerjakan paralel:**
 - F21 ∥ F22 ∥ F23.
 - Track frontend (F32 → F33) bisa dimulai setelah F25, paralel dengan M5. F34 menunggu F26/F28.
-- F39 ∥ M7 (tool SQL bisa dites tanpa workspace, dengan hasil sebagai teks).
+- F47 ∥ F39, dan F49 ∥ F48 (tidak saling bergantung).
 - F46 kapan pun setelah F26.
 
 ## Pemetaan FR → Fitur
@@ -169,6 +180,8 @@ F32 → F33 → F34 → *rilis v0.6.0* → F35 → F36 → F37 → F38 → *rili
 | FR-41 | F31 | | FR-56 | F44 |
 | FR-42 | F32 | | FR-57 | F45 |
 | FR-43 | F33 | | FR-58 | F46 |
+| FR-59 | F47 | | FR-61 | F49 |
+| FR-60 | F48 | | FR-62 | F50 |
 | FR-44 | F34 | | | |
 
 ## Loop Eksekusi per Fitur
@@ -1774,54 +1787,261 @@ Scope commit frontend: `frontend`. Aturan kode frontend ada di [ADR 0003](adr/00
 
 ---
 
-## M8: Data Analytics → v0.8.0
+## M8: Analytics Core → v0.8.0
 
-### F39: SQL data source
+Strategi M8 adalah **code-as-action** ([ADR 0006](adr/0006-data-catalog-semantic-layer.md),
+[ADR 0007](adr/0007-code-as-action-execution.md)). Agent tidak diberi satu fungsi per skenario
+analisa, tetapi tiga bahan dasar yang bisa dikomposisi:
 
-- **Branch:** `feature/F39-sql-data-source`
-- **FR:** FR-51
-- **File:** `datasource/` (`SqlDataSource`, `QueryGuard`), `agents/tools/sql.py` (`list_tables`,
-  `describe_table`, `run_sql`), seed database demo (`analytics_demo` di service `postgres`), extras
-  `analytics` (`sqlglot`), `tests/`
-- **Langkah 1 (klarifikasi):** PRD §11 no. 6 (replica, user read-only, masking PII).
+| Bahan | Fitur |
+|---|---|
+| **Primitif**: eksplorasi data, query, eksekusi kode iteratif | F39, F49 |
+| **Pengetahuan**: data catalog (pengetahuan data) dan playbook skill (pengetahuan metode) | F48, F40 |
+| **Loop kerja**: rencana yang bisa direvisi, verifikasi sebelum menjawab, batas langkah dan retry | F47, F50 |
+
+Coverage diukur dengan eval lintas dataset (F40), bukan dengan jumlah fungsi.
+
+**Aturan untuk semua fitur M8:**
+
+- **Domain-agnostic.** Tidak ada nama domain (penjualan, region, dan sebagainya) di tool, prompt
+  agent, atau skill. Dataset demo hanya fixture.
+- **Minimal dua dataset demo** dari domain berbeda, supaya generalitas terbukti di eval.
+- **Tidak ada fungsi per skenario.** Pertanyaan baru dijawab dengan komposisi primitif, bukan tool
+  baru.
+- Fitur yang menambah tool juga menambah kasus eval untuk tool itu.
+
+Urutan: F47 → F39 → F48 → F49 → F50 → F40.
+
+### F47: Step budget & retry guard
+
+- **Branch:** `feature/F47-step-budget`
+- **FR:** FR-59, [ADR 0007](adr/0007-code-as-action-execution.md)
+- **File:** `core/settings.py` (`agent_recursion_limit`, `tool_max_consecutive_errors`),
+  `core/constants.py`, `harness/tool_guard.py` (`ToolFailureGuard`), `agents/tool_calling.py`,
+  `agents/supervisor.py`, `service/run_input.py` (`recursion_limit` di config run), `tests/`
+- **Langkah 1 (klarifikasi):**
+  - Nilai default `recursion_limit`. Rekomendasi: dihitung dari jumlah langkah tool yang wajar per
+    giliran, jauh di bawah default LangGraph (10.007).
+  - Apakah exit code bukan nol dan timeout dari tool eksekusi dihitung sebagai kegagalan.
+    Rekomendasi: ya.
 - **Catatan desain:**
-  - Pertahanan berlapis: user database read-only (utama), `sqlglot` menolak selain satu `SELECT`,
-    `LIMIT` dipaksa (`SQL_MAX_ROWS`), dan `statement_timeout` per sesi.
-  - Hasil query disimpan ke workspace sebagai CSV, dan model menerima pratinjau tabel + path.
-  - Data demo berisi transaksi dengan timestamp, supaya analisa per jendela 2 jam (F42) bisa
-    didemokan.
+  - Kegagalan beruntun dihitung **per nama tool** dari message di state giliran yang sedang
+    berjalan, bukan counter di memori. Dengan begitu hitungannya tetap benar saat run dilanjutkan
+    dari interrupt. Tool yang berhasil me-reset hitungannya.
+  - Tool eksekusi menandai kegagalan non-exception (exit code, timeout) secara eksplisit di
+    `ToolMessage`, bukan lewat pencocokan teks.
+  - Saat batas `TOOL_MAX_CONSECUTIVE_ERRORS` (default 3) tercapai, wrapper tidak menjalankan tool
+    dan mengembalikan `ToolMessage` error yang meminta model berhenti mencoba dan menjelaskan error
+    ke user.
+  - Wrapper digabung dengan `ToolOutputOffloader` dalam satu rantai `awrap_tool_call`.
+  - `recursion_limit` selalu diisi service. Run yang melewatinya menjadi frame `error` yang jelas.
+    `MIN_REMAINING_STEPS` tetap berlaku.
 - **Rencana commit:**
-  1. `feat(datasource): add read-only sql data source with a query guard`
-  2. `feat(agents): add schema introspection and run_sql tools`
-  3. `build(docker): seed a demo analytics database`
-  4. `docs: record F39 data source decisions`
+  1. `feat(core): add recursion limit and tool retry settings`
+  2. `feat(harness): stop a tool after repeated consecutive failures`
+  3. `feat(agents): apply the retry guard and an explicit recursion limit`
+  4. `docs: record F47 retry guard decisions`
 - **Acceptance criteria:**
-  - [ ] `INSERT`, `DROP`, dan multi-statement ditolak. Query lambat berhenti karena timeout.
-- **Squash title:** `feat(datasource): add guarded read-only sql tools (F39)`
+  - [ ] `FakeModel` yang terus memanggil tool yang gagal berhenti setelah 3 kegagalan beruntun,
+        lalu menjawab tanpa memanggil tool itu lagi.
+  - [ ] Keberhasilan di antara kegagalan me-reset hitungan.
+  - [ ] `run_python` dengan exit code bukan nol ikut dihitung.
+  - [ ] Run yang melewati `recursion_limit` berhenti dengan pesan error, bukan berjalan ribuan
+        langkah.
+- **Squash title:** `feat(harness): cap tool retries and agent steps (F47)`
+
+### F39: Data source & exploration primitives
+
+- **Branch:** `feature/F39-data-source`
+- **FR:** FR-51 (revisi 2026-11-26), [ADR 0006](adr/0006-data-catalog-semantic-layer.md),
+  [ADR 0007](adr/0007-code-as-action-execution.md)
+- **File:** `datasource/` (`DataSourceRegistry`, `SqlDataSource`, `QueryGuard`, `SchemaInspector`,
+  `TableProfiler`), `agents/tools/data.py` (`list_data_sources`, `search_schema`,
+  `describe_table`, `profile_table`, `run_sql`), `datasources.yaml`, `schema/datasources.py`,
+  `service/routes/datasources.py` (`GET /datasources`), `ProjectSettings.data_source_ids`, seed
+  dua dataset demo (database terpisah di service `postgres`, dengan user read-only), extras
+  `analytics` (`sqlglot`, `pyarrow`), `tests/`
+- **Langkah 1 (klarifikasi):**
+  - PRD §11 no. 6: replica, user read-only, dan masking PII.
+  - PRD §11 no. 11: profiling tabel besar (sampling, atau statistik `pg_stats`).
+  - Domain kedua dataset demo.
+- **Catatan desain:**
+  - **Registry.** `DATA_SOURCES_FILE` berisi daftar `{id, description, url_env, catalog?}`. DSN
+    dibaca dari env yang namanya disebut di file, dan tidak pernah ditulis di file. Data source yang
+    gagal konek ditandai unavailable, dan service tetap start (pola `AgentRegistry`).
+  - **Akses per project.** `ProjectSettings.data_source_ids` menentukan data source yang boleh
+    dipakai tool di project itu (pola skill aktif). Tool tidak menerima data source di luar daftar.
+  - **Primitif generik:**
+    - `list_data_sources`: data source project beserta deskripsinya.
+    - `search_schema(keyword)`: tabel dan kolom berdasarkan nama dan komentar.
+    - `describe_table`: kolom, tipe, nullable, komentar, primary/foreign key (jalur join),
+      perkiraan jumlah baris, dan contoh baris.
+    - `profile_table(table, columns?)`: persentase null, jumlah distinct, min/max, nilai teratas,
+      dan rentang tanggal. Tabel besar memakai strategi dari Langkah 1.
+    - `run_sql`: hasil ditulis ke workspace (`data/<nama>.parquet`), dan model menerima pratinjau
+      tabel + path. Kode di kernel (F49) memuat file itu untuk analisa lanjutan.
+  - **Pertahanan berlapis:** user database read-only (pertahanan utama), transaksi `READ ONLY`,
+    `sqlglot` hanya menerima satu `SELECT`, `LIMIT` dipaksa (`SQL_MAX_ROWS`), dan
+    `statement_timeout`. Sandbox tidak pernah menerima kredensial database.
+  - **Dataset demo:** dua domain berbeda dengan pola yang sengaja ditanam (tren musiman, penurunan
+    di satu segmen, data bolong, outlier, duplikat), beserta kunci jawaban untuk eval F40. Seed
+    berupa script di repo.
+- **Rencana commit:**
+  1. `feat(datasource): add a read-only data source registry with a query guard`
+  2. `feat(datasource): add schema search, table description and profiling`
+  3. `feat(agents): add generic data exploration and run_sql tools`
+  4. `feat(service): let projects choose their data sources`
+  5. `build(docker): seed two demo datasets with planted patterns`
+  6. `docs: record F39 data source decisions`
+- **Acceptance criteria:**
+  - [ ] `INSERT`, `DROP`, multi-statement, dan fungsi yang menulis ditolak. Query lambat berhenti
+        karena timeout.
+  - [ ] User read-only tetap tidak bisa menulis walaupun guard dilewati (dites langsung).
+  - [ ] Tool tidak bisa mengakses data source di luar project.
+  - [ ] Tool yang sama bekerja di kedua dataset demo tanpa perubahan kode.
+- **Squash title:** `feat(datasource): add read-only data sources and exploration tools (F39)`
+
+### F48: Data catalog
+
+- **Branch:** `feature/F48-data-catalog`
+- **FR:** FR-60, [ADR 0006](adr/0006-data-catalog-semantic-layer.md)
+- **File:** `datasource/catalog.py` (`DataCatalog`, model Pydantic, loader, validator),
+  `catalogs/<data_source_id>.yaml` (dua dataset demo), `agents/tools/data.py` (`list_metrics`,
+  `get_metric`, catatan katalog di `describe_table`), `tests/`
+- **Langkah 1 (klarifikasi):**
+  - Schema katalog final. Rekomendasi: deskripsi tabel dan kolom, metrik (`name`, `description`,
+    `expression`, `grain`, `time_column`, `filters`, `unit`), dimensi, join, dan catatan kualitas.
+  - Apakah daftar data source dan metrik ringkas masuk system prompt, atau hanya lewat tool.
+- **Catatan desain:**
+  - Divalidasi saat startup terhadap skema database: tabel dan kolom harus ada, ekspresi metrik
+    harus bisa diparse `sqlglot`, dan join harus merujuk kolom yang ada. Katalog yang tidak valid
+    membuat data source itu unavailable dengan pesan yang jelas.
+  - Katalog opsional per data source.
+  - Bukan compiler metrik. Model menulis SQL sendiri berdasarkan definisi, dan F50 memakai definisi
+    yang sama untuk verifikasi.
+- **Rencana commit:**
+  1. `feat(datasource): add a validated yaml data catalog`
+  2. `feat(agents): expose metrics and catalog notes to the model`
+  3. `feat(datasource): add catalogs for the demo datasets`
+  4. `docs: record F48 catalog decisions`
+- **Acceptance criteria:**
+  - [ ] Katalog yang merujuk kolom yang tidak ada membuat data source unavailable, dan service tetap
+        start.
+  - [ ] `FakeModel` memanggil `get_metric` dan menerima definisinya.
+- **Squash title:** `feat(datasource): add data catalog as semantic layer (F48)`
+
+### F49: Kernel per thread
+
+- **Branch:** `feature/F49-thread-kernel`
+- **FR:** FR-61, [ADR 0007](adr/0007-code-as-action-execution.md)
+- **File:** `sandbox/` (`KernelManager` di runner, protokol kernel, `RemoteSandbox`),
+  `docker/sandbox.Dockerfile`, `sandbox/runner.py`, `harness/tools/execute.py` (`run_python`
+  stateful), `service/` (hentikan kernel saat thread dihapus), `compose.yaml`, `tests/` (+ e2e)
+- **Langkah 1 (klarifikasi):**
+  - PRD §11 no. 12: implementasi kernel (Jupyter kernel lewat `jupyter_client`, atau REPL server
+    kecil buatan sendiri).
+  - Nilai `KERNEL_IDLE_TTL_SECONDS` dan `KERNEL_MAX_ACTIVE`.
+  - Sinkronisasi workspace: salin saat kernel dibuat lalu per eksekusi, atau cara lain.
+- **Catatan desain:**
+  - Satu container berumur panjang per thread, dengan isolasi yang sama seperti F37: tanpa
+    jaringan, rootfs read-only, non-root, tanpa capability, batas memori, CPU, dan proses.
+  - Timeout per eksekusi menghentikan sel yang berjalan. Container hanya dihentikan jika kernel
+    tidak merespons.
+  - `sandbox-runner` menyimpan peta thread → kernel (stateful, satu replika).
+  - Kernel baru (pertama kali, setelah TTL, setelah crash) membuat output tool memberi tahu model
+    bahwa variabel dari langkah sebelumnya hilang dan file workspace tetap tersedia.
+  - File baru atau berubah disalin ke workspace setelah setiap eksekusi, seperti F37.
+  - Kernel idle yang paling lama dihentikan lebih dulu saat `KERNEL_MAX_ACTIVE` tercapai. Menghapus
+    thread juga menghentikan kernel-nya.
+  - `run_shell` tetap sekali pakai.
+- **Rencana commit:**
+  1. `feat(sandbox): run a persistent python kernel per thread in the runner`
+  2. `feat(sandbox): expire idle kernels and cap active kernels`
+  3. `feat(harness): make run_python stateful per thread`
+  4. `feat(service): stop the kernel when a thread is deleted`
+  5. `docs: record F49 kernel decisions`
+- **Acceptance criteria:**
+  - [ ] Variabel dari pemanggilan pertama terbaca di pemanggilan kedua pada thread yang sama, dan
+        tidak terbaca dari thread lain.
+  - [ ] Kernel yang idle melewati TTL dihentikan, dan pemanggilan berikutnya memberi tahu model
+        bahwa kernel baru dibuat.
+  - [ ] Isolasi F37 tetap berlaku untuk kernel (e2e: jaringan diblokir, user non-root).
+- **Squash title:** `feat(sandbox): keep a python kernel per thread (F49)`
+
+### F50: Plan & verify
+
+- **Branch:** `feature/F50-plan-verify`
+- **FR:** FR-62
+- **File:** `harness/planning.py` (`PlanToolkit`: tool `update_plan`, bagian prompt `## Plan`),
+  state `plan`, `harness/verification.py`, `agents/tool_calling.py` (opsi `use_planning`,
+  `verify_before_answer`), `tests/`
+- **Langkah 1 (klarifikasi):**
+  - Bentuk gerbang verifikasi. Rekomendasi: satu langkah verifikasi sebelum jawaban akhir, hanya
+    pada run yang memakai tool data, dengan checklist yang dicek model terhadap output tool.
+  - Apakah rencana sudah tampil di UI. Rekomendasi: dikirim sebagai event `custom`, dan tampilan
+    UI masuk backlog B8.
+- **Catatan desain:**
+  - Rencana dibuat dan direvisi oleh model lewat `update_plan`, disimpan di state thread, dan
+    disisipkan `ContextBuilder` di setiap giliran. Tidak ada routing yang di-hardcode.
+  - Checklist verifikasi bersifat generik: setiap angka berasal dari output tool, metrik sesuai
+    definisi katalog (jika ada), filter dan periode sesuai pertanyaan, serta keterbatasan data
+    disebut. Temuan masalah mengembalikan run ke loop (replan), yang tetap dibatasi F47.
+  - Primitif harness generik, diaktifkan per agent. Agent lain bisa memakainya.
+- **Rencana commit:**
+  1. `feat(harness): add an update_plan tool with plan state`
+  2. `feat(harness): add a verification step before the final answer`
+  3. `feat(agents): enable planning and verification per agent`
+  4. `docs: record F50 plan and verify decisions`
+- **Acceptance criteria:**
+  - [ ] Rencana disimpan, direvisi, dan muncul di prompt giliran berikutnya (`FakeModel`).
+  - [ ] Jawaban yang gagal verifikasi kembali ke loop, dan loop tetap berhenti di batas F47.
+- **Squash title:** `feat(harness): add plan and verify loop primitives (F50)`
 
 ### F40: Data analyst project
 
 - **Branch:** `feature/F40-data-analyst`
-- **FR:** FR-52
-- **File:** agent data analyst (instance `ToolCallingAgent` dengan tool SQL, file, dan sandbox),
-  `skills/builtin/sql-analysis/`, `skills/builtin/chart-style/`, `skills/builtin/demo-metrics/`
-  (semantic layer database demo), seed project "Data Analyst", `evals/data-analyst.yaml`
+- **FR:** FR-52 (revisi 2026-11-26)
+- **File:** agent data analyst (instance `ToolCallingAgent` dengan tool data F39/F48, tool file F36,
+  kernel F49, dan plan/verify F50), playbook skill generik di `skills/builtin/`, seed project "Data
+  Analyst", `evals/data-analyst/` (kedua dataset), `tests/`
+- **Langkah 1 (klarifikasi):**
+  - Daftar final playbook. Rekomendasi: `data-exploration`, `descriptive-analysis`,
+    `trend-analysis`, `segment-comparison`, `anomaly-detection`, `root-cause-analysis`,
+    `data-quality-checks`, `chart-selection`.
+  - Taksonomi eval dan ambang skor per kategori, serta model yang dipakai untuk eval.
 - **Catatan desain:**
-  - Prompt agent dibuat singkat. Prosedur (cara menulis SQL, gaya chart, definisi metrik) ada di
-    skill.
-  - Chart dibuat di sandbox (matplotlib → PNG), lalu dibagikan sebagai artifact.
-  - Tidak ada `exec` di proses service (pelajaran dari referensi
-    `langgraph_data_analytics_agents/src/agents/charting_agent.py`).
+  - Prompt agent singkat dan domain-agnostic. Pengetahuan metode ada di skill, dan pengetahuan
+    data ada di katalog. Tidak ada lagi skill `demo-metrics`.
+  - **Pertanyaan deskriptif** cukup satu-dua langkah. **Pertanyaan diagnostik** memakai playbook
+    `root-cause-analysis` (loop hipotesis): dekomposisi metrik → beberapa hipotesis (segmen,
+    dimensi, harga, masalah data) → uji dengan bukti → terima/tolak → drill-down hanya ke cabang
+    yang diterima. Tidak ada graph khusus.
+  - Chart dibuat di kernel, lalu dibagikan lewat `share_file`. Tidak ada `exec` di proses service
+    (pelajaran dari `charting_agent.py`).
+  - **Eval suite** dengan taksonomi pertanyaan: deskriptif, komparatif, tren, diagnostik ("kenapa"),
+    ambigu (minta klarifikasi atau menyebut asumsi), jebakan kualitas data, dan tidak bisa dijawab
+    (menolak dengan alasan). Jawaban acuan dihitung dari data seed, dan suite dijalankan di kedua
+    dataset. Skor angka deterministik.
 - **Rencana commit:**
-  1. `feat(agents): add data analyst agent with sql, file and sandbox tools`
-  2. `feat(agents): add semantic layer skills for the demo database`
+  1. `feat(agents): add a data analyst agent built from generic primitives`
+  2. `feat(agents): add analysis method playbooks as skills`
   3. `feat(agents): seed the data analyst project`
-  4. `test(evals): add a data analyst eval set`
+  4. `test(evals): add a cross-dataset data analyst eval suite`
   5. `docs: record F40 data analyst decisions`
 - **Acceptance criteria:**
-  - [ ] "Penjualan per kategori minggu ini dalam bar chart" → SQL → chart artifact → jawaban.
-  - [ ] Skor eval data analyst dengan `qwen3.5:9b` dicatat di memory.md.
-- **Squash title:** `feat(agents): add data analyst project (F40)`
+  - [ ] Eval suite berjalan di kedua dataset. Skor per kategori dengan `qwen3.5:9b` dicatat di
+        memory.md dan memenuhi ambang dari Langkah 1.
+  - [ ] Tidak ada nama domain di kode, prompt agent, maupun skill.
+  - [ ] Pertanyaan diagnostik menghasilkan jejak hipotesis yang diuji, terlihat di riwayat thread.
+- **Squash title:** `feat(agents): add data analyst project on generic primitives (F40)`
+- **Setelah merge:** rilis **v0.8.0**.
+
+---
+
+## M9: Scheduled Analytics → v0.9.0
+
+Job terjadwal memakai agent data analyst dari M8. F47 menjaga job yang berjalan tanpa user agar
+tidak berputar tanpa batas, dan laporan F42 hanya memuat temuan yang lolos verifikasi F50.
 
 ### F41: Worker & scheduler
 
@@ -1864,6 +2084,7 @@ Scope commit frontend: `frontend`. Aturan kode frontend ada di [ADR 0003](adr/00
 - **Catatan desain:**
   - Agent menghasilkan `AnalysisReport` terstruktur (judul, ringkasan, bagian, path tabel dan chart di
     workspace). PDF dirender di kode, bukan oleh LLM.
+  - Laporan hanya memuat temuan yang lolos verifikasi (F50).
   - Setiap run job membuat thread baru di project job (judul `<job> <window>`), berisi message
     ringkasan + artifact PDF.
 - **Rencana commit:**
@@ -1875,11 +2096,11 @@ Scope commit frontend: `frontend`. Aturan kode frontend ada di [ADR 0003](adr/00
   - [ ] Job "setiap 2 jam, analisa data jendela 2 jam terakhir" pada database demo menghasilkan thread
         berisi PDF. Isi PDF dicek dengan ekstraksi teks.
 - **Squash title:** `feat(worker): deliver scheduled analysis as pdf reports (F42)`
-- **Setelah merge:** rilis **v0.8.0**.
+- **Setelah merge:** rilis **v0.9.0**.
 
 ---
 
-## M9: Knowledge → v0.9.0
+## M10: Knowledge → v0.10.0
 
 ### F43: Knowledge ingestion
 
@@ -1937,11 +2158,11 @@ Scope commit frontend: `frontend`. Aturan kode frontend ada di [ADR 0003](adr/00
 - **Acceptance criteria:**
   - [ ] Upload, pantau status, dan hapus dokumen dari halaman Project.
 - **Squash title:** `feat(frontend): add project knowledge tab (F45)`
-- **Setelah merge:** rilis **v0.9.0**.
+- **Setelah merge:** rilis **v0.10.0**.
 
 ---
 
-## M10: Interop → v0.10.0
+## M11: Interop → v0.11.0
 
 ### F46: OpenAI-compatible endpoint
 
@@ -1964,7 +2185,7 @@ Scope commit frontend: `frontend`. Aturan kode frontend ada di [ADR 0003](adr/00
   - [ ] `AsyncOpenAI` (dengan `httpx.AsyncClient` + `ASGITransport`) bisa chat dan streaming dengan
         sebuah Project.
 - **Squash title:** `feat(service): add openai-compatible chat endpoint (F46)`
-- **Setelah merge:** rilis **v0.10.0**.
+- **Setelah merge:** rilis **v0.11.0**.
 
 ---
 
@@ -1979,6 +2200,10 @@ setiap item mendapat ID `Fxx` baru.
 | B2 | Job terjadwal lewat UI | F41, F34 | `JobSource` protocol (F41) |
 | B3 | Pensiunkan Streamlit dev console | F38 (frontend setara) | Extra `ui` dan target Docker `ui` terpisah (F22) |
 | B4 | Adapter protokol AG-UI | F33 | Kontrak SSE native (F25) |
-| B5 | Sandbox production (managed atau self-hosted gVisor/Kubernetes) | F37 | `Sandbox` protocol |
+| B5 | Sandbox production (managed atau self-hosted gVisor/Kubernetes, microVM) | F37, F49 | `Sandbox` protocol, kernel di balik `sandbox-runner` |
 | B6 | SSO / OIDC | F24 | Klaim JWT dan `UserRepository` |
 | B7 | Artifact storage S3-compatible | F35 | `ArtifactStore` protocol |
+| B8 | Tampilan rencana agent di frontend | F50, F33 | Rencana dikirim sebagai event `custom` (F50) |
+| B9 | Uji hipotesis paralel dengan sub-agent | F40 | Playbook `root-cause-analysis` + pola `SupervisorAgent` |
+| B10 | LLM judge untuk eval narasi | F40 | Scorer di `evals/` (F31) |
+| B11 | Katalog data lewat UI | F48 | Loader katalog di balik `DataCatalog` (ADR 0006) |

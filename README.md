@@ -7,7 +7,8 @@ React, Python client, dan dev console Streamlit.
 Project ini adalah rewrite dari [`agent-service-toolkit/`](agent-service-toolkit/) dengan fokus pada
 kode yang sederhana, eksplisit, dan mudah dites (Zen of Python).
 
-> **Status:** `v0.7.0` (M7 Files & Execution) sudah dirilis. Berikutnya M8 Data Analytics (F39).
+> **Status:** `v0.7.0` (M7 Files & Execution) sudah dirilis. Berikutnya M8 Analytics Core, dimulai
+> dari F47 (step budget & retry guard).
 > Lihat [docs/ROADMAP.md](docs/ROADMAP.md) untuk status per fitur dan
 > [.agents/memory.md](.agents/memory.md) untuk konteks terkini.
 
