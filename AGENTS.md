@@ -29,7 +29,7 @@ Streamlit.
 | UI | Streamlit. **Mulai F32:** frontend React + TypeScript di `frontend/` ([ADR 0003](docs/adr/0003-frontend-stack.md)), Streamlit menjadi dev console |
 | Tooling | uv, ruff, pyrefly, pytest, pre-commit |
 
-Arah Fase 2 (M4–M10) ada di [docs/ROADMAP.md](docs/ROADMAP.md) dan keputusan besarnya di
+Arah Fase 2 (M4–M11) ada di [docs/ROADMAP.md](docs/ROADMAP.md) dan keputusan besarnya di
 [docs/adr/](docs/adr/README.md).
 
 ## Perintah
@@ -81,17 +81,19 @@ tests/         # mirror struktur src/
 
 ```text
 src/agent_service/
-├── harness/     # ContextBuilder, SkillRegistry, ContextPolicy, tool harness   F27–F30, F36
-├── skills/      # skill built-in: builtin/<name>/SKILL.md (data, bukan kode)   F28
+├── harness/     # ContextBuilder, SkillRegistry, ContextPolicy, tool harness,  F27–F30, F36,
+│                #   retry guard, plan & verify                                 F47, F50
+├── skills/      # skill built-in: builtin/<name>/SKILL.md (data, bukan kode)   F28, F40
 ├── files/       # ArtifactStore, Workspace, renderer PDF                       F35, F36, F42
-├── sandbox/     # Sandbox protocol, DockerSandbox, FakeSandbox                 F37
-├── datasource/  # SqlDataSource read-only, QueryGuard                          F39
+├── sandbox/     # Sandbox protocol, DockerSandbox, FakeSandbox, kernel/thread  F37, F49
+├── datasource/  # DataSourceRegistry read-only, QueryGuard, profiler, catalog  F39, F48
 ├── knowledge/   # parser, chunker, embedder, retriever                         F43, F44
 ├── worker/      # scheduler, job runner, task ingestion                        F41, F43
 └── evals/       # runner dan scorer eval                                       F31
 frontend/        # React + TypeScript (Vite, shadcn/ui, assistant-ui)           F32
 contracts/       # openapi.json, stream-event.schema.json (hasil generate)      F25
 evals/           # dataset eval (YAML)                                          F31
+catalogs/        # data catalog YAML per data source (semantic layer)           F48
 ```
 
 ### Batas dependensi antar layer
@@ -123,7 +125,12 @@ frontend ──► contracts (tipe hasil generate), lewat HTTP saja
 - `harness/` tidak boleh import `agents/` atau `service/`. Agent memakai harness lewat komposisi
   ([ADR 0002](docs/adr/0002-own-harness.md)).
 - Kode buatan model **tidak pernah** dijalankan di proses service (`exec`, `eval`, subprocess).
-  Semua eksekusi lewat `sandbox/` (NFR-10).
+  Semua eksekusi lewat `sandbox/` (NFR-10). Sandbox tidak pernah menerima kredensial database:
+  data masuk lewat `run_sql` di service lalu workspace ([ADR 0007](docs/adr/0007-code-as-action-execution.md)).
+- Kemampuan analitik dibangun dari **primitif generik + pengetahuan + loop kerja**, bukan satu
+  fungsi per skenario. Tidak ada nama domain di tool, prompt agent, atau skill (NFR-13). Pengetahuan
+  data ada di `catalogs/`, dan pengetahuan metode ada di skill
+  ([ADR 0006](docs/adr/0006-data-catalog-semantic-layer.md)).
 - `frontend/src/components/ui/` adalah salinan vendor shadcn/ui dan tidak diedit. Komponen
   aplikasi hanya menyusun komponen vendor ([ADR 0003](docs/adr/0003-frontend-stack.md)).
 

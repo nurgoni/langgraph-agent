@@ -7,10 +7,12 @@
 | Tanggal | 2026-11-01, direvisi 2026-11-15 dan 2026-11-19 |
 | Referensi | `agent-service-toolkit/` (kode asli), [docs/adr/](docs/adr/) (keputusan arsitektur), [docs/DATA_MODEL.md](docs/DATA_MODEL.md) (skema data) |
 
-**Fase 1 (v1, M1–M3)** selesai di `v0.3.0`. **Fase 2 (M4–M10)** mengubah service menjadi produk
+**Fase 1 (v1, M1–M3)** selesai di `v0.3.0`. **Fase 2 (M4–M11)** mengubah service menjadi produk
 chat dengan Project, skill, file, eksekusi kode, analisa data, RAG, dan frontend React. M4–M7
-(FR-30–FR-50) sudah dirilis di `v0.7.0`. M8–M10 (FR-51–FR-58) belum dikerjakan. Requirement fase 2
-ada di §5 bagian "Fase 2" (FR-30 dan seterusnya).
+(FR-30–FR-50) sudah dirilis di `v0.7.0`. M8–M11 (FR-51–FR-62) belum dikerjakan. Requirement fase 2
+ada di §5 bagian "Fase 2" (FR-30 dan seterusnya). Analisa data (M8) direvisi 2026-11-26 menjadi
+strategi code-as-action ([ADR 0006](docs/adr/0006-data-catalog-semantic-layer.md),
+[ADR 0007](docs/adr/0007-code-as-action-execution.md)).
 
 ## 1. Latar Belakang
 
@@ -57,7 +59,10 @@ membangunnya ulang dengan prinsip Zen of Python serta desain berbasis class (lih
    disclosure, context management, dan long-term memory
    ([ADR 0002](docs/adr/0002-own-harness.md)).
 8. **Analisa data** dari database relasional, termasuk laporan PDF terjadwal, dengan eksekusi kode
-   yang selalu terisolasi di sandbox.
+   yang selalu terisolasi di sandbox. Agent dibangun dari primitif generik (eksplorasi data, query,
+   kernel iteratif), pengetahuan (data catalog dan playbook metode), dan loop kerja (rencana,
+   verifikasi, batas retry), bukan satu fungsi per skenario. Coverage diukur dengan eval lintas
+   dataset.
 9. **RAG** dengan pipeline ingestion lengkap, per Project.
 
 ## 3. Non-Goals (v1)
@@ -275,15 +280,53 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
   File dari composer di-upload saat dipilih dan dikirim sebagai `artifact_ids`; gambar markdown
   yang menyebut nama artifact di jawaban yang sama ditampilkan dari artifact itu.
 
-### Fase 2: Data Analytics (M8)
+### Fase 2: Analytics Core (M8)
 
-- **FR-51** Sumber data SQL read-only (`DATA_SOURCE_URL`, user database read-only). Tool
-  `list_tables`, `describe_table` (kolom + contoh baris), dan `run_sql`. `run_sql` hanya menerima
-  satu statement `SELECT` (diparse dengan `sqlglot`), memakai batas baris dan `statement_timeout`,
-  lalu menyimpan hasilnya di workspace. Ada database demo berisi data contoh.
-- **FR-52** Project built-in "Data Analyst": SQL → analisa pandas di sandbox → chart sebagai
-  artifact → jawaban. Definisi metrik dan kamus kolom ditulis sebagai skill built-in (semantic
-  layer).
+Direvisi 2026-11-26 ([ADR 0006](docs/adr/0006-data-catalog-semantic-layer.md),
+[ADR 0007](docs/adr/0007-code-as-action-execution.md)). Semua requirement di bawah bersifat
+domain-agnostic: tidak ada nama domain di tool, prompt agent, atau skill.
+
+- **FR-59** Batas langkah dan retry untuk semua agent. Setiap run memakai `recursion_limit`
+  eksplisit (`AGENT_RECURSION_LIMIT`), bukan default LangGraph. Kegagalan beruntun pada tool yang
+  sama (`ToolException`, serta exit code bukan nol atau timeout untuk tool eksekusi) dihitung. Setelah
+  `TOOL_MAX_CONSECUTIVE_ERRORS` (default 3), tool itu tidak dijalankan lagi di giliran tersebut,
+  dan model diminta menjelaskan error ke user. Error tetap dikembalikan ke model sebagai observasi.
+- **FR-51** Data source read-only dan primitif eksplorasi. Registry data source di
+  `DATA_SOURCES_FILE` (DSN dari env, user database read-only). Project memilih data source lewat
+  `ProjectSettings.data_source_ids`, dan tool hanya bisa mengakses data source project. Tool generik:
+  `list_data_sources`, `search_schema`, `describe_table` (kolom, tipe, komentar, relasi, perkiraan
+  jumlah baris, contoh baris), `profile_table` (null, distinct, min/max, nilai teratas, rentang
+  tanggal), dan `run_sql`. `run_sql` hanya menerima satu `SELECT` (diparse `sqlglot`) di transaksi
+  read-only, dengan batas baris dan `statement_timeout`, lalu menyimpan hasilnya sebagai Parquet di
+  workspace. Sandbox tidak pernah menerima kredensial database. Ada dua dataset demo dari domain
+  berbeda dengan pola yang sengaja ditanam. *Revisi dari FR-51 awal (satu `DATA_SOURCE_URL`, tiga
+  tool).*
+- **FR-60** Data catalog sebagai semantic layer terstruktur: satu file YAML per data source berisi
+  deskripsi tabel dan kolom, metrik (ekspresi, grain, kolom waktu, filter, unit), dimensi, join, dan
+  catatan kualitas data. Katalog divalidasi terhadap skema database saat startup. Katalog yang tidak
+  valid membuat data source itu unavailable, tanpa menggagalkan service. Tool `list_metrics` dan
+  `get_metric`. Katalog bersifat opsional.
+- **FR-61** Kernel Python per thread untuk `run_python`: variabel dan import bertahan antar
+  pemanggilan di thread yang sama. Isolasinya sama dengan FR-49 (tanpa jaringan, rootfs read-only,
+  non-root, batas resource, timeout per eksekusi). Kernel dihentikan setelah idle
+  (`KERNEL_IDLE_TTL_SECONDS`), saat batas kernel aktif tercapai (`KERNEL_MAX_ACTIVE`, yang paling
+  lama idle lebih dulu), atau saat thread dihapus. Model diberi tahu saat memakai kernel baru.
+  Workspace tetap sumber kebenaran. `run_shell` tetap sekali pakai.
+- **FR-62** Rencana dan verifikasi. Tool harness `update_plan` menyimpan rencana yang dibuat dan
+  direvisi model di state thread, dan rencana itu disisipkan ke system prompt setiap giliran. Agent
+  yang mengaktifkannya menjalankan langkah verifikasi sebelum jawaban akhir: angka berasal dari
+  output tool, metrik sesuai katalog, filter dan periode sesuai pertanyaan, dan keterbatasan data
+  disebut. Verifikasi yang gagal mengembalikan run ke loop, yang tetap dibatasi FR-59.
+- **FR-52** Project built-in "Data Analyst" yang disusun dari FR-51, FR-60, FR-61, FR-62, tool file
+  (FR-47), dan playbook metode analisa sebagai skill generik (eksplorasi data, deskriptif, tren,
+  perbandingan segmen, anomali, root cause berbasis hipotesis, cek kualitas data, pemilihan chart).
+  Chart dibuat di kernel dan dibagikan sebagai artifact. Kualitas diukur dengan eval suite lintas
+  dua dataset demo, dengan taksonomi pertanyaan: deskriptif, komparatif, tren, diagnostik, ambigu,
+  jebakan kualitas data, dan tidak bisa dijawab. *Revisi dari FR-52 awal (semantic layer sebagai
+  skill, satu skenario acceptance).*
+
+### Fase 2: Scheduled Analytics (M9)
+
 - **FR-53** Worker dan scheduler sebagai proses terpisah (service `worker` di `compose.yaml`). Job
   didefinisikan di file konfigurasi (`jobs.yaml`): jadwal cron, project, prompt, dan panjang jendela
   waktu. Setiap run memproses jendela setengah terbuka `[start, end)` yang sejajar jadwal (UTC).
@@ -293,7 +336,7 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
   chart). Hasil job terjadwal menjadi thread baru di project job, berisi message ringkasan dan
   artifact PDF.
 
-### Fase 2: Knowledge (M9)
+### Fase 2: Knowledge (M10)
 
 - **FR-55** Ingestion per Project. Dokumen yang di-upload (PDF, Markdown, DOCX, TXT) diproses worker:
   parse → chunk → embed (`EMBEDDING_MODEL`, endpoint OpenAI-compatible) → simpan di `pgvector`.
@@ -304,7 +347,7 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
   (FR-41).
 - **FR-57** Tab Knowledge di halaman Project: upload, status, dan hapus dokumen.
 
-### Fase 2: Interop (M10)
+### Fase 2: Interop (M11)
 
 - **FR-58** Endpoint OpenAI-compatible: `GET /v1/models` (project dan agent sebagai model) dan
   `POST /v1/chat/completions` (stream dan non-stream). Stateless secara default. Reasoning dikirim
@@ -327,6 +370,7 @@ lewat daftar tools. RAG cukup menjadi instance lain dengan tool retriever (Futur
 | NFR-10 | Eksekusi kode (Fase 2) | Tidak ada `exec`/`eval`/subprocess untuk kode buatan model di proses service. Semua lewat `Sandbox` |
 | NFR-11 | Frontend (Fase 2) | `tsc --noEmit`, ESLint, dan Vitest hijau. Tipe API hanya dari hasil generate (FR-35) |
 | NFR-12 | Ukuran image (Fase 2) | Image `service` tidak berisi Streamlit. Ukuran image dicatat di PR F22 |
+| NFR-13 | Analitik generik (M8) | Tidak ada nama domain di tool, prompt agent, skill, atau kode analitik. Eval agent data analyst dijalankan di minimal dua dataset dari domain berbeda |
 
 ## 7. Kontrak API
 
@@ -364,6 +408,7 @@ dan pemilik thread diambil dari token (FR-33).
 | Method | Path | FR | Fitur |
 |---|---|---|---|
 | GET | `/jobs`, `/jobs/{job_id}/runs` | FR-53 | F41 |
+| GET | `/datasources` | FR-51 | F39 |
 | POST, GET, DELETE | `/projects/{project_id}/documents` | FR-55 | F43 |
 | GET, POST | `/v1/models`, `/v1/chat/completions` | FR-58 | F46 |
 
@@ -459,7 +504,11 @@ F24) sudah dihapus.
 
 | Variabel | Fitur | Keterangan |
 |---|---|---|
-| `DATA_SOURCE_URL` | F39 | Koneksi read-only ke database yang dianalisa |
+| `AGENT_RECURSION_LIMIT` | F47 | Batas langkah graph per run, menggantikan default LangGraph |
+| `TOOL_MAX_CONSECUTIVE_ERRORS` | F47 | Kegagalan beruntun per tool sebelum tool dihentikan, default 3 |
+| `DATA_SOURCES_FILE` | F39 | Registry data source read-only. DSN setiap data source dibaca dari env yang namanya disebut di file. Menggantikan rencana `DATA_SOURCE_URL` |
+| `SQL_MAX_ROWS` | F39 | Batas baris hasil `run_sql` |
+| `KERNEL_IDLE_TTL_SECONDS`, `KERNEL_MAX_ACTIVE` | F49 | Umur kernel idle dan jumlah kernel aktif (dibaca `sandbox-runner`) |
 | `JOBS_FILE` | F41 | Lokasi definisi job terjadwal |
 | `EMBEDDING_MODEL` | F43 | Model embedding OpenAI-compatible |
 
@@ -491,9 +540,10 @@ Rincian fitur per milestone, urutan eksekusi, dan rencana commit ada di
 | **M5: Harness Core** | FR-36–FR-41 | Project built-in memakai skill lewat `load_skill`, eval berjalan |
 | **M6: Frontend** | FR-42–FR-45 | Demo chat di browser dengan Projects dan reasoning |
 | **M7: Files & Execution** | FR-46–FR-50 | Agent menulis file dan menjalankan Python di sandbox, hasilnya tampil di panel artifact |
-| **M8: Data Analytics** | FR-51–FR-54 | Pertanyaan data → chart. Job 2 jam menghasilkan thread berisi PDF |
-| **M9: Knowledge** | FR-55–FR-57 | Upload dokumen → jawaban dengan sumber |
-| **M10: Interop** | FR-58 | SDK `openai` bisa chat dengan Project |
+| **M8: Analytics Core** | FR-51, FR-52, FR-59–FR-62 | Agent analisa data dari primitif generik lolos ambang eval di dua dataset demo, termasuk pertanyaan diagnostik |
+| **M9: Scheduled Analytics** | FR-53, FR-54 | Job terjadwal menghasilkan thread berisi laporan PDF yang lolos verifikasi |
+| **M10: Knowledge** | FR-55–FR-57 | Upload dokumen → jawaban dengan sumber |
+| **M11: Interop** | FR-58 | SDK `openai` bisa chat dengan Project |
 
 ## 11. Open Questions
 
@@ -526,3 +576,7 @@ Rincian fitur per milestone, urutan eksekusi, dan rencana commit ada di
    sistem)? (F42)
 10. Parser dokumen untuk ingestion: cukup pypdf + python-docx, atau perlu parser tabel/scan
     (Docling)? (F43)
+11. Profiling tabel besar di `profile_table`: sampling, statistik `pg_stats`, atau batas ukuran
+    tabel? (F39)
+12. Implementasi kernel per thread: Jupyter kernel lewat `jupyter_client`, atau REPL server kecil
+    buatan sendiri di image sandbox? (F49)
