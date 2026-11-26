@@ -1,6 +1,7 @@
 # 0005: Format skill `SKILL.md` dan sumber skill bertingkat
 
-- **Status:** Accepted
+- **Status:** Accepted. Bagian semantic layer data analyst digantikan
+  [0006](0006-data-catalog-semantic-layer.md) (2026-11-26)
 - **Tanggal:** 2026-11-15
 - **Fitur terkait:** F28, F36, F37, F40, backlog B1
 

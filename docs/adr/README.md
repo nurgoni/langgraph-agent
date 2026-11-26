@@ -18,7 +18,9 @@ Keputusan kecil dan pelajaran harian tetap di [`.agents/memory.md`](../../.agent
 | [0002](0002-own-harness.md) | Lapisan harness dibangun sendiri di atas LangGraph | Accepted | 2026-11-15 |
 | [0003](0003-frontend-stack.md) | Frontend React + TypeScript dengan komponen standar | Accepted | 2026-11-15 |
 | [0004](0004-project-as-declarative-agent.md) | Project sebagai agent deklaratif | Accepted | 2026-11-15 |
-| [0005](0005-skill-format-and-sources.md) | Format skill `SKILL.md` dan sumber skill bertingkat | Accepted | 2026-11-15 |
+| [0005](0005-skill-format-and-sources.md) | Format skill `SKILL.md` dan sumber skill bertingkat | Accepted, sebagian digantikan 0006 | 2026-11-15 |
+| [0006](0006-data-catalog-semantic-layer.md) | Data catalog sebagai semantic layer terstruktur | Accepted | 2026-11-26 |
+| [0007](0007-code-as-action-execution.md) | Code-as-action: kernel per thread, akses data lewat service | Accepted | 2026-11-26 |
 
 ## Template
 
