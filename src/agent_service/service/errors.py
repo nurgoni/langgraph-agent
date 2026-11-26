@@ -11,7 +11,11 @@ from typing import Final
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
-from agent_service.agents.errors import AgentNotFoundError, AgentUnavailableError
+from agent_service.agents.errors import (
+    AgentNotFoundError,
+    AgentStepLimitError,
+    AgentUnavailableError,
+)
 from agent_service.files.artifacts import ArtifactTooLargeError
 from agent_service.harness.skills.registry import SkillNotFoundError
 from agent_service.llm.factory import ModelNotConfiguredError, UnknownModelError
@@ -42,6 +46,7 @@ DOMAIN_ERROR_STATUS: Final[Mapping[type[Exception], int]] = {
     ProjectReadOnlyError: status.HTTP_403_FORBIDDEN,
     InvalidProjectError: status.HTTP_422_UNPROCESSABLE_CONTENT,
     AgentUnavailableError: status.HTTP_503_SERVICE_UNAVAILABLE,
+    AgentStepLimitError: status.HTTP_500_INTERNAL_SERVER_ERROR,
     UnknownModelError: status.HTTP_422_UNPROCESSABLE_CONTENT,
     ModelNotConfiguredError: status.HTTP_503_SERVICE_UNAVAILABLE,
 }

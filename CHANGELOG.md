@@ -6,7 +6,16 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 
 ## [Unreleased]
 
+**Catatan upgrade:** env var baru `AGENT_RECURSION_LIMIT` (default `50`) dan
+`TOOL_MAX_CONSECUTIVE_ERRORS` (default `3`) bersifat opsional. Tanpa migrasi.
+
 ### Added
+
+- Batas langkah dan retry untuk semua agent (F47, FR-59). Service selalu mengisi `recursion_limit`
+  dari `AGENT_RECURSION_LIMIT`, menggantikan default LangGraph (10.007). `ToolFailureGuard` tidak
+  lagi menjalankan tool yang gagal 3 kali beruntun di satu giliran (`TOOL_MAX_CONSECUTIVE_ERRORS`),
+  dan meminta model menjelaskan error ke user. `run_python`/`run_shell` dengan exit code bukan nol
+  atau timeout kini berstatus `error` dan ikut dihitung.
 
 - `docs/DATA_MODEL.md`: ERD semua tabel Postgres (aplikasi dan LangGraph), kamus kolom,
   kardinalitas, rujukan ke luar database, dan alur penghapusan data.
@@ -14,6 +23,15 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
   per thread, akses data lewat service).
 
 ### Changed
+
+- Run yang melewati `recursion_limit` kini dijawab `/invoke` dengan 500 berisi pesan step limit, dan
+  `/stream` dengan frame `error` berisi pesan yang sama, bukan `"Internal server error"`.
+
+### Fixed
+
+- Exception selain `ToolException` dari tool kembali menggagalkan run pada agent dengan tool file
+  workspace. Sebelumnya `ToolNode` dengan `awrap_tool_call` mengubah semua exception menjadi pesan
+  error, sehingga bug di tool tersembunyi.
 
 - Dokumentasi disinkronkan dengan `v0.7.0`: bagian umum `docs/ARCHITECTURE.md` (gambaran besar,
   layer, siklus hidup, error, client, deployment, testing), status dan fitur `README.md`, endpoint,

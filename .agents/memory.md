@@ -17,8 +17,9 @@ berulang ada di dev-time skill `.claude/skills/` (daftar di AGENTS.md § Dev-tim
 - **Fase:** v0.7.0 (M7 Files & Execution) dirilis 2026-11-18. PR release #46 ter-squash ke `main`;
   back-merge ke `develop` diselesaikan agent 2026-11-19 (`efe7364`, menunggu user push `develop`
   dan menghapus `release/v0.7.0` remote).
-- **Berikutnya:** M8 Analytics Core (direvisi 2026-11-26): F47 → F39 → F48 → F49 → F50 → F40,
-  mulai **F47** (step budget & retry guard). Dokumen revisi menunggu user commit/PR.
+- **Berikutnya:** M8 Analytics Core (direvisi 2026-11-26): F47 → F39 → F48 → F49 → F50 → F40.
+  **F47 selesai** di working tree (menunggu user commit/PR `feature/F47-step-budget`), berikutnya
+  **F39** (data source & primitif eksplorasi).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Arsip:** Decision Log M0–M4 ada di
@@ -26,7 +27,7 @@ berulang ada di dev-time skill `.claude/skills/` (daftar di AGENTS.md § Dev-tim
   [archive/decision-log-m4-m5.md](archive/decision-log-m4-m5.md), dev-time skill + F32–F34 di
   [archive/decision-log-m6.md](archive/decision-log-m6.md), dan F35–F38 di
   [archive/decision-log-m7.md](archive/decision-log-m7.md).
-- **Terakhir diperbarui:** 2026-11-26 (revisi strategi M8 code-as-action)
+- **Terakhir diperbarui:** 2026-11-26 (F47 step budget & retry guard)
 
 ## Aturan Kerja
 
@@ -72,7 +73,10 @@ Ringkasan pelajaran dari M0–M6 yang masih berlaku (detail di arsip dan entri f
   perilaku provider; jalankan di database sementara, bukan database dev.
 - **LangGraph:** reducer `add_messages` mengisi `id` in-place, jadi selalu kembalikan objek message
   baru. `interrupt()` di dalam tool menjalankan ulang semua tool call giliran itu saat dilanjutkan.
-  Callback dan config diwariskan ke node dan sub-graph.
+  Callback dan config diwariskan ke node dan sub-graph. `ToolNode` dengan `awrap_tool_call` mengubah exception
+  apa pun dari wrapper menjadi pesan error (tuple `handle_tool_errors` tidak menyaring di sana), jadi
+  pakai handler callable bertipe (`tool_error_text`). `ToolMessage` yang dikembalikan tool sendiri
+  tidak mendapat `name` dari `ToolNode`.
 - **Frontend:** pnpm lewat `corepack pnpm` dari dalam `frontend/` (corepack membaca
   `packageManager` dari folder kerja, bukan `--dir`; dari root pakai `corepack pnpm@<versi>`,
   seperti hook `frontend-check`). Tanpa `corepack enable` global. Registry npm
@@ -99,6 +103,29 @@ Ringkasan pelajaran dari M0–M6 yang masih berlaku (detail di arsip dan entri f
   `\n\n` (dikecualikan), dan `check-yaml` butuh `--allow-multiple-documents` untuk lockfile pnpm.
 
 ## Decision Log
+
+### 2026-11-26: Batas langkah dan retry dari F47
+
+- **Keputusan user:** `AGENT_RECURSION_LIMIT` default 50 (±24 putaran tool), exit code bukan nol
+  dan timeout `run_python`/`run_shell` dihitung sebagai kegagalan, dan run yang melewati limit
+  menjadi frame `error` (`/stream`) atau 500 (`/invoke`) dengan pesan `STEP_LIMIT_ERROR_DETAIL`.
+- **Keputusan desain:**
+  - `ToolFailureGuard` di `harness/tool_guard.py`, dipasang di luar `ToolOutputOffloader` lewat
+    `around()`. Hitungan dibaca dari message sejak `HumanMessage` terakhir, nama tool dari tool call
+    `AIMessage`. Default guard 3 di setiap `ToolCallingAgent`, termasuk expert supervisor.
+  - Tool eksekusi menandai kegagalan dengan `ToolMessage(status="error")`, bukan pencocokan teks.
+  - `recursion_limit` ada di `RunTarget` (route mengisinya dari `SettingsDep`). `build_run_input`
+    punya default 50 agar test dan pemanggil lain tetap tanpa default LangGraph.
+  - `AgentStepLimitError` dipetakan ke 500, bukan status baru, supaya kontrak tidak berubah.
+- **Temuan:** sejak v0.7.0, agent dengan tool file menyembunyikan bug tool (`RuntimeError` menjadi
+  `ToolMessage` error dan run berputar sampai 10.007 langkah, ±3 menit di test). Diperbaiki di F47.
+- **Hasil ukur:** smoke `qwen3.5:9b`, tool selalu gagal. Prompt biasa: model berhenti sendiri
+  setelah 3 kegagalan (23,5 s). Prompt "terus coba": 4 panggilan, 3 dijalankan, 1 diblokir, lalu
+  model menjelaskan error (10,1 s). Mutation check: 8/8 terbunuh.
+- **Pelajaran:** mutation check yang mematikan guard memicu loop panjang di test; jalankan dengan
+  `pytest -x`, timeout per mutasi, dan output `-u` (unbuffered). Sesi yang terputus di tengah
+  mutation check bisa meninggalkan mutasi di `src/`: cek baris aslinya dengan `grep -c` sebelum
+  melanjutkan.
 
 ### 2026-11-26: Revisi M8 menjadi code-as-action
 

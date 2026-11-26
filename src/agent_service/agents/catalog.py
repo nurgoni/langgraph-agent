@@ -15,6 +15,7 @@ from agent_service.agents.supervisor import create_supervisor_agent
 from agent_service.agents.tools.web_search import SearchBackend
 from agent_service.harness.context_policy import ContextPolicy
 from agent_service.harness.skills.toolkit import SkillToolkit
+from agent_service.harness.tool_guard import ToolFailureGuard
 from agent_service.harness.workspace import WorkspaceToolkit
 
 DEFAULT_AGENT_ID: Final = CHATBOT_AGENT_ID
@@ -25,6 +26,7 @@ def create_default_agents(
     skills: SkillToolkit | None = None,
     context_policy: ContextPolicy | None = None,
     files: WorkspaceToolkit | None = None,
+    tool_guard: ToolFailureGuard | None = None,
 ) -> list[BaseAgent]:
     """Buat instance baru untuk setiap agent bawaan.
 
@@ -38,6 +40,8 @@ def create_default_agents(
             Default: `ContextPolicy()`. Interrupt agent tidak memakainya (percakapannya pendek).
         files: Tool file workspace untuk chatbot dan research assistant (keputusan user F36).
             Default: tanpa workspace.
+        tool_guard: Batas kegagalan beruntun per tool (`TOOL_MAX_CONSECUTIVE_ERRORS`, FR-59) untuk
+            agent yang memanggil tool. Default: `ToolFailureGuard()` (3).
 
     Chatbot dan research assistant memakai long-term memory user (keputusan user F30). Memory
     aktif saat registry punya store, jadi graph yang dibangun tanpa store tetap seperti sebelumnya.
@@ -51,12 +55,23 @@ def create_default_agents(
     'chatbot'
     """
     return [
-        ChatbotAgent(skills=skills, context_policy=context_policy, use_memory=True, files=files),
+        ChatbotAgent(
+            skills=skills,
+            context_policy=context_policy,
+            use_memory=True,
+            files=files,
+            tool_guard=tool_guard,
+        ),
         create_research_assistant(
-            search_backend, skills, context_policy, use_memory=True, files=files
+            search_backend,
+            skills,
+            context_policy,
+            use_memory=True,
+            files=files,
+            tool_guard=tool_guard,
         ),
         InterruptAgent(),
-        create_supervisor_agent(search_backend, context_policy),
+        create_supervisor_agent(search_backend, context_policy, tool_guard),
     ]
 
 

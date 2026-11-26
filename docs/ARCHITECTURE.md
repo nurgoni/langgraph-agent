@@ -203,6 +203,7 @@ metadata setiap checkpoint. Dari situ:
 | `RequestValidationError` | 422 (list per field) | Body/query FastAPI, `parse_agent_config` |
 | `AgentUnavailableError` | 503 | Agent yang gagal `load()`/`build()` saat startup |
 | `ModelNotConfiguredError` | 503 | Model asli tanpa `LLM_BASE_URL`/`LLM_API_KEY` |
+| `AgentStepLimitError` | 500, pesan step limit | `/invoke` yang melewati `AGENT_RECURSION_LIMIT` (`GraphRecursionError`). Di `/stream` menjadi frame `error` dengan pesan yang sama |
 | Exception lain | 500, `"Internal server error"` | Dicatat dengan `logger.exception` |
 
 Pemetaan ini ada di `service/errors.py` (`DOMAIN_ERROR_STATUS`), dan subclass ikut terpetakan
@@ -631,7 +632,7 @@ service: build_attached_run_input
 graph.ainvoke / astream (..., context=run.context)
 ToolCallingAgent(files=WorkspaceToolkit)
     ├─ call_model: with_attachment_notes(messages) → model melihat path lampiran
-    └─ ToolNode(awrap_tool_call=ToolOutputOffloader)
+    └─ ToolNode(awrap_tool_call=ToolFailureGuard.around(ToolOutputOffloader))
           read_file · write_file · edit_file · list_files · grep · share_file
           ToolRuntime[HarnessContext] → workspace + thread_id/user_id dari config
           output > TOOL_OUTPUT_MAX_TOKENS → tool-outputs/<id>.txt + cuplikan
@@ -693,9 +694,21 @@ ke model sampai model menjawab tanpa tool call.
 - **System prompt dirakit `ContextBuilder`** setiap kali model dipanggil (lihat
   [System Prompt](#system-prompt)). System message tidak disimpan di riwayat.
 - **`ToolException`** dari tool dikembalikan ke model sebagai `ToolMessage` berstatus `error`, jadi
-  model bisa mencoba lagi. Exception lain tetap menggagalkan run.
-- **Jika sisa langkah kurang dari `MIN_REMAINING_STEPS`**, model tidak boleh memanggil tool baru dan
-  menjawab `STEP_LIMIT_MESSAGE`.
+  model bisa mencoba lagi. Exception lain tetap menggagalkan run. Penyaringnya callable
+  `tool_error_text` (`harness/tool_guard.py`), bukan tuple: dengan `awrap_tool_call`, `ToolNode`
+  mengubah exception apa pun yang keluar dari wrapper menjadi pesan error tanpa memeriksa tipenya.
+- **Batas langkah dan retry (FR-59, F47).** Service selalu mengisi `recursion_limit` di config run
+  dari `AGENT_RECURSION_LIMIT` (default 50, ±24 putaran tool), dan sub-agent supervisor mewarisinya.
+  Jika sisa langkah kurang dari `MIN_REMAINING_STEPS`, model tidak boleh memanggil tool baru dan
+  menjawab `STEP_LIMIT_MESSAGE`. Graph yang tetap melewati limit menjadi `AgentStepLimitError`.
+- **`ToolFailureGuard`** membungkus setiap tool call (di luar `ToolOutputOffloader`). Kegagalan
+  beruntun dihitung per nama tool dari message sejak pesan human terakhir, bukan counter di memori,
+  jadi tetap benar setelah resume interrupt. Kegagalan = `ToolMessage` berstatus `error`
+  (`ToolException`, atau exit code bukan nol / timeout yang ditandai `run_python`/`run_shell`), dan
+  hasil sukses me-reset hitungan. Setelah `TOOL_MAX_CONSECUTIVE_ERRORS` (default 3), tool tidak
+  dijalankan dan model menerima `ToolMessage` error yang memintanya berhenti mencoba dan menjelaskan
+  error ke user. Tool call paralel dalam satu jawaban membaca state yang sama, jadi tidak saling
+  menghitung.
 - **Tool** ditulis sebagai function `@tool` di `agents/tools/`. Docstring-nya berbahasa Inggris
   karena menjadi deskripsi tool untuk model. Tool dengan dependency (misalnya mesin pencari) dibuat
   lewat factory yang menerima dependency tersebut, supaya test bisa memakai tiruan tanpa network.

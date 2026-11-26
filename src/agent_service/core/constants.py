@@ -92,3 +92,12 @@ MIN_SANDBOX_TIMEOUT_SECONDS: Final = 1
 MAX_SANDBOX_TIMEOUT_SECONDS: Final = 600
 # Kunci `configurable`: persetujuan sebelum eksekusi kode di project (`ProjectSettings`).
 PROJECT_TOOL_APPROVAL_CONFIG_KEY: Final = "project_tool_approval"
+
+# Batas langkah graph per run (FR-59, keputusan user F47). Satu putaran tool memakai dua langkah
+# (model, lalu tools), jadi 50 memberi ±24 putaran tool per giliran, jauh di bawah default
+# LangGraph (10.007). Batas bawah cukup untuk satu putaran tool ditambah jawaban.
+DEFAULT_AGENT_RECURSION_LIMIT: Final = 50
+MIN_AGENT_RECURSION_LIMIT: Final = 4
+# Kegagalan beruntun pada tool yang sama sebelum tool itu tidak dijalankan lagi (ADR 0007).
+DEFAULT_TOOL_MAX_CONSECUTIVE_ERRORS: Final = 3
+MIN_TOOL_MAX_CONSECUTIVE_ERRORS: Final = 1

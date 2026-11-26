@@ -291,6 +291,8 @@ domain-agnostic: tidak ada nama domain di tool, prompt agent, atau skill.
   sama (`ToolException`, serta exit code bukan nol atau timeout untuk tool eksekusi) dihitung. Setelah
   `TOOL_MAX_CONSECUTIVE_ERRORS` (default 3), tool itu tidak dijalankan lagi di giliran tersebut,
   dan model diminta menjelaskan error ke user. Error tetap dikembalikan ke model sebagai observasi.
+  Run yang tetap melewati `recursion_limit` dijawab `/invoke` dengan 500 dan pesan step limit, dan
+  `/stream` dengan frame `error` berisi pesan yang sama.
 - **FR-51** Data source read-only dan primitif eksplorasi. Registry data source di
   `DATA_SOURCES_FILE` (DSN dari env, user database read-only). Project memilih data source lewat
   `ProjectSettings.data_source_ids`, dan tool hanya bisa mengakses data source project. Tool generik:
@@ -490,6 +492,8 @@ Node yang LLM-nya diberi tag `skip_stream` tidak menghasilkan frame `token`.
 | `TOOL_OUTPUT_MAX_TOKENS` | `4000` | Batas output tool sebelum dipindah ke workspace (FR-48) |
 | `SANDBOX_URL`, `SANDBOX_TOKEN` | – | URL dan token bersama `sandbox-runner`. Kosong = tanpa tool eksekusi (FR-49) |
 | `SANDBOX_TIMEOUT_SECONDS` | `60` | Batas waktu satu eksekusi kode, maksimum 600 |
+| `AGENT_RECURSION_LIMIT` | `50` | Batas langkah graph per run, minimum 4 (FR-59) |
+| `TOOL_MAX_CONSECUTIVE_ERRORS` | `3` | Kegagalan beruntun per tool di satu giliran sebelum tool dihentikan (FR-59) |
 | `SANDBOX_IMAGE` | image sandbox compose | Dibaca `sandbox-runner`, bukan service API |
 | `FIRECRAWL_API_KEY` | – | Key Firecrawl untuk tool `web_search`. Kosong = tool menjawab "not configured", agent tetap berjalan |
 | `HOST` / `PORT` | `0.0.0.0` / `8080` | Bind address service |
@@ -504,8 +508,6 @@ F24) sudah dihapus.
 
 | Variabel | Fitur | Keterangan |
 |---|---|---|
-| `AGENT_RECURSION_LIMIT` | F47 | Batas langkah graph per run, menggantikan default LangGraph |
-| `TOOL_MAX_CONSECUTIVE_ERRORS` | F47 | Kegagalan beruntun per tool sebelum tool dihentikan, default 3 |
 | `DATA_SOURCES_FILE` | F39 | Registry data source read-only. DSN setiap data source dibaca dari env yang namanya disebut di file. Menggantikan rencana `DATA_SOURCE_URL` |
 | `SQL_MAX_ROWS` | F39 | Batas baris hasil `run_sql` |
 | `KERNEL_IDLE_TTL_SECONDS`, `KERNEL_MAX_ACTIVE` | F49 | Umur kernel idle dan jumlah kernel aktif (dibaca `sandbox-runner`) |

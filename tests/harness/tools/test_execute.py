@@ -160,3 +160,42 @@ def test_execution_tools_are_bound_only_when_a_sandbox_is_configured() -> None:
 
     assert {"run_python", "run_shell"} <= {tool.name for tool in with_sandbox.tools}
     assert not {"run_python", "run_shell"} & {tool.name for tool in without.tools}
+
+
+def failing_result(request: ExecutionRequest) -> ExecutionResult:
+    return ExecutionResult(exit_code=1, stderr="ZeroDivisionError: division by zero\n")
+
+
+async def test_non_zero_exit_and_timeout_are_marked_as_tool_errors() -> None:
+    workspace = InMemoryWorkspace(max_file_bytes=10)
+    cases = (
+        (failing_result, "error", "Exit code: 1"),
+        (lambda request: ExecutionResult(exit_code=None, timed_out=True), "error", "Timed out"),
+        (chart_result, "success", "Exit code: 0"),
+    )
+    for handler, status, prefix in cases:
+        context = HarnessContext(workspace, NoPublisher(), FakeSandbox(handler))
+        result = await build_graph([run_call()]).ainvoke(
+            {"messages": [HumanMessage("run")]}, config(), context=context
+        )
+        [message] = tool_messages(result)
+        assert (message.status, message.name) == (status, "run_python")
+        assert str(message.content).startswith(prefix)
+
+
+async def test_run_python_with_non_zero_exit_counts_toward_the_retry_limit() -> None:
+    """Acceptance F47: `run_python` dengan exit code bukan nol ikut dihitung."""
+    sandbox = FakeSandbox(failing_result)
+    context = HarnessContext(InMemoryWorkspace(max_file_bytes=10), NoPublisher(), sandbox)
+    calls = [AIMessage(content="", tool_calls=[run_call() | {"id": f"r{i}"}]) for i in range(4)]
+    model = FakeModel(responses=[*calls, "The script keeps failing."])
+    files = WorkspaceToolkit(output_max_tokens=1000, execution_timeout_seconds=TIMEOUT)
+    agent = ToolCallingAgent("exec", "Exec", [], ContextBuilder(), files=files)
+
+    result = await agent.build(model, InMemorySaver()).ainvoke(
+        {"messages": [HumanMessage("run")]}, config(), context=context
+    )
+
+    assert len(sandbox.requests) == 3
+    assert "failed 3 times in a row" in str(tool_messages(result)[-1].content)
+    assert result["messages"][-1].content == "The script keeps failing."

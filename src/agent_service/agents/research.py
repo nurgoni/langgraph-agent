@@ -12,6 +12,7 @@ from agent_service.agents.tools.web_search import (
 from agent_service.harness.context import ContextBuilder
 from agent_service.harness.context_policy import ContextPolicy
 from agent_service.harness.skills.toolkit import SkillToolkit
+from agent_service.harness.tool_guard import ToolFailureGuard
 from agent_service.harness.workspace import WorkspaceToolkit
 
 RESEARCH_ASSISTANT_ID: Final = "research-assistant"
@@ -38,6 +39,7 @@ def create_research_assistant(
     context_policy: ContextPolicy | None = None,
     use_memory: bool = False,
     files: WorkspaceToolkit | None = None,
+    tool_guard: ToolFailureGuard | None = None,
 ) -> ToolCallingAgent:
     """Buat research assistant dengan tool web search dan kalkulator.
 
@@ -50,6 +52,7 @@ def create_research_assistant(
         context_policy: Anggaran token riwayat. Default: `ContextPolicy()`.
         use_memory: Pakai long-term memory user (FR-40) jika registry punya store.
         files: Tool file workspace (FR-47). `None` berarti tanpa workspace.
+        tool_guard: Batas kegagalan beruntun per tool (FR-59). Default: 3.
 
     Returns:
         Agent `research-assistant` yang siap didaftarkan.
@@ -69,4 +72,5 @@ def create_research_assistant(
         context_policy=context_policy,
         use_memory=use_memory,
         files=files,
+        tool_guard=tool_guard,
     )

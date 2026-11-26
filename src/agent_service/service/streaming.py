@@ -5,9 +5,11 @@ from collections.abc import AsyncGenerator, Iterable, Mapping
 from typing import Final
 
 from langchain_core.messages import AIMessageChunk, BaseMessage, HumanMessage
+from langgraph.errors import GraphRecursionError
 from langgraph.types import Interrupt, StreamMode
 
 from agent_service.agents.base import AgentGraph
+from agent_service.agents.errors import STEP_LIMIT_ERROR_DETAIL
 from agent_service.agents.supervisor import SUBAGENT_TAG
 from agent_service.core.constants import SKIP_STREAM_TAG
 from agent_service.llm.reasoning import message_reasoning
@@ -94,12 +96,19 @@ class StreamService:
     async def stream(self) -> AsyncGenerator[str]:
         """Jalankan graph dan hasilkan frame SSE, selalu diakhiri `[DONE]`.
 
-        Error di tengah run menjadi frame `error` dengan pesan generik. Saat client memutus
+        Error di tengah run menjadi frame `error` dengan pesan generik, kecuali run yang melewati
+        `recursion_limit`, yang mendapat pesan step limit (FR-59). Saat client memutus
         koneksi, generator ditutup tanpa `[DONE]`, karena tidak ada lagi yang menerima.
         """
         try:
             async for event in self._events():
                 yield sse_frame(event)
+        except GraphRecursionError as error:
+            logger.warning("Stream hit the step limit run_id=%s", self._run_id)
+            await self._save_trace(error)
+            yield sse_frame(ErrorEvent(content=STEP_LIMIT_ERROR_DETAIL))
+            yield DONE_FRAME
+            return
         # Batas sistem: error apa pun dari agent tidak boleh memutus stream tanpa frame penutup.
         except Exception as error:
             logger.exception("Stream failed run_id=%s", self._run_id)

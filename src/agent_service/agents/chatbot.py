@@ -6,6 +6,7 @@ from agent_service.agents.tool_calling import ToolCallingAgent
 from agent_service.harness.context import ContextBuilder
 from agent_service.harness.context_policy import ContextPolicy
 from agent_service.harness.skills.toolkit import SkillToolkit
+from agent_service.harness.tool_guard import ToolFailureGuard
 from agent_service.harness.workspace import WorkspaceToolkit
 
 CHATBOT_AGENT_ID: Final = "chatbot"
@@ -39,6 +40,7 @@ class ChatbotAgent(ToolCallingAgent):
         context_policy: ContextPolicy | None = None,
         use_memory: bool = False,
         files: WorkspaceToolkit | None = None,
+        tool_guard: ToolFailureGuard | None = None,
     ) -> None:
         """Inisialisasi chatbot.
 
@@ -50,6 +52,7 @@ class ChatbotAgent(ToolCallingAgent):
             context_policy: Anggaran token riwayat. Default: `ContextPolicy()`.
             use_memory: Pakai long-term memory user (FR-40) jika registry punya store.
             files: Tool file workspace (FR-47). `None` berarti tanpa workspace.
+            tool_guard: Batas kegagalan beruntun per tool (FR-59). Default: 3.
         """
         super().__init__(
             agent_id=agent_id,
@@ -60,6 +63,7 @@ class ChatbotAgent(ToolCallingAgent):
             context_policy=context_policy,
             use_memory=use_memory,
             files=files,
+            tool_guard=tool_guard,
         )
 
 

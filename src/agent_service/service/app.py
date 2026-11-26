@@ -23,6 +23,7 @@ from agent_service.harness.context_policy import ContextPolicy
 from agent_service.harness.skills.registry import SkillRegistry
 from agent_service.harness.skills.sources import BUILTIN_SKILLS_DIR, FilesystemSkillSource
 from agent_service.harness.skills.toolkit import SkillToolkit
+from agent_service.harness.tool_guard import ToolFailureGuard
 from agent_service.harness.workspace import WorkspaceToolkit
 from agent_service.llm.factory import ModelFactory
 from agent_service.memory.artifacts import ArtifactRepository
@@ -89,8 +90,9 @@ def create_app(
     Args:
         settings: Konfigurasi service. Default: dibaca dari env dan `.env`.
         agents: Agent yang didaftarkan. Default: `create_default_agents()` dengan web search
-            dari `FIRECRAWL_API_KEY`, anggaran riwayat dari `CONTEXT_MAX_TOKENS`, dan tool file
-            workspace dengan batas output `TOOL_OUTPUT_MAX_TOKENS`.
+            dari `FIRECRAWL_API_KEY`, anggaran riwayat dari `CONTEXT_MAX_TOKENS`, tool file
+            workspace dengan batas output `TOOL_OUTPUT_MAX_TOKENS`, dan batas kegagalan tool
+            `TOOL_MAX_CONSECUTIVE_ERRORS`.
         default_agent_id: Agent untuk `/info` dan route tanpa `{agent_id}`.
         builtin_projects: Project built-in yang di-seed saat startup, jika agent dasarnya
             terdaftar.
@@ -116,6 +118,7 @@ def create_app(
             SkillToolkit(resolved_skills),
             ContextPolicy(max_tokens=resolved_settings.context_max_tokens),
             build_workspace_toolkit(resolved_settings),
+            ToolFailureGuard(resolved_settings.tool_max_consecutive_errors),
         )
     else:
         resolved_agents = list(agents)
