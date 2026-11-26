@@ -5,12 +5,15 @@ import pytest
 from pydantic import ValidationError
 
 from agent_service.core.constants import (
+    DEFAULT_AGENT_RECURSION_LIMIT,
     DEFAULT_CONTEXT_MAX_TOKENS,
     DEFAULT_DATABASE_URL,
     DEFAULT_JWT_TTL_SECONDS,
     DEFAULT_LLM_MAX_TOKENS,
     DEFAULT_PORT,
+    DEFAULT_TOOL_MAX_CONSECUTIVE_ERRORS,
     FAKE_MODEL_NAME,
+    MIN_AGENT_RECURSION_LIMIT,
     MIN_CONTEXT_MAX_TOKENS,
 )
 from agent_service.core.settings import Settings
@@ -267,3 +270,31 @@ def test_cors_origins_are_split_on_commas(monkeypatch: pytest.MonkeyPatch) -> No
 
 def test_cors_origins_default_to_none_allowed() -> None:
     assert Settings(_env_file=None, use_fake_model=True).cors_origins == []
+
+
+def test_step_and_retry_limits_have_defaults_and_read_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    default = Settings(_env_file=None, use_fake_model=True)
+
+    set_env(monkeypatch, {"AGENT_RECURSION_LIMIT": "80", "TOOL_MAX_CONSECUTIVE_ERRORS": "5"})
+    configured = Settings(_env_file=None, use_fake_model=True)
+
+    assert (default.agent_recursion_limit, default.tool_max_consecutive_errors) == (50, 3)
+    assert DEFAULT_AGENT_RECURSION_LIMIT == 50
+    assert DEFAULT_TOOL_MAX_CONSECUTIVE_ERRORS == 3
+    assert (configured.agent_recursion_limit, configured.tool_max_consecutive_errors) == (80, 5)
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("AGENT_RECURSION_LIMIT", str(MIN_AGENT_RECURSION_LIMIT - 1)),
+        ("TOOL_MAX_CONSECUTIVE_ERRORS", "0"),
+    ],
+)
+def test_too_small_step_or_retry_limit_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, name: str, value: str
+) -> None:
+    set_env(monkeypatch, {"USE_FAKE_MODEL": "true", name: value})
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)

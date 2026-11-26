@@ -8,6 +8,7 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from agent_service.core.constants import (
+    DEFAULT_AGENT_RECURSION_LIMIT,
     DEFAULT_ARTIFACT_DIR,
     DEFAULT_ARTIFACT_MAX_BYTES,
     DEFAULT_CONTEXT_MAX_TOKENS,
@@ -19,6 +20,7 @@ from agent_service.core.constants import (
     DEFAULT_LOG_LEVEL,
     DEFAULT_PORT,
     DEFAULT_SANDBOX_TIMEOUT_SECONDS,
+    DEFAULT_TOOL_MAX_CONSECUTIVE_ERRORS,
     DEFAULT_TOOL_OUTPUT_MAX_TOKENS,
     ENV_FILE,
     ENV_FILE_ENCODING,
@@ -26,6 +28,7 @@ from agent_service.core.constants import (
     LIST_SEPARATOR,
     MAX_PORT,
     MAX_SANDBOX_TIMEOUT_SECONDS,
+    MIN_AGENT_RECURSION_LIMIT,
     MIN_ARTIFACT_MAX_BYTES,
     MIN_CONTEXT_MAX_TOKENS,
     MIN_JWT_SECRET_LENGTH,
@@ -33,6 +36,7 @@ from agent_service.core.constants import (
     MIN_LLM_MAX_TOKENS,
     MIN_PORT,
     MIN_SANDBOX_TIMEOUT_SECONDS,
+    MIN_TOOL_MAX_CONSECUTIVE_ERRORS,
     MIN_TOOL_OUTPUT_MAX_TOKENS,
     POSTGRES_URL_SCHEMES,
     LogLevel,
@@ -84,6 +88,13 @@ class Settings(BaseSettings):
     # Output tool yang lebih besar ditulis ke workspace thread, model menerima cuplikan (FR-48).
     tool_output_max_tokens: int = Field(
         default=DEFAULT_TOOL_OUTPUT_MAX_TOKENS, ge=MIN_TOOL_OUTPUT_MAX_TOKENS
+    )
+    # Batas langkah graph per run dan kegagalan beruntun per tool (FR-59).
+    agent_recursion_limit: int = Field(
+        default=DEFAULT_AGENT_RECURSION_LIMIT, ge=MIN_AGENT_RECURSION_LIMIT
+    )
+    tool_max_consecutive_errors: int = Field(
+        default=DEFAULT_TOOL_MAX_CONSECUTIVE_ERRORS, ge=MIN_TOOL_MAX_CONSECUTIVE_ERRORS
     )
 
     # Sandbox eksekusi kode (FR-49): URL service `sandbox-runner` dan token bersamanya. Kosong
