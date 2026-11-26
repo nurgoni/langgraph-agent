@@ -61,7 +61,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F44 | Knowledge retrieval | M10 | todo |
 | F45 | Knowledge UI | M10 | todo |
 | F46 | OpenAI-compatible endpoint | M11 | todo |
-| F47 | Step budget & retry guard | M8 | todo |
+| F47 | Step budget & retry guard | M8 | done |
 | F48 | Data catalog | M8 | todo |
 | F49 | Kernel per thread | M8 | todo |
 | F50 | Plan & verify | M8 | todo |
@@ -1819,11 +1819,11 @@ Urutan: F47 → F39 → F48 → F49 → F50 → F40.
 - **File:** `core/settings.py` (`agent_recursion_limit`, `tool_max_consecutive_errors`),
   `core/constants.py`, `harness/tool_guard.py` (`ToolFailureGuard`), `agents/tool_calling.py`,
   `agents/supervisor.py`, `service/run_input.py` (`recursion_limit` di config run), `tests/`
-- **Langkah 1 (klarifikasi):**
-  - Nilai default `recursion_limit`. Rekomendasi: dihitung dari jumlah langkah tool yang wajar per
-    giliran, jauh di bawah default LangGraph (10.007).
-  - Apakah exit code bukan nol dan timeout dari tool eksekusi dihitung sebagai kegagalan.
-    Rekomendasi: ya.
+- **Langkah 1 (keputusan user, 2026-11-26):**
+  - **`AGENT_RECURSION_LIMIT` default 50** (±24 putaran tool per giliran), minimum 4.
+  - **Exit code bukan nol dan timeout dihitung** sebagai kegagalan `run_python`/`run_shell`.
+  - **Run yang melewati limit:** `/stream` mengirim frame `error` dengan pesan step limit,
+    `/invoke` menjawab 500 dengan pesan yang sama (tanpa status code baru di kontrak).
 - **Catatan desain:**
   - Kegagalan beruntun dihitung **per nama tool** dari message di state giliran yang sedang
     berjalan, bukan counter di memori. Dengan begitu hitungannya tetap benar saat run dilanjutkan
@@ -1841,13 +1841,41 @@ Urutan: F47 → F39 → F48 → F49 → F50 → F40.
   2. `feat(harness): stop a tool after repeated consecutive failures`
   3. `feat(agents): apply the retry guard and an explicit recursion limit`
   4. `docs: record F47 retry guard decisions`
+- **Penyesuaian saat implementasi:**
+  - **Bug tersembunyi ditemukan:** dengan `awrap_tool_call`, `ToolNode` mengubah exception *apa
+    pun* yang keluar dari wrapper menjadi `ToolMessage` error, karena filter tuple
+    `handle_tool_errors` hanya berlaku di dalam wrapper. Agent dengan tool file (offloader F36)
+    sudah terkena sejak v0.7.0: bug di tool tidak menggagalkan run. Diperbaiki dengan handler
+    callable `tool_error_text(error: ToolException)` yang melempar ulang error lain.
+  - Nama tool dibaca dari tool call `AIMessage` (peta ID → nama), karena `ToolMessage` yang dibuat
+    tool sendiri tidak membawa `name`. `run_python`/`run_shell` tetap mengisi `name`.
+  - Guard dipasang lewat `ToolFailureGuard.around(offloader)`: guard di luar, jadi tool yang
+    diblokir tidak sampai ke offloader. Pesan blokir juga berstatus `error`, jadi panggilan
+    berikutnya tetap diblokir sampai giliran baru.
+  - Tool call paralel dalam satu jawaban model membaca state yang sama dan tidak saling menghitung.
+  - `recursion_limit` dibawa `RunTarget` (diisi route dari `Settings`), dan diteruskan
+    `build_attached_run_input(..., target, ...)` ke config run.
+  - `GraphRecursionError` dipetakan ke `AgentStepLimitError` (500) di `/invoke`, dan ke frame
+    `error` berisi `STEP_LIMIT_ERROR_DETAIL` di `/stream`.
+  - Rencana commit 2 dan 3 digabung untuk bagian agent: test guard membangun `ToolCallingAgent`
+    dengan `tool_guard`, jadi harness dan wiring agent harus satu commit. Bagian service
+    (`recursion_limit`, `AgentStepLimitError`) menjadi commit tersendiri.
+  - Smoke test `qwen3.5:9b` (tool yang selalu gagal): dengan prompt biasa model berhenti sendiri
+    setelah 3 kegagalan (23,5 s). Dengan prompt "terus coba sampai berhasil", model memanggil 4
+    kali, tool dijalankan 3 kali, panggilan ke-4 diblokir, lalu model menjelaskan error (10,1 s).
 - **Acceptance criteria:**
-  - [ ] `FakeModel` yang terus memanggil tool yang gagal berhenti setelah 3 kegagalan beruntun,
-        lalu menjawab tanpa memanggil tool itu lagi.
-  - [ ] Keberhasilan di antara kegagalan me-reset hitungan.
-  - [ ] `run_python` dengan exit code bukan nol ikut dihitung.
-  - [ ] Run yang melewati `recursion_limit` berhenti dengan pesan error, bukan berjalan ribuan
-        langkah.
+  - [x] `FakeModel` yang terus memanggil tool yang gagal berhenti setelah 3 kegagalan beruntun,
+        lalu menjawab tanpa memanggil tool itu lagi: `test_tool_guard.py`
+        (`test_tool_stops_after_three_consecutive_failures_and_model_answers`, tool dijalankan
+        tepat 3 kali).
+  - [x] Keberhasilan di antara kegagalan me-reset hitungan:
+        `test_success_between_failures_resets_the_count`.
+  - [x] `run_python` dengan exit code bukan nol ikut dihitung: `test_execute.py`
+        (`test_run_python_with_non_zero_exit_counts_toward_the_retry_limit`, sandbox dipanggil 3
+        kali).
+  - [x] Run yang melewati `recursion_limit` berhenti dengan pesan error, bukan berjalan ribuan
+        langkah: `routes/test_step_limit.py` (limit dari `Settings`, `/invoke` 500, frame `error`
+        di `/stream`).
 - **Squash title:** `feat(harness): cap tool retries and agent steps (F47)`
 
 ### F39: Data source & exploration primitives

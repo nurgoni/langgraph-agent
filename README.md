@@ -7,8 +7,8 @@ React, Python client, dan dev console Streamlit.
 Project ini adalah rewrite dari [`agent-service-toolkit/`](agent-service-toolkit/) dengan fokus pada
 kode yang sederhana, eksplisit, dan mudah dites (Zen of Python).
 
-> **Status:** `v0.7.0` (M7 Files & Execution) sudah dirilis. Berikutnya M8 Analytics Core, dimulai
-> dari F47 (step budget & retry guard).
+> **Status:** `v0.7.0` (M7 Files & Execution) sudah dirilis. M8 Analytics Core sedang berjalan:
+> F47 (step budget & retry guard) selesai, berikutnya F39 (data source & primitif eksplorasi).
 > Lihat [docs/ROADMAP.md](docs/ROADMAP.md) untuk status per fitur dan
 > [.agents/memory.md](.agents/memory.md) untuk konteks terkini.
 
@@ -164,6 +164,8 @@ menunjuk ke container itu sendiri.
 | `TOOL_OUTPUT_MAX_TOKENS` | tidak | Output tool lebih besar dari ini (default `4000` token) disimpan di workspace thread, dan model menerima cuplikan + path |
 | `SANDBOX_URL`, `SANDBOX_TOKEN` | tidak | URL service `sandbox-runner` dan token bersamanya. Kosong = tanpa `run_python`/`run_shell`. Compose mengisi `SANDBOX_URL` sendiri; `SANDBOX_TOKEN` default nilai dev yang tidak aman |
 | `SANDBOX_TIMEOUT_SECONDS` | tidak | Batas waktu satu eksekusi kode, default `60`, maksimum `600` |
+| `AGENT_RECURSION_LIMIT` | tidak | Batas langkah graph per run, default `50` (±24 putaran tool), minimum `4`. Run yang melewatinya berhenti dengan pesan step limit |
+| `TOOL_MAX_CONSECUTIVE_ERRORS` | tidak | Kegagalan beruntun satu tool di satu giliran sebelum tool itu tidak dijalankan lagi, default `3` |
 | `ARTIFACT_MAX_BYTES` | tidak | Batas ukuran upload, default `26214400` (25 MB). Upload lebih besar → 413. Di balik proxy `web`, naikkan juga `API_MAX_BODY_SIZE` (default `26m`) |
 | `AGENT_URL` | tidak | URL service untuk UI/client/eval, default `http://localhost:8080` |
 | `EVAL_USERNAME`, `EVAL_PASSWORD` | eval | Akun untuk `run_evals`, sebaiknya service account (`--role service`) |
