@@ -1,0 +1,14 @@
+# Data source registry (F39, FR-51). Each DSN is read from the env var named in `url_env`, never
+# from this file, and should use a read-only database user. docker compose seeds both demo
+# databases (service `demo-seed`); see docker/demo/.
+data_sources:
+  - id: shop
+    description: >-
+      Demo online store: customers, products, orders, order lines, and refunds from 2025-01 to
+      2026-10.
+    url_env: DEMO_SHOP_DATABASE_URL
+  - id: sensors
+    description: >-
+      Demo IoT sensors: sites, devices, and hourly temperature, humidity, and power readings from
+      2026-05 to 2026-10.
+    url_env: DEMO_SENSORS_DATABASE_URL

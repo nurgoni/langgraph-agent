@@ -95,6 +95,15 @@ def isolate_database_url(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def isolate_data_sources(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Tanpa data source di test, kecuali test mengisinya sendiri.
+
+    `datasources.yaml` repo dan DSN demo di `.env` developer tidak pernah terbaca (F39).
+    """
+    monkeypatch.setenv("DATA_SOURCES_FILE", str(tmp_path / "no-data-sources.yaml"))
+
+
+@pytest.fixture(autouse=True)
 def artifact_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     """Arahkan `ARTIFACT_DIR` ke folder sementara per test, supaya file tidak ditulis ke repo."""
     directory = tmp_path / "artifacts"
@@ -159,4 +168,72 @@ def _run_admin_statement(server_url: str, template: LiteralString, database_name
             f"Postgres for tests is not reachable at {location} ({error}). "
             f"Run `docker compose up -d postgres`, or set {TEST_DATABASE_URL_ENV}.",
             pytrace=False,
+        )
+
+
+DEMO_DIR = Path(__file__).resolve().parents[1] / "docker" / "demo"
+DEMO_DATASET_NAMES = ("shop", "sensors")
+DEMO_ROLE_PREFIX = "agent_ro_test_"
+
+
+@pytest.fixture(scope="session")
+def demo_database_urls() -> Iterator[dict[str, str]]:
+    """Dua dataset demo (F39) di database sementara, dengan DSN milik user read-only acak.
+
+    Isi dan hak akses sama dengan service `demo-seed` (`docker/demo/`). Role dan database
+    dihapus di akhir sesi. Kunci hasil adalah nama dataset (`shop`, `sensors`).
+    """
+    server_url = os.environ.get(TEST_DATABASE_URL_ENV) or DEFAULT_DATABASE_URL
+    suffix = uuid.uuid4().hex[:8]
+    role = f"{DEMO_ROLE_PREFIX}{suffix}"
+    password = uuid.uuid4().hex
+    databases = {name: f"{TEST_DATABASE_PREFIX}demo_{name}_{suffix}" for name in DEMO_DATASET_NAMES}
+    with psycopg.connect(server_url, autocommit=True) as connection:
+        connection.execute(
+            sql.SQL("CREATE ROLE {} LOGIN PASSWORD {}").format(
+                sql.Identifier(role), sql.Literal(password)
+            )
+        )
+        connection.execute(
+            sql.SQL("ALTER ROLE {} SET default_transaction_read_only = on").format(
+                sql.Identifier(role)
+            )
+        )
+    urls: dict[str, str] = {}
+    try:
+        for name, database in databases.items():
+            _run_admin_statement(server_url, "CREATE DATABASE {}", database)
+            _seed_demo_database(server_url, database, name, role)
+            urls[name] = (
+                make_url(server_url)
+                .set(database=database, username=role, password=password)
+                .render_as_string(hide_password=False)
+            )
+        yield urls
+    finally:
+        for database in databases.values():
+            _run_admin_statement(server_url, "DROP DATABASE IF EXISTS {} WITH (FORCE)", database)
+        with psycopg.connect(server_url, autocommit=True) as connection:
+            connection.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(role)))
+
+
+def _seed_demo_database(server_url: str, database: str, dataset: str, role: str) -> None:
+    """Isi satu database demo dari `docker/demo/<dataset>.sql`, lalu beri hak baca ke `role`."""
+    admin_url = make_url(server_url).set(database=database).render_as_string(hide_password=False)
+    script = (DEMO_DIR / f"{dataset}.sql").read_text(encoding="utf-8")
+    with psycopg.connect(admin_url, autocommit=True) as connection:
+        # bytes: skrip dari file bukan LiteralString. Tanpa parameter, psycopg menjalankan
+        # beberapa statement sekaligus.
+        connection.execute(script.encode())
+        role_id = sql.Identifier(role)
+        connection.execute("REVOKE CREATE ON SCHEMA public FROM PUBLIC")
+        connection.execute(
+            sql.SQL("REVOKE TEMPORARY ON DATABASE {} FROM PUBLIC").format(sql.Identifier(database))
+        )
+        connection.execute(
+            sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(sql.Identifier(database), role_id)
+        )
+        connection.execute(sql.SQL("GRANT USAGE ON SCHEMA public TO {}").format(role_id))
+        connection.execute(
+            sql.SQL("GRANT SELECT ON ALL TABLES IN SCHEMA public TO {}").format(role_id)
         )

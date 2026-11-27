@@ -298,3 +298,38 @@ def test_too_small_step_or_retry_limit_is_rejected(
 
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
+
+
+def test_data_source_settings_have_defaults_and_read_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    default = Settings(_env_file=None, use_fake_model=True)
+
+    set_env(
+        monkeypatch,
+        {
+            "DATA_SOURCES_FILE": "config/sources.yaml",
+            "SQL_MAX_ROWS": "500",
+            "SQL_TIMEOUT_SECONDS": "5",
+            "PROFILE_EXACT_MAX_ROWS": "1000",
+        },
+    )
+    configured = Settings(_env_file=None, use_fake_model=True)
+
+    assert default.data_sources_file == Path("datasources.yaml")
+    assert (default.sql_max_rows, default.sql_timeout_seconds) == (10_000, 30)
+    assert default.profile_exact_max_rows == 1_000_000
+    assert configured.data_sources_file == Path("config/sources.yaml")
+    assert (configured.sql_max_rows, configured.sql_timeout_seconds) == (500, 5)
+    assert configured.profile_exact_max_rows == 1000
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [("SQL_MAX_ROWS", "0"), ("SQL_TIMEOUT_SECONDS", "0"), ("SQL_TIMEOUT_SECONDS", "601")],
+)
+def test_out_of_range_sql_limits_are_rejected(
+    monkeypatch: pytest.MonkeyPatch, name: str, value: str
+) -> None:
+    set_env(monkeypatch, {"USE_FAKE_MODEL": "true", name: value})
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)

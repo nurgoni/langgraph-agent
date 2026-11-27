@@ -101,3 +101,24 @@ MIN_AGENT_RECURSION_LIMIT: Final = 4
 # Kegagalan beruntun pada tool yang sama sebelum tool itu tidak dijalankan lagi (ADR 0007).
 DEFAULT_TOOL_MAX_CONSECUTIVE_ERRORS: Final = 3
 MIN_TOOL_MAX_CONSECUTIVE_ERRORS: Final = 1
+
+# Data source read-only (FR-51, F39). Registry di file YAML; file yang tidak ada berarti tanpa
+# data source. DSN tidak pernah ditulis di file, hanya nama env var-nya.
+DEFAULT_DATA_SOURCES_FILE: Final = Path("datasources.yaml")
+# ID data source di registry dan argumen tool. `schema/datasources.py` punya salinan yang sama
+# (schema hanya bergantung pada pydantic), dan test menjaga keduanya tetap sama.
+DATA_SOURCE_ID_PATTERN: Final = r"^[a-z0-9]+([_-][a-z0-9]+)*$"
+DATA_SOURCE_ID_MAX_LENGTH: Final = 64
+# Kunci `configurable`: data source yang boleh dipakai tool di project run ini (`ProjectSettings`).
+PROJECT_DATA_SOURCE_IDS_CONFIG_KEY: Final = "project_data_source_ids"
+# Batas baris hasil `run_sql`. Hasil lengkap ada di Parquet, model hanya melihat pratinjau.
+DEFAULT_SQL_MAX_ROWS: Final = 10_000
+MIN_SQL_MAX_ROWS: Final = 1
+MAX_SQL_MAX_ROWS: Final = 1_000_000
+DEFAULT_SQL_TIMEOUT_SECONDS: Final = 30
+MIN_SQL_TIMEOUT_SECONDS: Final = 1
+MAX_SQL_TIMEOUT_SECONDS: Final = 600
+# Profil tabel (keputusan user F39, PRD §11 no. 11): tabel dengan perkiraan baris sampai batas ini
+# diprofil exact, di atasnya memakai TABLESAMPLE.
+DEFAULT_PROFILE_EXACT_MAX_ROWS: Final = 1_000_000
+MIN_PROFILE_EXACT_MAX_ROWS: Final = 1
