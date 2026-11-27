@@ -25,6 +25,7 @@ Streamlit.
 | Agent | LangGraph, LangChain |
 | API | FastAPI + Uvicorn, SSE |
 | Persistence | Postgres-only ([ADR 0001](docs/adr/0001-postgres-only.md)): `AsyncPostgresSaver` + SQLAlchemy Core async + Alembic, driver psycopg 3 |
+| Data source | Postgres read-only lewat psycopg pool, sqlglot (guard SQL), pyarrow (Parquet). Extra `analytics` (F39) |
 | Client | httpx (sync + async) |
 | UI | Streamlit. **Mulai F32:** frontend React + TypeScript di `frontend/` ([ADR 0003](docs/adr/0003-frontend-stack.md)), Streamlit menjadi dev console |
 | Tooling | uv, ruff, pyrefly, pytest, pre-commit |
@@ -42,6 +43,7 @@ uv run ruff check . --fix                 # lint
 uv run ruff format .                      # format
 uv run pyrefly check                      # type check
 docker compose up -d postgres             # database untuk dev dan test
+docker compose up demo-seed               # dataset demo data source (F39), user read-only
 uv run python -m agent_service.run_migrate   # migrasi skema (Alembic + checkpointer)
 uv run python -m agent_service.manage create-user demo   # buat akun login
 uv run python -m agent_service.export_contracts          # ekspor ulang contracts/ (FR-35)

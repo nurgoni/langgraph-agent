@@ -6,10 +6,27 @@ Semua perubahan penting dicatat di file ini. Format mengikuti
 
 ## [Unreleased]
 
-**Catatan upgrade:** env var baru `AGENT_RECURSION_LIMIT` (default `50`) dan
-`TOOL_MAX_CONSECUTIVE_ERRORS` (default `3`) bersifat opsional. Tanpa migrasi.
+**Catatan upgrade:**
+
+1. `uv sync` (extra baru `analytics`: sqlglot, pyarrow; dependency `python-dotenv`). Tanpa migrasi.
+2. Env var opsional: `AGENT_RECURSION_LIMIT` (default `50`), `TOOL_MAX_CONSECUTIVE_ERRORS` (`3`),
+   `DATA_SOURCES_FILE` (`datasources.yaml`), `SQL_MAX_ROWS` (`10000`), `SQL_TIMEOUT_SECONDS` (`30`),
+   `PROFILE_EXACT_MAX_ROWS` (`1000000`), dan DSN data source yang disebut di file registry.
+3. Docker Compose: `docker compose up -d --build`. Service baru `demo-seed` membuat database
+   `demo_shop` dan `demo_sensors` serta user read-only `analyst_ro` di service `postgres`.
+   Untuk API di host: `docker compose up demo-seed`, lalu isi `DEMO_SHOP_DATABASE_URL` dan
+   `DEMO_SENSORS_DATABASE_URL` di `.env`.
 
 ### Added
+
+- Data source read-only dan primitif eksplorasi (F39, FR-51). Registry di `DATA_SOURCES_FILE`
+  (DSN dari env), `GET /datasources`, dan `ProjectSettings.data_source_ids`. Tool
+  `list_data_sources`, `search_schema`, `describe_table`, `profile_table`, dan `run_sql` di-bind
+  ke chatbot dan research assistant hanya di project yang punya data source. `run_sql` menerima
+  satu `SELECT` (sqlglot) di transaksi read-only dengan batas baris dan timeout, lalu menyimpan
+  hasilnya sebagai Parquet di workspace thread. `AgentClient.list_data_sources`.
+- Dua dataset demo dengan pola tertanam dan kunci jawaban (`docker/demo/`): toko online dan sensor
+  IoT, di-seed oleh service compose `demo-seed` dengan user database read-only.
 
 - Batas langkah dan retry untuk semua agent (F47, FR-59). Service selalu mengisi `recursion_limit`
   dari `AGENT_RECURSION_LIMIT`, menggantikan default LangGraph (10.007). `ToolFailureGuard` tidak

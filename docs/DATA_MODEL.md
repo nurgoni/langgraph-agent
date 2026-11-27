@@ -55,7 +55,7 @@ erDiagram
         text model "NULL = default"
         text instructions
         jsonb skill_ids "daftar ID skill"
-        jsonb settings "max_tokens, tool_approval"
+        jsonb settings "max_tokens, tool_approval, data_source_ids"
         timestamptz created_at
         timestamptz updated_at
     }
@@ -207,7 +207,7 @@ Agent deklaratif ([ADR 0004](adr/0004-project-as-declarative-agent.md)).
 | `model` | TEXT, nullable | Kosong = model default service |
 | `instructions` | TEXT | ≤ 8000 karakter (divalidasi schema) |
 | `skill_ids` | JSONB | Array ID skill, maksimal 20 |
-| `settings` | JSONB | `ProjectSettings`: `max_tokens`, `tool_approval` (`never`/`always`) |
+| `settings` | JSONB | `ProjectSettings`: `max_tokens`, `tool_approval` (`never`/`always`), `data_source_ids` (ID registry data source, F39; tanpa foreign key, divalidasi saat create/update) |
 | `created_at`, `updated_at` | TIMESTAMPTZ | Default `now()` |
 
 ### *thread* (entitas virtual)
@@ -364,7 +364,7 @@ M8 (Analytics Core) tidak menambah tabel di database service:
 | Registry data source dan data catalog | F39, F48 | File YAML (`DATA_SOURCES_FILE`, `catalogs/`), bukan tabel |
 | Hasil `run_sql` | F39 | `workspace_files` (`data/<nama>.parquet`) |
 | Kernel per thread | F49 | Memori `sandbox-runner`, tidak dipersist. Dihentikan saat thread dihapus |
-| Dataset demo | F39 | Database terpisah di server Postgres yang sama, dengan user read-only. Bukan bagian skema service |
+| Dataset demo | F39 | Database `demo_shop` dan `demo_sensors` di server Postgres yang sama, di-seed `demo-seed` dari `docker/demo/*.sql`, dibaca user `analyst_ro` (hanya `SELECT`). Bukan bagian skema service, tanpa migrasi Alembic |
 
 Saat tabel baru ditambahkan, perbarui diagram, kamus entitas, tabel relasi, dan alur penghapusan di
 dokumen ini dalam PR yang sama.

@@ -389,6 +389,7 @@ domain-agnostic: tidak ada nama domain di tool, prompt agent, atau skill.
 | PATCH | `/{agent_id}/threads/{thread_id}` | `ThreadRenameInput` | `ThreadSummary` |
 | DELETE | `/{agent_id}/threads/{thread_id}` | – | 204 |
 | GET | `/skills`, `/skills/{scope}/{name}` | – | `SkillList` / `SkillDetail` |
+| GET | `/datasources` | – | `DataSourceList` |
 | GET, POST | `/projects` | – / `ProjectCreate` | `ProjectList` / `Project` (201) |
 | GET, PATCH, DELETE | `/projects/{project_id}` | – / `ProjectUpdate` / – | `Project` / `Project` / 204 |
 | POST | `/projects/{project_id}/invoke`, `/stream`, `/history` | sama dengan route agent | sama dengan route agent |
@@ -410,7 +411,6 @@ dan pemilik thread diambil dari token (FR-33).
 | Method | Path | FR | Fitur |
 |---|---|---|---|
 | GET | `/jobs`, `/jobs/{job_id}/runs` | FR-53 | F41 |
-| GET | `/datasources` | FR-51 | F39 |
 | POST, GET, DELETE | `/projects/{project_id}/documents` | FR-55 | F43 |
 | GET, POST | `/v1/models`, `/v1/chat/completions` | FR-58 | F46 |
 
@@ -436,7 +436,10 @@ ProjectCreate   { name: str, base_agent_id: str, description?: str, model?: str,
                   instructions?: str, skill_ids?: list["<scope>/<name>"],
                   settings?: ProjectSettings }
 ProjectUpdate   ProjectCreate tanpa base_agent_id, semua opsional (PATCH)
-ProjectSettings { max_tokens?: int, tool_approval: "never"|"always" = "never" }
+ProjectSettings { max_tokens?: int, tool_approval: "never"|"always" = "never",
+                  data_source_ids: list[str] = [] (maks 10, ID dari /datasources) }
+DataSource      { id: str, description: str, available: bool, error?: str }
+DataSourceList  { data_sources: list[DataSource] }
 SkillSummary    { id: "<scope>/<name>", name, description, scope, version, read_only,
                   resources: list[str] }
 SkillDetail     SkillSummary + { body: str }
@@ -494,6 +497,11 @@ Node yang LLM-nya diberi tag `skip_stream` tidak menghasilkan frame `token`.
 | `SANDBOX_TIMEOUT_SECONDS` | `60` | Batas waktu satu eksekusi kode, maksimum 600 |
 | `AGENT_RECURSION_LIMIT` | `50` | Batas langkah graph per run, minimum 4 (FR-59) |
 | `TOOL_MAX_CONSECUTIVE_ERRORS` | `3` | Kegagalan beruntun per tool di satu giliran sebelum tool dihentikan (FR-59) |
+| `DATA_SOURCES_FILE` | `datasources.yaml` | Registry data source read-only (FR-51). File tidak ada = tanpa data source. DSN dibaca dari env yang namanya disebut di file (`url_env`) |
+| `SQL_MAX_ROWS` | `10000` | Batas baris hasil `run_sql`, maksimum 1.000.000 |
+| `SQL_TIMEOUT_SECONDS` | `30` | `statement_timeout` setiap query data source, maksimum 600 |
+| `PROFILE_EXACT_MAX_ROWS` | `1000000` | Tabel dengan perkiraan baris di atas ini diprofil dari sampel (`TABLESAMPLE`) |
+| `DEMO_SHOP_DATABASE_URL`, `DEMO_SENSORS_DATABASE_URL` | – (compose mengisinya) | DSN dataset demo dengan user read-only, dirujuk `datasources.yaml` |
 | `SANDBOX_IMAGE` | image sandbox compose | Dibaca `sandbox-runner`, bukan service API |
 | `FIRECRAWL_API_KEY` | – | Key Firecrawl untuk tool `web_search`. Kosong = tool menjawab "not configured", agent tetap berjalan |
 | `HOST` / `PORT` | `0.0.0.0` / `8080` | Bind address service |
@@ -508,8 +516,6 @@ F24) sudah dihapus.
 
 | Variabel | Fitur | Keterangan |
 |---|---|---|
-| `DATA_SOURCES_FILE` | F39 | Registry data source read-only. DSN setiap data source dibaca dari env yang namanya disebut di file. Menggantikan rencana `DATA_SOURCE_URL` |
-| `SQL_MAX_ROWS` | F39 | Batas baris hasil `run_sql` |
 | `KERNEL_IDLE_TTL_SECONDS`, `KERNEL_MAX_ACTIVE` | F49 | Umur kernel idle dan jumlah kernel aktif (dibaca `sandbox-runner`) |
 | `JOBS_FILE` | F41 | Lokasi definisi job terjadwal |
 | `EMBEDDING_MODEL` | F43 | Model embedding OpenAI-compatible |
@@ -565,8 +571,11 @@ Rincian fitur per milestone, urutan eksekusi, dan rencana commit ada di
 
 **Fase 2 (dijawab di Langkah 1 fitur terkait):**
 
-6. Sumber data analisa: apakah sudah ada read replica atau user database read-only? Apakah data
-   perlu di-mask (PII) sebelum dikirim ke LLM yang bukan lokal? (F39)
+6. ~~Sumber data analisa: apakah sudah ada read replica atau user database read-only? Apakah data
+   perlu di-mask (PII) sebelum dikirim ke LLM yang bukan lokal? (F39)~~ **Terjawab (2026-11-26):**
+   setiap data source memakai user database read-only (dataset demo membuat role `analyst_ro`).
+   Replica tidak wajib. Masking PII belum di F39; F48 menambah penanda kolom `pii` di data catalog,
+   dan kolom bertanda di-mask di output tool.
 7. ~~Backend tracing: Langfuse self-hosted, OpenTelemetry, atau tabel trace sendiri di Postgres?
    (F31)~~ **Terjawab (2026-11-17):** tabel `run_traces` di Postgres, dibaca lewat
    `GET /runs/{run_id}/trace`. Langfuse/OTel bisa ditambahkan kemudian sebagai exporter.
@@ -578,7 +587,9 @@ Rincian fitur per milestone, urutan eksekusi, dan rencana commit ada di
    sistem)? (F42)
 10. Parser dokumen untuk ingestion: cukup pypdf + python-docx, atau perlu parser tabel/scan
     (Docling)? (F43)
-11. Profiling tabel besar di `profile_table`: sampling, statistik `pg_stats`, atau batas ukuran
-    tabel? (F39)
+11. ~~Profiling tabel besar di `profile_table`: sampling, statistik `pg_stats`, atau batas ukuran
+    tabel? (F39)~~ **Terjawab (2026-11-26):** exact sampai `PROFILE_EXACT_MAX_ROWS` (perkiraan
+    `reltuples`), di atasnya `TABLESAMPLE SYSTEM` dengan sampel sekitar batas itu. Output menandai
+    hasil sampel, karena nilai langka (outlier) bisa terlewat.
 12. Implementasi kernel per thread: Jupyter kernel lewat `jupyter_client`, atau REPL server kecil
     buatan sendiri di image sandbox? (F49)

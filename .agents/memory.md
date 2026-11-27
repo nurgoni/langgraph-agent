@@ -18,8 +18,8 @@ berulang ada di dev-time skill `.claude/skills/` (daftar di AGENTS.md § Dev-tim
   back-merge ke `develop` diselesaikan agent 2026-11-19 (`efe7364`, menunggu user push `develop`
   dan menghapus `release/v0.7.0` remote).
 - **Berikutnya:** M8 Analytics Core (direvisi 2026-11-26): F47 → F39 → F48 → F49 → F50 → F40.
-  **F47 selesai** di working tree (menunggu user commit/PR `feature/F47-step-budget`), berikutnya
-  **F39** (data source & primitif eksplorasi).
+  F47 sudah di-merge. **F39 selesai** di working tree (menunggu user commit/PR
+  `feature/F39-data-source`), berikutnya **F48** (data catalog, termasuk penanda kolom `pii`).
 - **Repo:** remote `origin` = `https://github.com/nurgoni/langgraph-boilerplate-agent.git`.
   User yang melakukan push. CLI `gh` tidak terpasang, jadi PR dibuka lewat web.
 - **Arsip:** Decision Log M0–M4 ada di
@@ -27,7 +27,7 @@ berulang ada di dev-time skill `.claude/skills/` (daftar di AGENTS.md § Dev-tim
   [archive/decision-log-m4-m5.md](archive/decision-log-m4-m5.md), dev-time skill + F32–F34 di
   [archive/decision-log-m6.md](archive/decision-log-m6.md), dan F35–F38 di
   [archive/decision-log-m7.md](archive/decision-log-m7.md).
-- **Terakhir diperbarui:** 2026-11-26 (F47 step budget & retry guard)
+- **Terakhir diperbarui:** 2026-11-26 (F39 data source read-only)
 
 ## Aturan Kerja
 
@@ -94,6 +94,11 @@ Ringkasan pelajaran dari M0–M6 yang masih berlaku (detail di arsip dan entri f
   foldernya untuk UID sandbox, tmpfs tidak bisa diisi sebelum container start, dan di Git Bash
   path `/workspace` diubah menjadi path Windows (pakai `MSYS_NO_PATHCONV=1`). Script Python di
   dalam string test e2e butuh `\\n`.
+- **Data source (F39):** dataset demo memakai `setseed` dan SQL murni tanpa meta-command psql,
+  supaya fixture test (`demo_database_urls`) dan `demo-seed` memakai file yang sama. Test dengan
+  `create_app` tidak membaca `datasources.yaml` repo (fixture autouse `isolate_data_sources`).
+  psycopg menjalankan banyak statement sekaligus hanya tanpa parameter, dan `SET` di dalam
+  statement berantai tidak mengubah transaksi yang sudah berjalan (pakai `BEGIN READ WRITE`).
 - **Postgres + workspace:** `ORDER BY` teks memakai collation locale, jadi listing yang urutannya
   harus stabil memakai `COLLATE "C"`. `ToolRuntime` harus diberi parameter tipe
   (`ToolRuntime[HarnessContext]`).
@@ -103,6 +108,32 @@ Ringkasan pelajaran dari M0–M6 yang masih berlaku (detail di arsip dan entri f
   `\n\n` (dikecualikan), dan `check-yaml` butuh `--allow-multiple-documents` untuk lockfile pnpm.
 
 ## Decision Log
+
+### 2026-11-26: Data source read-only dari F39
+
+- **Keputusan user:** masking PII ditunda ke F48 (penanda `pii` di katalog). Profil exact sampai
+  `PROFILE_EXACT_MAX_ROWS`, di atasnya `TABLESAMPLE`. Dataset demo: toko online + sensor IoT. Tool
+  data di-bind ke chatbot dan research assistant hanya di project yang punya data source.
+- **Keputusan desain:**
+  - `datasource/` hanya bergantung pada `core/`. Pola ID data source di `core/constants.py`,
+    disalin ke `schema/datasources.py` (schema hanya pydantic), dijaga sama oleh test.
+  - psycopg pool langsung (bukan SQLAlchemy) dengan koneksi read-only dari callback `configure`;
+    `statement_timeout` lewat `set_config(..., true)`. DSN dari env dinamis lewat `EnvReader`.
+  - Registry dibuat di `create_app` dari file, dibuka di lifespan; yang gagal ditandai unavailable.
+    Data source unavailable tetap boleh dipilih project.
+  - `ToolCallingAgent` kini memakai `TurnModels`: daftar toolkit per giliran (skill, data) dan
+    cache `bind_tools` per kombinasi tool. Tool tetap di-bind saat graph dibangun.
+  - Dataset demo dan kunci jawabannya ada di `docker/demo/` (`planted_patterns.yaml`, setiap pola
+    punya query cek yang dijalankan test). F40 memakai file ini.
+- **Hasil ukur:** seed demo ±1 detik per dataset (22.045 order, 211.845 reading). Smoke
+  `qwen3.5:9b`: sensor benar (17,2 s); toko menghitung order *completed* saja karena komentar tabel
+  (26,1 s) — ambiguitas definisi metrik untuk F48/F50. Mutation check 11/11 terbunuh (satu baru
+  terbunuh setelah test binding mencatat tool per panggilan model, bukan per `bind_tools`). E2E
+  22/22; percobaan pertama gagal karena unduhan PyPI `sandbox-image` putus (sementara).
+- **Pelajaran:** profil dari sampel melewatkan outlier langka; output sampel harus
+  memperingatkannya. `regclass::text` menghilangkan schema `public` (tergantung `search_path`),
+  jadi nama tabel dirakit dari `pg_namespace`. Heredoc bash kembali mengubah `\n` di string Python
+  menjadi baris baru; pakai file script atau Edit.
 
 ### 2026-11-26: Batas langkah dan retry dari F47
 
@@ -223,10 +254,8 @@ Ringkasan pelajaran dari M0–M6 yang masih berlaku (detail di arsip dan entri f
 
 Sinkron dengan [PRD.md §11](../PRD.md#11-open-questions). Dijawab di Langkah 1 fitur terkait:
 
-- No. 6: sumber data analisa, user read-only, dan masking PII (F39).
 - No. 9: library PDF (F42).
 - No. 10: parser dokumen ingestion (F43).
-- No. 11: profiling tabel besar (F39).
 - No. 12: implementasi kernel per thread (F49).
 
 ## TODO Berikutnya
