@@ -14,6 +14,9 @@ x-database-url: &database-url "postgresql://${POSTGRES_USER:-agent}:${POSTGRES_P
 x-jwt-secret: &jwt-secret "${JWT_SECRET:-dev-only-insecure-jwt-secret-change-me}"
 # Token antara agent-service dan sandbox-runner (F37). Sama: set SANDBOX_TOKEN sendiri di luar dev.
 x-sandbox-token: &sandbox-token "${SANDBOX_TOKEN:-dev-only-insecure-sandbox-token-change-me}"
+# User database read-only untuk data source demo (F39), dibuat oleh service demo-seed.
+x-demo-readonly-user: &demo-readonly-user "${DEMO_READONLY_USER:-analyst_ro}"
+x-demo-readonly-password: &demo-readonly-password "${DEMO_READONLY_PASSWORD:-analyst_ro}"
 
 services:
   postgres:
@@ -55,6 +58,24 @@ services:
         condition: service_healthy
     restart: "no"
 
+  # Sekali jalan (F39): dua dataset demo di database terpisah (demo_shop, demo_sensors) dan user
+  # read-only. Idempotent; isinya dibuat ulang setiap kali dijalankan.
+  demo-seed:
+    image: pgvector/pgvector:0.8.1-pg18
+    command: ["sh", "/demo/seed.sh"]
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-agent}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-agent}
+      DEMO_READONLY_USER: *demo-readonly-user
+      DEMO_READONLY_PASSWORD: *demo-readonly-password
+    volumes:
+      - ./docker/demo:/demo:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   agent-service:
     build:
       context: .
@@ -85,10 +106,19 @@ services:
       SANDBOX_URL: http://sandbox-runner:8080
       SANDBOX_TOKEN: *sandbox-token
       SANDBOX_TIMEOUT_SECONDS: ${SANDBOX_TIMEOUT_SECONDS:-}
+      # Data source read-only (F39): registry dari datasources.yaml, DSN dengan user read-only.
+      DATA_SOURCES_FILE: /app/datasources.yaml
+      DEMO_SHOP_DATABASE_URL: "postgresql://${DEMO_READONLY_USER:-analyst_ro}:${DEMO_READONLY_PASSWORD:-analyst_ro}@postgres:5432/demo_shop"
+      DEMO_SENSORS_DATABASE_URL: "postgresql://${DEMO_READONLY_USER:-analyst_ro}:${DEMO_READONLY_PASSWORD:-analyst_ro}@postgres:5432/demo_sensors"
+      SQL_MAX_ROWS: ${SQL_MAX_ROWS:-}
+      SQL_TIMEOUT_SECONDS: ${SQL_TIMEOUT_SECONDS:-}
     volumes:
       - artifacts:/app/data/artifacts
+      - ./datasources.yaml:/app/datasources.yaml:ro
     depends_on:
       migrate:
+        condition: service_completed_successfully
+      demo-seed:
         condition: service_completed_successfully
       sandbox-runner:
         condition: service_healthy

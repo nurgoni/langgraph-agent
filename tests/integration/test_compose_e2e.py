@@ -52,9 +52,11 @@ print(json.dumps({{
 
 # Setiap image hanya membawa extra miliknya (FR-31): modul ini tidak boleh ada di image tersebut.
 # `uvicorn` tidak dicek di image UI, karena Streamlit 1.66 sendiri bergantung padanya.
+# pyarrow ada di image service sejak F39 (extra `analytics`, hasil run_sql sebagai Parquet), tapi
+# pandas tetap hanya di image sandbox.
 FORBIDDEN_MODULES = {
-    "agent-service": ["streamlit", "pyarrow", "pandas"],
-    "ui": ["langgraph", "langchain_core", "fastapi"],
+    "agent-service": ["streamlit", "pandas"],
+    "ui": ["langgraph", "langchain_core", "fastapi", "sqlglot"],
 }
 INSTALLED_MODULES_SCRIPT = """
 import importlib.util, json, sys
@@ -393,3 +395,58 @@ def test_service_container_has_no_docker_access(stack: ComposeStack) -> None:
     output = stack.compose("exec", "-T", "agent-service", "python", "-c", script)
 
     assert output.strip().splitlines()[-1] == "False"
+
+
+def test_demo_data_sources_are_seeded_and_available(stack: ComposeStack) -> None:
+    """Service `demo-seed` selesai sebelum service start, dan kedua data source terbuka (F39)."""
+    output = stack.compose("ps", "--all", "--format", "json", "demo-seed")
+    [seed] = [json.loads(line) for line in output.strip().splitlines()]
+
+    with stack.client() as client:
+        listing = client.list_data_sources()
+
+    assert (seed["State"], seed["ExitCode"]) == ("exited", 0)
+    assert [(s.id, s.available) for s in listing.data_sources] == [
+        ("shop", True),
+        ("sensors", True),
+    ]
+
+
+def test_service_image_ships_the_analytics_extra(stack: ComposeStack) -> None:
+    modules = ["sqlglot", "pyarrow"]
+    script = ["python", "-c", INSTALLED_MODULES_SCRIPT, *modules]
+    output = stack.compose("exec", "-T", "agent-service", *script)
+
+    assert json.loads(output.strip().splitlines()[-1]) == ["sqlglot", "pyarrow"]
+
+
+def test_demo_readonly_user_cannot_write(stack: ComposeStack) -> None:
+    """Pertahanan utama F39: user read-only demo tidak bisa menulis, walaupun minta READ WRITE."""
+    password = stack.env.get("DEMO_READONLY_PASSWORD") or "analyst_ro"
+    user = stack.env.get("DEMO_READONLY_USER") or "analyst_ro"
+    statement = "BEGIN READ WRITE; DELETE FROM orders; COMMIT"
+    command = ["psql", "-h", "127.0.0.1", "-U", user, "-d", "demo_shop", "-c", statement]
+    result = subprocess.run(
+        [
+            "docker",
+            "compose",
+            "-p",
+            PROJECT_NAME,
+            "exec",
+            "-T",
+            "-e",
+            f"PGPASSWORD={password}",
+            "postgres",
+            *command,
+        ],
+        cwd=REPO_ROOT,
+        env=stack.env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=COMMAND_TIMEOUT_SECONDS,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "permission denied for table orders" in result.stderr
