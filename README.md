@@ -8,7 +8,8 @@ Project ini adalah rewrite dari [`agent-service-toolkit/`](agent-service-toolkit
 kode yang sederhana, eksplisit, dan mudah dites (Zen of Python).
 
 > **Status:** `v0.7.0` (M7 Files & Execution) sudah dirilis. M8 Analytics Core sedang berjalan:
-> F47 (step budget & retry guard) selesai, berikutnya F39 (data source & primitif eksplorasi).
+> F47 (step budget & retry guard) dan F39 (data source read-only & primitif eksplorasi) selesai,
+> berikutnya F48 (data catalog).
 > Lihat [docs/ROADMAP.md](docs/ROADMAP.md) untuk status per fitur dan
 > [.agents/memory.md](.agents/memory.md) untuk konteks terkini.
 
@@ -26,6 +27,9 @@ kode yang sederhana, eksplisit, dan mudah dites (Zen of Python).
   ringkasan riwayat otomatis, dan long-term memory per user dengan persetujuan.
 - **File dan kode**: upload dan unduh artifact, workspace file per thread, serta `run_python`/
   `run_shell` di sandbox Docker yang terisolasi.
+- **Data source read-only**: project memilih database analisa; agent menjelajah skema, memprofil
+  tabel, dan menjalankan satu `SELECT` per panggilan, dengan hasil sebagai Parquet di workspace.
+  Dua dataset demo (toko online dan sensor IoT) di-seed oleh compose.
 - **Trace dan eval**: trace per run (model, tool, token, latensi) dan runner eval lewat API.
 - **Frontend React**: login, chat streaming, Projects, Recents, dan panel artifact bergaya Claude.
 - **Python client**: `AgentClient` sync dan async.
@@ -124,7 +128,12 @@ docker compose down              # hentikan (tambahkan -v untuk menghapus data P
   `run_python`/`run_shell`: tanpa jaringan, rootfs read-only, user non-root, 512 MB, 1 CPU, 128
   proses, timeout `SANDBOX_TIMEOUT_SECONDS`. Hanya `sandbox-runner` yang me-mount `docker.sock`,
   tanpa port di host; agent-service memanggilnya dengan `SANDBOX_TOKEN`.
-- **Urutan start:** `postgres` (healthy) → `migrate` (Alembic + tabel checkpointer, lalu selesai)
+- **Data source demo (F39):** `demo-seed` membuat database `demo_shop` dan `demo_sensors` serta
+  user read-only `analyst_ro` (ganti lewat `DEMO_READONLY_USER`/`DEMO_READONLY_PASSWORD`), lalu
+  selesai. Isinya dibuat ulang setiap kali stack dinyalakan. Untuk API di host:
+  `docker compose up demo-seed`, lalu isi `DEMO_SHOP_DATABASE_URL`/`DEMO_SENSORS_DATABASE_URL` di
+  `.env` (lihat `.env.example`).
+- **Urutan start:** `postgres` (healthy) → `migrate` dan `demo-seed` (lalu selesai)
   → `agent-service` → `web` dan `ui`. Migrasi tidak dijalankan di lifespan, supaya beberapa replika tidak
   menjalankannya bersamaan.
 - **Data:** thread tersimpan di volume `postgres-data`. Postgres hanya dibuka di `127.0.0.1`
@@ -166,6 +175,10 @@ menunjuk ke container itu sendiri.
 | `SANDBOX_TIMEOUT_SECONDS` | tidak | Batas waktu satu eksekusi kode, default `60`, maksimum `600` |
 | `AGENT_RECURSION_LIMIT` | tidak | Batas langkah graph per run, default `50` (±24 putaran tool), minimum `4`. Run yang melewatinya berhenti dengan pesan step limit |
 | `TOOL_MAX_CONSECUTIVE_ERRORS` | tidak | Kegagalan beruntun satu tool di satu giliran sebelum tool itu tidak dijalankan lagi, default `3` |
+| `DATA_SOURCES_FILE` | tidak | Registry data source read-only, default `datasources.yaml`. File tidak ada = tanpa data source. Setiap entri menyebut env var DSN-nya (`url_env`) |
+| `DEMO_SHOP_DATABASE_URL`, `DEMO_SENSORS_DATABASE_URL` | tidak | DSN dataset demo (user read-only). Compose mengisinya sendiri |
+| `SQL_MAX_ROWS`, `SQL_TIMEOUT_SECONDS` | tidak | Batas baris `run_sql` (default `10000`) dan `statement_timeout` per query (default `30` detik) |
+| `PROFILE_EXACT_MAX_ROWS` | tidak | Di atas perkiraan baris ini `profile_table` memakai sampel, default `1000000` |
 | `ARTIFACT_MAX_BYTES` | tidak | Batas ukuran upload, default `26214400` (25 MB). Upload lebih besar → 413. Di balik proxy `web`, naikkan juga `API_MAX_BODY_SIZE` (default `26m`) |
 | `AGENT_URL` | tidak | URL service untuk UI/client/eval, default `http://localhost:8080` |
 | `EVAL_USERNAME`, `EVAL_PASSWORD` | eval | Akun untuk `run_evals`, sebaiknya service account (`--role service`) |
@@ -190,6 +203,7 @@ menunjuk ke container itu sendiri.
 | POST | `/projects/{project_id}/invoke`, `/stream`, `/history` | Chat di dalam project |
 | GET, PATCH, DELETE | `/projects/{project_id}/threads[/{thread_id}]` | Thread di dalam project |
 | GET | `/skills`, `/skills/{scope}/{name}` | Skill yang bisa diaktifkan di project (read-only) |
+| GET | `/datasources` | Data source read-only yang bisa dipilih project, beserta statusnya |
 | GET | `/memories` | Long-term memory milik user, yang terakhir diubah lebih dulu |
 | DELETE | `/memories/{memory_id}` | Hapus satu memory. Memory user lain menjawab 404 |
 | GET | `/runs/{run_id}/trace` | Trace satu run: durasi, token, panggilan model dan tool. Run user lain menjawab 404 |
@@ -279,6 +293,30 @@ hanya saat relevan ([ADR 0005](docs/adr/0005-skill-format-and-sources.md)). Skil
   tool `load_skill(name, path?)` untuk isi lengkapnya. Tool ini hanya muncul jika project punya skill
   aktif, dan hanya bisa memuat skill yang aktif di project itu.
 - Skill dengan `SKILL.md` tidak valid dilewati saat startup dan dicatat di log.
+
+### Data source
+
+Data source adalah database analisa yang hanya dibaca (FR-51). Operator mendaftarkannya di
+`datasources.yaml` (`id`, `description`, `url_env`), dengan DSN di env var dan user database
+read-only. Project memilihnya lewat `settings.data_source_ids`, dengan ID dari `GET /datasources`.
+
+- Tool `list_data_sources`, `search_schema`, `describe_table`, `profile_table`, dan `run_sql` hanya
+  muncul di project yang punya data source, dan hanya bisa membaca data source project itu.
+- `run_sql` menerima satu `SELECT` (dicek sqlglot) di transaksi read-only dengan
+  `SQL_TIMEOUT_SECONDS`, memotong hasil di `SQL_MAX_ROWS`, lalu menyimpannya di workspace thread
+  (`data/<nama>.parquet`) untuk dimuat kode di sandbox.
+- Data source yang env-nya kosong atau tidak terjangkau tampil `available: false` dengan alasannya;
+  service tetap berjalan.
+
+```python
+project = client.create_project(
+    ProjectCreate(
+        name="Analisa toko", base_agent_id="chatbot", settings={"data_source_ids": ["shop"]}
+    )
+)
+client.project_id = project.id
+reply = client.invoke("How many orders were placed in October 2026, by channel?")
+```
 
 ### Long-term memory
 

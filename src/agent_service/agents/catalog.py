@@ -12,6 +12,7 @@ from agent_service.agents.chatbot import CHATBOT_AGENT_ID, ChatbotAgent
 from agent_service.agents.interrupt import InterruptAgent
 from agent_service.agents.research import RESEARCH_ASSISTANT_ID, create_research_assistant
 from agent_service.agents.supervisor import create_supervisor_agent
+from agent_service.agents.tools.data import DataToolkit
 from agent_service.agents.tools.web_search import SearchBackend
 from agent_service.harness.context_policy import ContextPolicy
 from agent_service.harness.skills.toolkit import SkillToolkit
@@ -27,6 +28,7 @@ def create_default_agents(
     context_policy: ContextPolicy | None = None,
     files: WorkspaceToolkit | None = None,
     tool_guard: ToolFailureGuard | None = None,
+    data: DataToolkit | None = None,
 ) -> list[BaseAgent]:
     """Buat instance baru untuk setiap agent bawaan.
 
@@ -42,6 +44,8 @@ def create_default_agents(
             Default: tanpa workspace.
         tool_guard: Batas kegagalan beruntun per tool (`TOOL_MAX_CONSECUTIVE_ERRORS`, FR-59) untuk
             agent yang memanggil tool. Default: `ToolFailureGuard()` (3).
+        data: Tool data source untuk chatbot dan research assistant (keputusan user F39), di-bind
+            hanya di project yang punya data source. Default: tanpa data source.
 
     Chatbot dan research assistant memakai long-term memory user (keputusan user F30). Memory
     aktif saat registry punya store, jadi graph yang dibangun tanpa store tetap seperti sebelumnya.
@@ -61,6 +65,7 @@ def create_default_agents(
             use_memory=True,
             files=files,
             tool_guard=tool_guard,
+            data=data,
         ),
         create_research_assistant(
             search_backend,
@@ -69,6 +74,7 @@ def create_default_agents(
             use_memory=True,
             files=files,
             tool_guard=tool_guard,
+            data=data,
         ),
         InterruptAgent(),
         create_supervisor_agent(search_backend, context_policy, tool_guard),

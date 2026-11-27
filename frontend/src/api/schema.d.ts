@@ -70,6 +70,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/datasources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Data Sources
+         * @description Semua data source terdaftar beserta statusnya, urut sesuai `DATA_SOURCES_FILE`.
+         */
+        get: operations["list_data_sources_datasources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -721,6 +741,34 @@ export interface components {
              */
             type: "human" | "ai" | "tool" | "custom";
         };
+        /**
+         * DataSource
+         * @description Satu data source terdaftar. Kredensial dan alamat database tidak pernah ditampilkan.
+         */
+        DataSource: {
+            /**
+             * Available
+             * @description False when the service cannot use it right now.
+             */
+            available: boolean;
+            /** Description */
+            description: string;
+            /**
+             * Error
+             * @description Why the data source is unavailable.
+             */
+            error?: string | null;
+            /** Id */
+            id: string;
+        };
+        /**
+         * DataSourceList
+         * @description Isi `GET /datasources`: semua data source, urut sesuai `DATA_SOURCES_FILE`.
+         */
+        DataSourceList: {
+            /** Data Sources */
+            data_sources: components["schemas"]["DataSource"][];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -875,6 +923,14 @@ export interface components {
          * @description Pengaturan run di dalam project. Field baru selalu opsional, supaya tidak breaking.
          */
         ProjectSettings: {
+            /**
+             * Data Source Ids
+             * @description Read-only data sources the agent may query, as ids from GET /datasources.
+             * @example [
+             *       "shop"
+             *     ]
+             */
+            data_source_ids?: string[];
             /**
              * Max Tokens
              * @description Answer token limit for runs in this project. Empty uses LLM_MAX_TOKENS.
@@ -1409,6 +1465,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_data_sources_datasources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataSourceList"];
                 };
             };
         };

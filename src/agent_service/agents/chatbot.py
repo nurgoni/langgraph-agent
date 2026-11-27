@@ -3,6 +3,7 @@
 from typing import Final
 
 from agent_service.agents.tool_calling import ToolCallingAgent
+from agent_service.agents.tools.data import DataToolkit
 from agent_service.harness.context import ContextBuilder
 from agent_service.harness.context_policy import ContextPolicy
 from agent_service.harness.skills.toolkit import SkillToolkit
@@ -41,6 +42,7 @@ class ChatbotAgent(ToolCallingAgent):
         use_memory: bool = False,
         files: WorkspaceToolkit | None = None,
         tool_guard: ToolFailureGuard | None = None,
+        data: DataToolkit | None = None,
     ) -> None:
         """Inisialisasi chatbot.
 
@@ -53,6 +55,7 @@ class ChatbotAgent(ToolCallingAgent):
             use_memory: Pakai long-term memory user (FR-40) jika registry punya store.
             files: Tool file workspace (FR-47). `None` berarti tanpa workspace.
             tool_guard: Batas kegagalan beruntun per tool (FR-59). Default: 3.
+            data: Tool data source (FR-51), di-bind hanya di project yang punya data source.
         """
         super().__init__(
             agent_id=agent_id,
@@ -64,6 +67,7 @@ class ChatbotAgent(ToolCallingAgent):
             use_memory=use_memory,
             files=files,
             tool_guard=tool_guard,
+            data=data,
         )
 
 

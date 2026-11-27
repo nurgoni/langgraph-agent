@@ -17,6 +17,7 @@ from agent_service.agents.base import AgentGraph, BaseAgent
 from agent_service.core.constants import (
     ARTIFACTS_KWARG,
     DEFAULT_AGENT_RECURSION_LIMIT,
+    PROJECT_DATA_SOURCE_IDS_CONFIG_KEY,
     PROJECT_ID_CONFIG_KEY,
     PROJECT_INSTRUCTIONS_CONFIG_KEY,
     PROJECT_SKILL_IDS_CONFIG_KEY,
@@ -59,6 +60,7 @@ class ProjectRunContext:
     instructions: str = ""
     skill_ids: tuple[str, ...] = ()
     tool_approval: str = "never"
+    data_source_ids: tuple[str, ...] = ()
 
     def configurable(self) -> dict[str, Any]:  # Any: nilai configurable LangGraph
         """Kunci `configurable` untuk project ini.
@@ -72,6 +74,7 @@ class ProjectRunContext:
             PROJECT_INSTRUCTIONS_CONFIG_KEY: self.instructions,
             PROJECT_SKILL_IDS_CONFIG_KEY: list(self.skill_ids),
             PROJECT_TOOL_APPROVAL_CONFIG_KEY: self.tool_approval,
+            PROJECT_DATA_SOURCE_IDS_CONFIG_KEY: list(self.data_source_ids),
         }
 
 

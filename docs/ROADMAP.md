@@ -53,7 +53,7 @@ Status: `todo` → `in-progress` → `done`. Perbarui kolom ini di PR yang menye
 | F36 | Workspace & file tools | M7 | done |
 | F37 | Sandbox | M7 | done |
 | F38 | Artifact panel UI | M7 | done |
-| F39 | Data source & exploration primitives | M8 | todo |
+| F39 | Data source & exploration primitives | M8 | done |
 | F40 | Data analyst project | M8 | todo |
 | F41 | Worker & scheduler | M9 | todo |
 | F42 | PDF report & scheduled analysis | M9 | todo |
@@ -1889,10 +1889,14 @@ Urutan: F47 → F39 → F48 → F49 → F50 → F40.
   `service/routes/datasources.py` (`GET /datasources`), `ProjectSettings.data_source_ids`, seed
   dua dataset demo (database terpisah di service `postgres`, dengan user read-only), extras
   `analytics` (`sqlglot`, `pyarrow`), `tests/`
-- **Langkah 1 (klarifikasi):**
-  - PRD §11 no. 6: replica, user read-only, dan masking PII.
-  - PRD §11 no. 11: profiling tabel besar (sampling, atau statistik `pg_stats`).
-  - Domain kedua dataset demo.
+- **Langkah 1 (keputusan user, 2026-11-26):**
+  - **PRD §11 no. 6:** user database read-only wajib, replica tidak. **Masking PII belum di F39**;
+    F48 menambah penanda kolom `pii` di data catalog.
+  - **PRD §11 no. 11:** profil **exact sampai `PROFILE_EXACT_MAX_ROWS`** (default 1 juta, perkiraan
+    `reltuples`), di atasnya `TABLESAMPLE SYSTEM`.
+  - **Dataset demo:** **toko online** (`demo_shop`) dan **sensor IoT** (`demo_sensors`).
+  - **Agent:** tool data di-bind ke **chatbot dan research assistant**, hanya pada giliran yang
+    project-nya punya data source (pola skill F28).
 - **Catatan desain:**
   - **Registry.** `DATA_SOURCES_FILE` berisi daftar `{id, description, url_env, catalog?}`. DSN
     dibaca dari env yang namanya disebut di file, dan tidak pernah ditulis di file. Data source yang
@@ -1921,12 +1925,49 @@ Urutan: F47 → F39 → F48 → F49 → F50 → F40.
   4. `feat(service): let projects choose their data sources`
   5. `build(docker): seed two demo datasets with planted patterns`
   6. `docs: record F39 data source decisions`
+- **Penyesuaian saat implementasi:**
+  - **Rencana commit:** SQL dataset demo, `planted_patterns.yaml`, dan `datasources.yaml` pindah ke
+    commit 1, karena fixture test read-only dan test registry memakainya. Commit 3 dan 4 digabung
+    (`app.py` memuat wiring tool dan route sekaligus). Commit 5 tinggal compose (`demo-seed`), image
+    (extra `analytics`), dan e2e.
+  - **Driver:** data source memakai `psycopg_pool` langsung, bukan SQLAlchemy: nama tipe per OID dan
+    `set_read_only` di callback `configure` pool. SQL dari model dikirim sebagai `bytes`.
+  - **DSN dari env dinamis** lewat `EnvReader` (`core/env.py`): env proses lalu `.env`, karena nama
+    env-nya baru diketahui dari file registry. Dependency `python-dotenv` ditulis eksplisit.
+  - **Lapisan:** `datasource/` hanya bergantung pada `core/` (dites `tests/datasource/test_layering.py`).
+    Pola ID data source ada di `core/constants.py`, dengan salinan di `schema/datasources.py` yang
+    dijaga sama oleh test.
+  - **Binding per giliran digeneralisasi:** `TurnModels` di `ToolCallingAgent` menerima daftar
+    toolkit (`SkillToolkit`, `DataToolkit`) dan meng-cache model per kombinasi tool.
+  - **Guard:** `SELECT * FROM (<query>) AS result LIMIT max+1` untuk mendeteksi pemotongan. Fungsi
+    terlarang dicek dari node `Anonymous` sqlglot; daftar itu bukan pertahanan utama.
+  - **Data source unavailable** (env kosong, gagal konek) tetap boleh dipilih project; ID yang tidak
+    terdaftar → 422. Alasan unavailable tidak memuat DSN.
+  - **Profil sampel melewatkan nilai langka** (terbukti: 12 outlier `999` di 212 ribu baris tidak
+    masuk sampel 9%), jadi output sampel memperingatkannya dan menyarankan `run_sql`.
+  - **Dataset demo deterministik:** setiap baris order punya produk berbeda, supaya duplikat yang
+    terdeteksi hanya yang ditanam (66 baris).
+  - **Client:** `list_data_sources`/`alist_data_sources`. Frontend belum punya pemilih data source
+    di form project (lewat API dulu).
+  - **E2E:** `pyarrow` tidak lagi dilarang di image service (pandas tetap), `sqlglot` dilarang di
+    image UI.
+  - **Smoke test `qwen3.5:9b`:** dua pertanyaan, alur tool alami tanpa error. Sensor: Site C 24,89 kW
+    (benar, kunci 24,9) dalam 17,2 s. Toko: model menghitung hanya order *completed* (823) karena
+    komentar tabel, angka per channel tepat untuk interpretasi itu (26,1 s). Ambiguitas definisi
+    metrik ini menjadi bahan F48 (katalog) dan F50 (verifikasi).
 - **Acceptance criteria:**
-  - [ ] `INSERT`, `DROP`, multi-statement, dan fungsi yang menulis ditolak. Query lambat berhenti
-        karena timeout.
-  - [ ] User read-only tetap tidak bisa menulis walaupun guard dilewati (dites langsung).
-  - [ ] Tool tidak bisa mengakses data source di luar project.
-  - [ ] Tool yang sama bekerja di kedua dataset demo tanpa perubahan kode.
+  - [x] `INSERT`, `DROP`, multi-statement, dan fungsi yang menulis ditolak. Query lambat berhenti
+        karena timeout: `tests/datasource/test_guard.py` (22 kasus, termasuk DML di CTE,
+        `SELECT INTO`, `FOR UPDATE`, `pg_*`), `test_source.py::test_slow_query_is_stopped_by_the_statement_timeout`.
+  - [x] User read-only tetap tidak bisa menulis walaupun guard dilewati (dites langsung):
+        `test_source.py` (`fetch` tanpa guard, dan koneksi psycopg mentah dengan `BEGIN READ WRITE`
+        → `InsufficientPrivilege`), plus e2e `test_demo_readonly_user_cannot_write`.
+  - [x] Tool tidak bisa mengakses data source di luar project:
+        `tests/agents/tools/test_data.py::test_tools_cannot_reach_a_data_source_outside_the_project`
+        (keempat tool) dan tool tidak di-bind tanpa data source project.
+  - [x] Tool yang sama bekerja di kedua dataset demo tanpa perubahan kode:
+        `test_same_tools_work_on_both_demo_datasets`, `test_inspector_profiler.py` (parametrize per
+        dataset), dan smoke test model asli di kedua dataset.
 - **Squash title:** `feat(datasource): add read-only data sources and exploration tools (F39)`
 
 ### F48: Data catalog

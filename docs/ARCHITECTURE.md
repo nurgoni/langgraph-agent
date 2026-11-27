@@ -14,13 +14,16 @@ Service ini membungkus graph LangGraph dengan API FastAPI. Proses `agent-service
 - **Project.** Agent deklaratif: agent kode + instruksi, skill, model, dan pengaturan.
 - **Satu database Postgres.** Checkpoint percakapan, akun, project, memory, trace, metadata artifact,
   dan file workspace. Skema lengkapnya ada di [DATA_MODEL.md](DATA_MODEL.md).
+- **Data source read-only** (F39). Database analisa terpisah yang dibaca tool data lewat user
+  read-only, dipilih per project. Dua dataset demo di-seed compose.
 - **Endpoint HTTP.** Login, menjalankan agent (`/invoke`, `/stream`), riwayat, thread, project,
-  skill, memory, trace, dan artifact.
+  skill, memory, trace, artifact, dan data source.
 
 Proses lain di stack Compose:
 
 ```text
-browser ──► web (nginx + React) ──/api──► agent-service ──► postgres
+browser ──► web (nginx + React) ──/api──► agent-service ──► postgres (agent_service)
+                                              ├──────────► postgres (demo_shop, demo_sensors, read-only)
                                               ├──────────► sandbox-runner ──► Docker (container sekali pakai)
                                               └──────────► LLM OpenAI-compatible
 dev console Streamlit (ui) ─────────────────► agent-service
@@ -29,7 +32,7 @@ dev console Streamlit (ui) ─────────────────�
 Client, UI, dan frontend berkomunikasi dengan service hanya lewat HTTP: Python memakai schema dari
 `agent_service.schema`, dan frontend memakai tipe yang digenerate dari `contracts/`.
 
-Dokumen ini menjelaskan arsitektur yang **sudah dibangun** (`v0.7.0`, sampai F38). Fitur
+Dokumen ini menjelaskan arsitektur yang **sudah dibangun** (`v0.7.0` ditambah F47 dan F39). Fitur
 berikutnya ada di [ROADMAP](ROADMAP.md), dan keputusan besarnya di [ADR](adr/README.md). Bagian
 dokumen ini diperbarui oleh fitur yang mengubahnya.
 
@@ -46,6 +49,8 @@ src/agent_service/
 ├── skills/    Skill built-in (builtin/<name>/SKILL.md), data, bukan kode
 ├── files/     ArtifactStore (LocalArtifactStore), protocol Workspace (InMemoryWorkspace)
 ├── sandbox/   Sandbox protocol, RemoteSandbox, DockerSandbox, runner (service sandbox-runner)
+├── datasource/ DataSourceRegistry, SqlDataSource, QueryGuard, SchemaInspector, TableProfiler,
+│              hasil query ke Parquet (F39)
 ├── memory/    DatabaseEngineProvider, migrator, CheckpointerProvider, StoreProvider, repository
 │              tabel (users, projects, thread_metadata, artifacts, run_traces), PostgresWorkspace,
 │              UserMemoryRepository
@@ -65,6 +70,7 @@ Panah berarti "boleh import". Import ke arah sebaliknya dilarang.
 ui ──► client ──► schema
 evals ──► client
 service ──► agents ──► harness ──► llm, memory, files, sandbox ──► core
+agents, service ──► datasource ──► core
 service ──► memory ──► core
 service ──► schema
 frontend ──► contracts/ (tipe hasil generate), lewat HTTP saja
@@ -84,10 +90,11 @@ sequenceDiagram
     participant A as create_app
     participant L as lifespan
     U->>A: create_app(settings)
-    A->>A: buat SkillRegistry, toolkit harness, dan agent bawaan
+    A->>A: buat SkillRegistry, DataSourceRegistry (dari file, belum konek), toolkit, agent
     A->>A: validasi agent default, pasang exception handler, CORS, dan router
     U->>L: startup
     L->>L: SkillRegistry.load() (skill tidak valid dilewati)
+    L->>L: DataSourceRegistry.open() (paralel, yang gagal ditandai unavailable)
     L->>L: LocalArtifactStore.prepare(), ModelFactory(settings)
     L->>L: buka engine + CheckpointerProvider + StoreProvider (gagal cepat jika DB mati)
     L->>L: open_sandbox (RemoteSandbox jika SANDBOX_URL diisi)
@@ -98,7 +105,7 @@ sequenceDiagram
     L->>L: simpan ke app.state
     Note over U,L: melayani request
     U->>L: shutdown
-    L->>L: tutup client sandbox, pool store/checkpointer, dan engine
+    L->>L: tutup pool data source, client sandbox, pool store/checkpointer, dan engine
 ```
 
 - **Tidak ada side effect saat import.** `create_app()` tanpa argumen membaca `Settings()` saat
@@ -107,7 +114,8 @@ sequenceDiagram
 - **`load_all()`** menjalankan `agent.load()` dan meng-compile graph untuk model default. Agent
   yang gagal di tahap ini dicatat di log dan ditandai *unavailable* (503), sementara agent lain
   tetap berjalan.
-- **`app.state`** berisi `settings`, `default_agent_id`, `skill_registry`, `authenticator`,
+- **`app.state`** berisi `settings`, `default_agent_id`, `skill_registry`,
+  `data_source_registry`, `authenticator`,
   `model_factory`, `registry`, `thread_repository`, `memory_repository`, `trace_repository`,
   `project_service`, dan `artifact_service`. Route mengaksesnya lewat dependency bertipe di
   `service/dependencies.py` (`RegistryDep`, `ThreadRepositoryDep`, dan lainnya), bukan lewat
@@ -415,8 +423,9 @@ satu agent kode plus konfigurasi.
 - **Run di project.** Route `/projects/{project_id}/...` membaca project di awal setiap run, lalu
   membentuk `RunTarget`: agent dasar, model (request → project → default), `max_tokens` project,
   dan `ProjectRunContext`. `AgentRegistry.get_graph(agent, model, max_tokens)` meng-cache graph per
-  ketiganya. Instruksi dan skill project diteruskan lewat `configurable` (`project_id`,
-  `project_instructions`, `project_skill_ids`, kuncinya di `core/constants.py`) untuk F27/F28.
+  ketiganya. Instruksi, skill, dan data source project diteruskan lewat `configurable`
+  (`project_id`, `project_instructions`, `project_skill_ids`, `project_tool_approval`,
+  `project_data_source_ids`, kuncinya di `core/constants.py`).
 - **Isolasi thread.** `run_metadata` menulis `project_id` untuk thread project, dan
   `is_thread_owner` membandingkannya. Thread project tidak bisa dibuka lewat route agent atau
   project lain, dan sebaliknya. Thread tanpa key `project_id` (termasuk thread sebelum F26) adalah
@@ -684,6 +693,46 @@ agent-service                                   sandbox-runner (satu-satunya den
 - **Image.** `docker/sandbox.Dockerfile` (Python 3.12 + numpy, pandas, matplotlib dipin, `MPLBACKEND=Agg`,
   HOME dan cache di `/tmp`). Library analisa tidak ada di image service.
 
+### Data source (F39)
+
+```text
+datasources.yaml (DATA_SOURCES_FILE) ── id, description, url_env ──► DataSourceRegistry
+                                                                       (open di lifespan)
+project.settings.data_source_ids ──► configurable ──► DataToolkit.tools_for(config)
+  list_data_sources · search_schema · describe_table · profile_table · run_sql
+      └─ DataAccess.source(config, id): hanya data source project ─► SqlDataSource
+            pool psycopg, koneksi read-only, statement_timeout lokal per query
+  run_sql: QueryGuard (sqlglot) ─► SELECT * FROM (...) LIMIT max+1 ─► Parquet ─► data/<name>.parquet
+```
+
+- **Registry dari file, DSN dari env.** `load_entries` membaca `DATA_SOURCES_FILE` (file tidak ada
+  = tanpa data source, file rusak = startup gagal). DSN dibaca `EnvReader` (`core/env.py`, env proses
+  lalu `.env`) dari nama di `url_env`. Env kosong atau database tidak terjangkau membuat data source
+  itu *unavailable* dengan alasan yang aman ditampilkan, dan service tetap start.
+- **Pertahanan berlapis** (ADR 0007). Pertama, user database read-only (pertahanan utama; dataset
+  demo memakai role `analyst_ro` tanpa hak tulis). Kedua, koneksi pool di-set read-only, jadi setiap
+  transaksi `READ ONLY` dengan `statement_timeout` lokal (`SQL_TIMEOUT_SECONDS`). Ketiga, `QueryGuard`
+  menerima tepat satu query (`SELECT`/`UNION`/`WITH`), menolak node yang menulis di mana pun (termasuk
+  CTE), `SELECT INTO`, `FOR UPDATE`, dan fungsi `pg_*`/`lo_*`/`dblink*`/`nextval`/`set_config`, lalu
+  membungkusnya dengan `LIMIT SQL_MAX_ROWS + 1` untuk mendeteksi pemotongan.
+- **Akses per project.** Tool data di-bind hanya pada giliran yang project-nya punya
+  `data_source_ids` (pola skill), dan `DataAccess.source` menolak ID di luar daftar project walaupun
+  terdaftar di registry. Project memvalidasi ID terhadap registry (tidak dikenal → 422); data source
+  yang terdaftar tetapi unavailable tetap boleh dipilih.
+- **Identifier tidak dirangkai mentah.** `SchemaInspector.resolve` mencocokkan nama tabel dari model
+  ke `pg_catalog` (hanya tabel dengan hak `SELECT`) sebelum di-quote. Nilai dari model memakai
+  parameter `%s`.
+- **Profil.** `TableProfiler` exact sampai `PROFILE_EXACT_MAX_ROWS` (perkiraan `reltuples`), di
+  atasnya `TABLESAMPLE SYSTEM`; output memperingatkan bahwa nilai langka bisa terlewat. Statistik per
+  kolom mengikuti `typcategory`: min/max untuk angka, tanggal, dan teks; nilai teratas untuk teks dan
+  boolean.
+- **Hasil ke workspace.** `run_sql` menyimpan semua baris (sampai batas) sebagai Parquet
+  (`datasource/results.py`, tipe yang tidak dikenal Arrow menjadi teks), dan model menerima tipe
+  kolom serta pratinjau 20 baris. Sandbox memuat file itu tanpa kredensial database.
+- **Domain-agnostic** (NFR-13). Tool dan deskripsinya tidak menyebut domain apa pun. Dataset demo
+  (`docker/demo/`) hanya fixture: SQL deterministik (`setseed`), pola tertanam, dan kunci jawaban
+  `planted_patterns.yaml` yang dicek test.
+
 ## Agent dengan Tool
 
 `ToolCallingAgent` (`agents/tool_calling.py`) adalah agent generik yang dikonfigurasi lewat daftar
@@ -885,7 +934,7 @@ Image:
 
 | File | Target | Isi |
 |---|---|---|
-| `docker/Dockerfile` | `service` | `python -m agent_service.run_service`, juga dipakai service `migrate`. Extra `service` saja |
+| `docker/Dockerfile` | `service` | `python -m agent_service.run_service`, juga dipakai service `migrate`. Extra `service` dan `analytics` (sqlglot, pyarrow) |
 | `docker/Dockerfile` | `sandbox-runner` | Runner sandbox (F37), satu-satunya yang me-mount `docker.sock` |
 | `docker/Dockerfile` | `ui` | Dev console Streamlit. Extra `ui` saja |
 | `docker/sandbox.Dockerfile` | – | Image eksekusi kode: Python + numpy, pandas, matplotlib |
@@ -899,6 +948,7 @@ Test e2e `test_image_ships_only_its_extra` menjaga batas ini.
 
 ```text
 postgres (healthy) ──► migrate (selesai) ─────────┐
+postgres (healthy) ──► demo-seed (selesai) ────────┤
 sandbox-image (build lalu selesai)                 ├──► agent-service (healthy) ──► web :3000, ui :8501
 sandbox-runner (healthy, tanpa port host) ─────────┘
 volume: postgres-data (database), artifacts (isi file artifact)
@@ -906,6 +956,10 @@ volume: postgres-data (database), artifacts (isi file artifact)
 
 Service memakai FakeModel secara default. `compose.llm.yaml` menimpa konfigurasi model dengan LLM
 asli.
+
+`demo-seed` (image postgres, `docker/demo/seed.sh`) membuat database `demo_shop` dan `demo_sensors`
+di server yang sama, mengisinya dari SQL deterministik, dan membuat role login `analyst_ro` yang
+hanya punya `SELECT`. Service ini idempotent: tabel demo dibuat ulang setiap kali dijalankan.
 
 ## Testing
 
@@ -916,6 +970,10 @@ asli.
   setiap test, dan database dihapus di akhir sesi. Fixture autouse `isolate_database_url`
   mengarahkan `DATABASE_URL` ke host yang tidak ada, supaya test tidak pernah menulis ke database
   dev. Test murni (agent dengan `InMemorySaver`) tidak butuh database.
+- **Dataset demo di test.** Fixture sesi `demo_database_urls` membuat kedua database demo dari
+  `docker/demo/*.sql` dan role read-only acak, lalu menghapusnya di akhir sesi. Fixture autouse
+  `isolate_data_sources` mengarahkan `DATA_SOURCES_FILE` ke file yang tidak ada, jadi
+  `datasources.yaml` repo dan DSN di `.env` tidak terbaca.
 - **LLM diganti `FakeModel`.** Model ini men-stream per kata dan mengirim `tool_calls` utuh, dan
   setiap panggilan mengembalikan salinan message baru.
 - **Test endpoint memakai `httpx.AsyncClient` + `ASGITransport`.** Lifespan dijalankan manual

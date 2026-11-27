@@ -12,6 +12,7 @@ from agent_service.core.constants import (
     DEFAULT_ARTIFACT_DIR,
     DEFAULT_ARTIFACT_MAX_BYTES,
     DEFAULT_CONTEXT_MAX_TOKENS,
+    DEFAULT_DATA_SOURCES_FILE,
     DEFAULT_DATABASE_URL,
     DEFAULT_HOST,
     DEFAULT_JWT_TTL_SECONDS,
@@ -19,7 +20,10 @@ from agent_service.core.constants import (
     DEFAULT_LLM_MAX_TOKENS_PARAM,
     DEFAULT_LOG_LEVEL,
     DEFAULT_PORT,
+    DEFAULT_PROFILE_EXACT_MAX_ROWS,
     DEFAULT_SANDBOX_TIMEOUT_SECONDS,
+    DEFAULT_SQL_MAX_ROWS,
+    DEFAULT_SQL_TIMEOUT_SECONDS,
     DEFAULT_TOOL_MAX_CONSECUTIVE_ERRORS,
     DEFAULT_TOOL_OUTPUT_MAX_TOKENS,
     ENV_FILE,
@@ -28,6 +32,8 @@ from agent_service.core.constants import (
     LIST_SEPARATOR,
     MAX_PORT,
     MAX_SANDBOX_TIMEOUT_SECONDS,
+    MAX_SQL_MAX_ROWS,
+    MAX_SQL_TIMEOUT_SECONDS,
     MIN_AGENT_RECURSION_LIMIT,
     MIN_ARTIFACT_MAX_BYTES,
     MIN_CONTEXT_MAX_TOKENS,
@@ -35,7 +41,10 @@ from agent_service.core.constants import (
     MIN_JWT_TTL_SECONDS,
     MIN_LLM_MAX_TOKENS,
     MIN_PORT,
+    MIN_PROFILE_EXACT_MAX_ROWS,
     MIN_SANDBOX_TIMEOUT_SECONDS,
+    MIN_SQL_MAX_ROWS,
+    MIN_SQL_TIMEOUT_SECONDS,
     MIN_TOOL_MAX_CONSECUTIVE_ERRORS,
     MIN_TOOL_OUTPUT_MAX_TOKENS,
     POSTGRES_URL_SCHEMES,
@@ -105,6 +114,18 @@ class Settings(BaseSettings):
         default=DEFAULT_SANDBOX_TIMEOUT_SECONDS,
         ge=MIN_SANDBOX_TIMEOUT_SECONDS,
         le=MAX_SANDBOX_TIMEOUT_SECONDS,
+    )
+
+    # Data source read-only (FR-51). File registry yang tidak ada berarti tanpa data source.
+    data_sources_file: Path = DEFAULT_DATA_SOURCES_FILE
+    sql_max_rows: int = Field(
+        default=DEFAULT_SQL_MAX_ROWS, ge=MIN_SQL_MAX_ROWS, le=MAX_SQL_MAX_ROWS
+    )
+    sql_timeout_seconds: int = Field(
+        default=DEFAULT_SQL_TIMEOUT_SECONDS, ge=MIN_SQL_TIMEOUT_SECONDS, le=MAX_SQL_TIMEOUT_SECONDS
+    )
+    profile_exact_max_rows: int = Field(
+        default=DEFAULT_PROFILE_EXACT_MAX_ROWS, ge=MIN_PROFILE_EXACT_MAX_ROWS
     )
 
     # Kosong berarti tool web search menjawab "not configured", tanpa menggagalkan startup.

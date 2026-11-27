@@ -4,6 +4,7 @@ from typing import Final
 
 from agent_service.agents.tool_calling import ToolCallingAgent
 from agent_service.agents.tools.calculator import calculator
+from agent_service.agents.tools.data import DataToolkit
 from agent_service.agents.tools.web_search import (
     SearchBackend,
     UnconfiguredSearch,
@@ -40,6 +41,7 @@ def create_research_assistant(
     use_memory: bool = False,
     files: WorkspaceToolkit | None = None,
     tool_guard: ToolFailureGuard | None = None,
+    data: DataToolkit | None = None,
 ) -> ToolCallingAgent:
     """Buat research assistant dengan tool web search dan kalkulator.
 
@@ -53,6 +55,7 @@ def create_research_assistant(
         use_memory: Pakai long-term memory user (FR-40) jika registry punya store.
         files: Tool file workspace (FR-47). `None` berarti tanpa workspace.
         tool_guard: Batas kegagalan beruntun per tool (FR-59). Default: 3.
+        data: Tool data source (FR-51), di-bind hanya di project yang punya data source.
 
     Returns:
         Agent `research-assistant` yang siap didaftarkan.
@@ -73,4 +76,5 @@ def create_research_assistant(
         use_memory=use_memory,
         files=files,
         tool_guard=tool_guard,
+        data=data,
     )

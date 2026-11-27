@@ -19,12 +19,13 @@ RUN useradd --create-home --uid 10001 app
 COPY pyproject.toml uv.lock README.md ./
 
 FROM base AS service
-# Dependency dulu, supaya layer ini tetap ter-cache selama uv.lock tidak berubah.
+# Dependency dulu, supaya layer ini tetap ter-cache selama uv.lock tidak berubah. Extra `analytics`
+# berisi tool data source (F39).
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-project --extra service
+    uv sync --frozen --no-dev --no-install-project --extra service --extra analytics
 COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-editable --extra service
+    uv sync --frozen --no-dev --no-editable --extra service --extra analytics
 # Titik mount volume artifact (F35). Volume baru mewarisi pemilik folder ini dari image.
 RUN mkdir -p /app/data/artifacts && chown app:app /app/data/artifacts
 USER app

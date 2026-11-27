@@ -16,8 +16,11 @@ from agent_service.agents.catalog import (
     create_default_agents,
 )
 from agent_service.agents.registry import AgentRegistry
+from agent_service.agents.tools.data import DataAccess, DataToolkit
 from agent_service.agents.tools.web_search import SearchBackend, create_search_backend
+from agent_service.core.env import EnvReader
 from agent_service.core.settings import Settings
+from agent_service.datasource.registry import DataSourceRegistry, load_entries
 from agent_service.files.artifacts import LocalArtifactStore
 from agent_service.harness.context_policy import ContextPolicy
 from agent_service.harness.skills.registry import SkillRegistry
@@ -48,6 +51,7 @@ from agent_service.service.projects import ProjectService
 from agent_service.service.routes import (
     artifacts,
     auth,
+    datasources,
     health,
     history,
     info,
@@ -91,8 +95,8 @@ def create_app(
         settings: Konfigurasi service. Default: dibaca dari env dan `.env`.
         agents: Agent yang didaftarkan. Default: `create_default_agents()` dengan web search
             dari `FIRECRAWL_API_KEY`, anggaran riwayat dari `CONTEXT_MAX_TOKENS`, tool file
-            workspace dengan batas output `TOOL_OUTPUT_MAX_TOKENS`, dan batas kegagalan tool
-            `TOOL_MAX_CONSECUTIVE_ERRORS`.
+            workspace dengan batas output `TOOL_OUTPUT_MAX_TOKENS`, batas kegagalan tool
+            `TOOL_MAX_CONSECUTIVE_ERRORS`, dan tool data dari `DATA_SOURCES_FILE`.
         default_agent_id: Agent untuk `/info` dan route tanpa `{agent_id}`.
         builtin_projects: Project built-in yang di-seed saat startup, jika agent dasarnya
             terdaftar.
@@ -104,6 +108,7 @@ def create_app(
 
     Raises:
         DefaultAgentNotRegisteredError: Jika `default_agent_id` tidak ada di `agents`.
+        InvalidDataSourcesFileError: Jika `DATA_SOURCES_FILE` ada tetapi tidak valid.
 
     >>> settings = Settings(_env_file=None, use_fake_model=True, jwt_secret="x" * 32)
     >>> app = create_app(settings)
@@ -112,6 +117,7 @@ def create_app(
     """
     resolved_settings = Settings() if settings is None else settings
     resolved_skills = default_skill_registry() if skill_registry is None else skill_registry
+    data_sources = build_data_source_registry(resolved_settings)
     if agents is None:
         resolved_agents = create_default_agents(
             build_search_backend(resolved_settings),
@@ -119,6 +125,7 @@ def create_app(
             ContextPolicy(max_tokens=resolved_settings.context_max_tokens),
             build_workspace_toolkit(resolved_settings),
             ToolFailureGuard(resolved_settings.tool_max_consecutive_errors),
+            DataToolkit(build_data_access(resolved_settings, data_sources)),
         )
     else:
         resolved_agents = list(agents)
@@ -129,7 +136,7 @@ def create_app(
         )
 
     lifespan = _build_lifespan(
-        resolved_settings, resolved_agents, builtin_projects, resolved_skills
+        resolved_settings, resolved_agents, builtin_projects, resolved_skills, data_sources
     )
     app = FastAPI(title=APP_TITLE, lifespan=lifespan)
     register_exception_handlers(app)
@@ -153,6 +160,7 @@ def create_app(
     app.include_router(memories.router, dependencies=protected)
     app.include_router(runs.router, dependencies=protected)
     app.include_router(artifacts.router, dependencies=protected)
+    app.include_router(datasources.router, dependencies=protected)
     app.state.settings = resolved_settings
     app.state.default_agent_id = default_agent_id
     return app
@@ -186,6 +194,21 @@ def build_workspace_toolkit(settings: Settings) -> WorkspaceToolkit:
     return WorkspaceToolkit(settings.tool_output_max_tokens, execution_timeout_seconds=timeout)
 
 
+def build_data_source_registry(settings: Settings) -> DataSourceRegistry:
+    """Registry data source dari `DATA_SOURCES_FILE`, belum dibuka (F39).
+
+    Raises:
+        InvalidDataSourcesFileError: Jika file ada tetapi tidak valid.
+    """
+    entries = load_entries(settings.data_sources_file)
+    return DataSourceRegistry(entries, EnvReader(), settings.sql_timeout_seconds)
+
+
+def build_data_access(settings: Settings, registry: DataSourceRegistry) -> DataAccess:
+    """Akses data source untuk tool, dengan `SQL_MAX_ROWS` dan `PROFILE_EXACT_MAX_ROWS`."""
+    return DataAccess(registry, settings.sql_max_rows, settings.profile_exact_max_rows)
+
+
 def build_search_backend(settings: Settings) -> SearchBackend:
     """Mesin pencari untuk tool web search, dari `FIRECRAWL_API_KEY` di `Settings`.
 
@@ -202,10 +225,11 @@ def _build_lifespan(
     agents: Sequence[BaseAgent],
     builtin_projects: Sequence[BuiltinProject],
     skill_registry: SkillRegistry,
+    data_sources: DataSourceRegistry,
 ) -> Lifespan:
     """Buat lifespan yang membuka database, mendaftarkan, dan memuat semua agent.
 
-    Urutan: muat skill → siapkan direktori artifact → `ModelFactory` → engine +
+    Urutan: muat skill → buka data source → siapkan direktori artifact → `ModelFactory` → engine +
     `CheckpointerProvider` + `StoreProvider` → cek migrasi → `AgentRegistry.load_all()` → seed
     project built-in. Factory, registry, `ThreadRepository`, `ProjectService`, `ArtifactService`,
     `UserMemoryRepository`, `RunTraceRepository`, dan `Authenticator` disimpan di `app.state`.
@@ -217,6 +241,8 @@ def _build_lifespan(
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         await skill_registry.load()
         app.state.skill_registry = skill_registry
+        await data_sources.open()
+        app.state.data_source_registry = data_sources
         artifact_store = LocalArtifactStore(settings.artifact_dir)
         await artifact_store.prepare()
         model_factory = ModelFactory(settings)
@@ -257,6 +283,7 @@ def _build_lifespan(
                 registry,
                 model_factory,
                 skill_registry,
+                data_sources,
             )
             await project_service.seed_builtin(builtin_projects)
             app.state.thread_repository = thread_repository
@@ -264,7 +291,10 @@ def _build_lifespan(
             app.state.trace_repository = RunTraceRepository(engine)
             app.state.project_service = project_service
             app.state.artifact_service = artifact_service
-            yield
+            try:
+                yield
+            finally:
+                await data_sources.close()
         logger.info("Service shut down")
 
     return lifespan

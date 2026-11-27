@@ -13,6 +13,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from agent_service.agents.registry import AgentRegistry
 from agent_service.core.settings import Settings
+from agent_service.datasource.registry import DataSourceRegistry
 from agent_service.harness.skills.registry import SkillRegistry
 from agent_service.llm.factory import ModelFactory
 from agent_service.memory.traces import RunTraceRepository
@@ -72,6 +73,11 @@ def get_artifact_service(request: Request) -> ArtifactService:
     return request.app.state.artifact_service
 
 
+def get_data_source_registry(request: Request) -> DataSourceRegistry:
+    """Ambil `DataSourceRegistry` yang dibuka di lifespan."""
+    return request.app.state.data_source_registry
+
+
 def get_default_agent_id(request: Request) -> str:
     """Ambil ID agent default milik app."""
     return request.app.state.default_agent_id
@@ -110,4 +116,5 @@ SkillRegistryDep = Annotated[SkillRegistry, Depends(get_skill_registry)]
 MemoryRepositoryDep = Annotated[UserMemoryRepository, Depends(get_memory_repository)]
 TraceRepositoryDep = Annotated[RunTraceRepository, Depends(get_trace_repository)]
 ArtifactServiceDep = Annotated[ArtifactService, Depends(get_artifact_service)]
+DataSourceRegistryDep = Annotated[DataSourceRegistry, Depends(get_data_source_registry)]
 PrincipalDep = Annotated[Principal, Depends(current_principal)]

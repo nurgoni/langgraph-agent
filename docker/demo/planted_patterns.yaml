@@ -1,0 +1,98 @@
+# Answer key for the demo datasets (F39), used by evals in F40.
+# Each `check` query returns one row with one boolean column `ok`; tests run every check against
+# freshly seeded databases. Descriptions say what an analyst should find, not how.
+datasets:
+  shop:
+    file: shop.sql
+    patterns:
+      - id: seasonality
+        kind: trend
+        description: Order volume rises about 60% in November and December compared with other months.
+        check: >-
+          SELECT avg(n) FILTER (WHERE m IN (11, 12)) > 1.4 * avg(n) FILTER (WHERE m NOT IN (11, 12, 3)) AS ok
+          FROM (SELECT extract(month FROM ordered_at) AS m, date_trunc('month', ordered_at), count(*) AS n
+                FROM orders WHERE ordered_at < '2026-01-01' GROUP BY 1, 2) AS monthly
+      - id: segment-decline
+        kind: diagnostic
+        description: Orders from region west drop by about half from June 2026, while other regions stay flat.
+        check: >-
+          SELECT bool_and(CASE WHEN region = 'west' THEN after < 0.65 * before ELSE after > 0.85 * before END) AS ok
+          FROM (SELECT c.region,
+                       count(*) FILTER (WHERE o.ordered_at >= '2026-01-01' AND o.ordered_at < '2026-06-01') / 5.0 AS before,
+                       count(*) FILTER (WHERE o.ordered_at >= '2026-06-01' AND o.ordered_at < '2026-11-01') / 5.0 AS after
+                FROM orders AS o JOIN customers AS c USING (customer_id) GROUP BY c.region) AS per_region
+      - id: missing-week
+        kind: data-quality
+        description: There are no orders at all from 2026-03-10 to 2026-03-16 (a data gap, not a real drop).
+        check: >-
+          SELECT count(*) = 0 AS ok FROM orders
+          WHERE ordered_at >= '2026-03-10' AND ordered_at < '2026-03-17'
+      - id: quantity-outlier
+        kind: anomaly
+        description: One completed order line after 2026-08-15 has quantity 500; all other lines have 1 to 3.
+        check: >-
+          SELECT count(*) FILTER (WHERE quantity = 500) = 1 AND max(quantity) FILTER (WHERE quantity <> 500) <= 3 AS ok
+          FROM order_items
+      - id: duplicate-lines
+        kind: data-quality
+        description: 66 order lines were ingested twice (same order, product, quantity, and price).
+        check: >-
+          SELECT count(*) = 66 AS ok FROM (
+            SELECT 1 FROM order_items GROUP BY order_id, product_id, quantity, unit_price HAVING count(*) > 1
+          ) AS repeated
+      - id: missing-emails
+        kind: data-quality
+        description: About 8% of customers have no email.
+        check: >-
+          SELECT avg((email IS NULL)::int) BETWEEN 0.05 AND 0.11 AS ok FROM customers
+  sensors:
+    file: sensors.sql
+    patterns:
+      - id: daily-cycle
+        kind: trend
+        description: Temperature peaks in the afternoon and is lowest at night every day.
+        check: >-
+          SELECT avg(value) FILTER (WHERE extract(hour FROM recorded_at) = 15)
+                 > avg(value) FILTER (WHERE extract(hour FROM recorded_at) = 3) + 6 AS ok
+          FROM readings JOIN devices USING (device_id) WHERE kind = 'temperature' AND value < 999
+      - id: segment-decline
+        kind: diagnostic
+        description: Site C (site_id 3) uses about 35% less power from 2026-08-15; other sites are unchanged.
+        check: >-
+          SELECT bool_and(CASE WHEN site_id = 3 THEN after < 0.7 * before ELSE after > 0.95 * before END) AS ok
+          FROM (SELECT d.site_id,
+                       avg(r.value) FILTER (WHERE r.recorded_at < '2026-08-15') AS before,
+                       avg(r.value) FILTER (WHERE r.recorded_at >= '2026-08-15') AS after
+                FROM readings AS r JOIN devices AS d USING (device_id)
+                WHERE d.kind = 'power' GROUP BY d.site_id) AS per_site
+      - id: device-offline
+        kind: data-quality
+        description: Device 7 sends no readings from 2026-07-10 to 2026-07-13.
+        check: >-
+          SELECT count(*) = 0 AS ok FROM readings
+          WHERE device_id = 7 AND recorded_at >= '2026-07-10' AND recorded_at < '2026-07-14'
+      - id: site-outage
+        kind: data-quality
+        description: Site E (site_id 5) sends nothing on the morning of 2026-09-01 (00:00 to 12:00).
+        check: >-
+          SELECT count(*) = 0 AS ok FROM readings JOIN devices USING (device_id)
+          WHERE site_id = 5 AND recorded_at >= '2026-09-01' AND recorded_at < '2026-09-01 12:00'
+      - id: glitch-values
+        kind: anomaly
+        description: Temperature devices 1 and 14 report the glitch value 999 a few times (12 readings).
+        check: >-
+          SELECT count(*) = 12 AND bool_and(device_id IN (1, 14)) AS ok FROM readings WHERE value = 999
+      - id: duplicate-readings
+        kind: data-quality
+        description: Device 12 repeats 45 readings (same device and hour).
+        check: >-
+          SELECT count(*) = 45 AS ok FROM (
+            SELECT 1 FROM readings GROUP BY device_id, recorded_at HAVING count(*) > 1
+          ) AS repeated
+      - id: null-humidity
+        kind: data-quality
+        description: About 0.5% of humidity readings have no value.
+        check: >-
+          SELECT count(*) FILTER (WHERE value IS NULL) BETWEEN 200 AND 500
+                 AND bool_and(kind = 'humidity') FILTER (WHERE value IS NULL) AS ok
+          FROM readings JOIN devices USING (device_id)

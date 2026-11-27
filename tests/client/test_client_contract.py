@@ -200,6 +200,12 @@ async def test_builtin_project_is_read_only_through_client(client: AgentClient) 
     assert error_info.value.status_code == 403
 
 
+async def test_data_sources_through_client(client: AgentClient) -> None:
+    listing = await client.alist_data_sources()
+
+    assert listing.data_sources == []
+
+
 async def test_skills_through_client(client: AgentClient) -> None:
     listing = await client.alist_skills()
     report = await client.aget_skill("builtin/research-report")
