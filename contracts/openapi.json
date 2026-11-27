@@ -236,6 +236,60 @@
         "title": "ChatMessage",
         "type": "object"
       },
+      "DataSource": {
+        "description": "Satu data source terdaftar. Kredensial dan alamat database tidak pernah ditampilkan.",
+        "properties": {
+          "available": {
+            "description": "False when the service cannot use it right now.",
+            "title": "Available",
+            "type": "boolean"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the data source is unavailable.",
+            "title": "Error"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "description",
+          "available"
+        ],
+        "title": "DataSource",
+        "type": "object"
+      },
+      "DataSourceList": {
+        "description": "Isi `GET /datasources`: semua data source, urut sesuai `DATA_SOURCES_FILE`.",
+        "properties": {
+          "data_sources": {
+            "items": {
+              "$ref": "#/components/schemas/DataSource"
+            },
+            "title": "Data Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "data_sources"
+        ],
+        "title": "DataSourceList",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -518,6 +572,22 @@
         "additionalProperties": false,
         "description": "Pengaturan run di dalam project. Field baru selalu opsional, supaya tidak breaking.",
         "properties": {
+          "data_source_ids": {
+            "description": "Read-only data sources the agent may query, as ids from GET /datasources.",
+            "examples": [
+              [
+                "shop"
+              ]
+            ],
+            "items": {
+              "maxLength": 64,
+              "pattern": "^[a-z0-9]+([_-][a-z0-9]+)*$",
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Data Source Ids",
+            "type": "array"
+          },
           "max_tokens": {
             "anyOf": [
               {
@@ -1538,6 +1608,33 @@
         "summary": "Login",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/datasources": {
+      "get": {
+        "description": "Semua data source terdaftar beserta statusnya, urut sesuai `DATA_SOURCES_FILE`.",
+        "operationId": "list_data_sources_datasources_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataSourceList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Data Sources",
+        "tags": [
+          "datasources"
         ]
       }
     },

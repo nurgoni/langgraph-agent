@@ -13,10 +13,13 @@ from typing import Annotated, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
+from agent_service.schema.datasources import DataSourceId
+
 PROJECT_NAME_MAX_LENGTH: Final = 80
 PROJECT_DESCRIPTION_MAX_LENGTH: Final = 500
 PROJECT_INSTRUCTIONS_MAX_LENGTH: Final = 8000
 MAX_PROJECT_SKILLS: Final = 20
+MAX_PROJECT_DATA_SOURCES: Final = 10
 # ID skill `<scope>/<name>` (ADR 0005). Nama mengikuti agentskills.io: huruf kecil, angka, tanda
 # hubung tunggal, maksimal 64 karakter.
 SKILL_ID_PATTERN: Final = r"^(builtin|org|user|project)/[a-z0-9]+(-[a-z0-9]+)*$"
@@ -47,6 +50,12 @@ class ProjectSettings(BaseModel):
     tool_approval: ToolApproval = Field(
         default="never",
         description="`always` asks the user to approve every run_python/run_shell call first.",
+    )
+    data_source_ids: list[DataSourceId] = Field(
+        default_factory=list,
+        max_length=MAX_PROJECT_DATA_SOURCES,
+        description="Read-only data sources the agent may query, as ids from GET /datasources.",
+        examples=[["shop"]],
     )
 
 

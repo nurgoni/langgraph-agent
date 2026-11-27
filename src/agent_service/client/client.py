@@ -20,6 +20,7 @@ from agent_service.client.requests import (
 from agent_service.client.stream import AsyncStreamRun, StreamRun
 from agent_service.schema.artifacts import ArtifactRef
 from agent_service.schema.auth import LoginRequest, TokenResponse
+from agent_service.schema.datasources import DataSourceList
 from agent_service.schema.memories import MemoryList
 from agent_service.schema.projects import Project, ProjectCreate, ProjectList, ProjectUpdate
 from agent_service.schema.requests import (
@@ -49,6 +50,7 @@ BEARER_PREFIX: Final = "Bearer "
 LOGIN_PATH: Final = "/auth/login"
 PROJECTS_PATH: Final = "/projects"
 SKILLS_PATH: Final = "/skills"
+DATASOURCES_PATH: Final = "/datasources"
 MEMORIES_PATH: Final = "/memories"
 RUNS_PATH: Final = "/runs"
 ARTIFACTS_PATH: Final = "/artifacts"
@@ -335,6 +337,14 @@ class AgentClient:
         """
         return parse_model(self._send(RequestSpec("GET", SKILLS_PATH)), SkillList)
 
+    def list_data_sources(self) -> DataSourceList:
+        """Data source read-only yang bisa dipilih project, beserta statusnya (FR-51).
+
+        Raises:
+            AgentClientError: Request gagal.
+        """
+        return parse_model(self._send(RequestSpec("GET", DATASOURCES_PATH)), DataSourceList)
+
     def get_skill(self, skill_id: str) -> SkillDetail:
         """Satu skill beserta isinya. `skill_id` berbentuk `<scope>/<name>`.
 
@@ -433,6 +443,11 @@ class AgentClient:
     async def alist_skills(self) -> SkillList:
         """Versi async `list_skills`."""
         return parse_model(await self._asend(RequestSpec("GET", SKILLS_PATH)), SkillList)
+
+    async def alist_data_sources(self) -> DataSourceList:
+        """Versi async `list_data_sources`."""
+        response = await self._asend(RequestSpec("GET", DATASOURCES_PATH))
+        return parse_model(response, DataSourceList)
 
     async def aget_skill(self, skill_id: str) -> SkillDetail:
         """Versi async `get_skill`."""

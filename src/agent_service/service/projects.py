@@ -11,6 +11,7 @@ from typing import Any, Final
 
 from agent_service.agents.catalog import BuiltinProject
 from agent_service.agents.registry import AgentRegistry
+from agent_service.datasource.registry import DataSourceRegistry
 from agent_service.harness.skills.registry import SkillRegistry
 from agent_service.llm.factory import ModelFactory
 from agent_service.memory.projects import (
@@ -82,11 +83,13 @@ def project_to_schema(record: ProjectRecord) -> Project:
 
 def run_context(record: ProjectRecord) -> ProjectRunContext:
     """Bagian project yang diteruskan ke run lewat `configurable`."""
+    settings = ProjectSettings.model_validate(record.settings)
     return ProjectRunContext(
         project_id=record.project_id,
         instructions=record.instructions,
         skill_ids=record.skill_ids,
-        tool_approval=ProjectSettings.model_validate(record.settings).tool_approval,
+        tool_approval=settings.tool_approval,
+        data_source_ids=tuple(settings.data_source_ids),
     )
 
 
@@ -105,6 +108,7 @@ class ProjectService:
         registry: AgentRegistry,
         model_factory: ModelFactory,
         skills: SkillRegistry,
+        data_sources: DataSourceRegistry,
     ) -> None:
         """Inisialisasi service.
 
@@ -114,12 +118,14 @@ class ProjectService:
             registry: Registry agent, untuk memvalidasi `base_agent_id`.
             model_factory: Factory model, untuk memvalidasi `model` terhadap allowlist.
             skills: Registry skill, untuk memvalidasi `skill_ids`.
+            data_sources: Registry data source, untuk memvalidasi `settings.data_source_ids`.
         """
         self._projects = projects
         self._threads = threads
         self._registry = registry
         self._model_factory = model_factory
         self._skills = skills
+        self._data_sources = data_sources
 
     async def seed_builtin(self, builtins: Iterable[BuiltinProject]) -> list[str]:
         """Upsert project built-in yang agent dasarnya terdaftar. Aman dijalankan berulang.
@@ -169,6 +175,7 @@ class ProjectService:
         self._validate_agent(project_create.base_agent_id)
         self._validate_model(project_create.model)
         self._validate_skills(project_create.skill_ids)
+        self._validate_data_sources(project_create.settings.data_source_ids)
         fields = ProjectFields(
             name=project_create.name,
             base_agent_id=project_create.base_agent_id,
@@ -196,6 +203,8 @@ class ProjectService:
             self._validate_model(changes["model"])
         if "skill_ids" in changes:
             self._validate_skills(changes["skill_ids"])
+        if project_update.settings is not None:
+            self._validate_data_sources(project_update.settings.data_source_ids)
         if not changes:
             return project_to_schema(await self._get_owned(project_id, user_id))
         record = await self._projects.update(project_id, changes)
@@ -245,6 +254,16 @@ class ProjectService:
         unknown = [skill_id for skill_id in skill_ids if not self._skills.contains(skill_id)]
         if unknown:
             raise InvalidProjectError(f"Unknown skills: {unknown}. See GET /skills.")
+
+    def _validate_data_sources(self, data_source_ids: Iterable[str]) -> None:
+        """Pastikan semua data source terdaftar. Yang terdaftar tapi unavailable tetap diterima.
+
+        Raises:
+            InvalidProjectError: Jika ada ID data source yang tidak terdaftar.
+        """
+        unknown = [item for item in data_source_ids if not self._data_sources.contains(item)]
+        if unknown:
+            raise InvalidProjectError(f"Unknown data sources: {unknown}. See GET /datasources.")
 
     def _known_skills(self, skill_ids: Iterable[str]) -> tuple[str, ...]:
         """Skill built-in yang dikenal registry. Yang tidak dikenal dicatat dan dilewati."""
